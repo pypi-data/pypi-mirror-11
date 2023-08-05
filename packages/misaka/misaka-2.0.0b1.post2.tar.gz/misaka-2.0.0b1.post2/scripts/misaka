@@ -1,0 +1,90 @@
+#!/usr/bin/env python
+
+import sys
+from os import path
+
+from misaka import *
+
+
+extensions = {
+    '--ext-tables': EXT_TABLES,
+    '--ext-fenced-code': EXT_FENCED_CODE,
+    '--ext-footnotes': EXT_FOOTNOTES,
+    '--ext-autolink': EXT_AUTOLINK,
+    '--ext-strikethrough': EXT_STRIKETHROUGH,
+    '--ext-underline': EXT_UNDERLINE,
+    '--ext-highlight': EXT_HIGHLIGHT,
+    '--ext-quote': EXT_QUOTE,
+    '--ext-superscript': EXT_SUPERSCRIPT,
+    '--ext-math': EXT_MATH,
+    '--ext-no-intra-emphasis': EXT_NO_INTRA_EMPHASIS,
+    '--ext-space-headers': EXT_SPACE_HEADERS,
+    '--ext-math-explicit': EXT_MATH_EXPLICIT,
+    '--ext-disable-indented-code': EXT_DISABLE_INDENTED_CODE
+}
+
+html_flags = {
+    '--html-skip-html': HTML_SKIP_HTML,
+    '--html-escape': HTML_ESCAPE,
+    '--html-hard-wrap': HTML_HARD_WRAP,
+    '--html-use-xhtml': HTML_USE_XHTML
+}
+
+
+help = '''\
+Usage: misaka [--ext-<extension>...] [--html-<flag>...] [--smartypants] [<file>...]
+
+Parser extensions:
+{}
+
+Render flags:
+{}
+
+Other options:
+  --smartypants
+  -h | --help
+'''.format(
+    '\n'.join(['  ' + a for a in extensions]),
+    '\n'.join(['  ' + a for a in html_flags]))
+
+
+if __name__ == '__main__':
+    args = sys.argv[1:]
+
+    files = []
+    flags = 0
+    ext = 0
+    pants_enabled = False
+
+    for arg in args:
+        if arg in ('-h', '--help'):
+            print(help)
+            sys.exit(0)
+        elif arg == '--smartypants':
+            pants_enabled = True
+        elif arg in html_flags:
+            flags |= html_flags[arg]
+        elif arg in extensions:
+            ext |= extensions[arg]
+        else:
+            # If it's not a extension or HTML flag,
+            # then it must be a file, right?
+            files.append(arg)
+
+    renderer = HtmlRenderer(flags)
+    if pants_enabled:
+        to_html = lambda n: smartypants(Markdown(renderer, ext).render(n))
+    else:
+        to_html = Markdown(renderer, ext).render
+
+    if files:
+        for fn in files:
+            fn = path.abspath(fn)
+            if not path.exists(fn):
+                print('Does not exist: %s' % fn)
+            else:
+                with open(fn, 'r') as fd:
+                    source = fd.read()
+                print(to_html(source))
+    else:
+        print(to_html(sys.stdin.read()))
