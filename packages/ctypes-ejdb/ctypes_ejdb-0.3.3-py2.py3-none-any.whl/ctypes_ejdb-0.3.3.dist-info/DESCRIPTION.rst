@@ -1,0 +1,96 @@
+===============================
+ctypes-ejdb
+===============================
+
+.. image:: https://badge.fury.io/py/ctypes-ejdb.png
+    :target: http://badge.fury.io/py/ctypes-ejdb
+
+.. image:: https://travis-ci.org/uranusjr/ctypes-ejdb.png?branch=master
+    :target: https://travis-ci.org/uranusjr/ctypes-ejdb
+
+.. image:: https://pypip.in/d/ctypes-ejdb/badge.png
+    :target: https://pypi.python.org/pypi/ctypes-ejdb
+
+
+Python binding for EJDB built on ctypes.
+
+* Free software: BSD license.
+* Documentation: https://ctypes-ejdb.readthedocs.org.
+
+
+Features
+--------
+
+* Pure Python. Only Python (2.7 or 3.3+) and an `EJDB binary`_ is needed. No need to compile anything.
+
+
+Future Features
+---------------
+
+* Better API compatibility to MongoDB.
+* Better documentation.
+
+
+_`EJDB binary`: http://softmotions.com/ejdb/archives/
+
+
+
+
+History
+=======
+
+0.3.3 (2015-07-24)
+---------------------
+
+* Fix Python 2 compatibility.
+
+
+0.3.2 (2015-07-07)
+---------------------
+
+* Fix attribute lookup in ``DatabaseError`` construction.
+* Add options to config EJDB path by environ or ``.cfg`` file.
+* Make document repr look like a dict so it prints better.
+
+
+0.3.1 (2015-07-03)
+---------------------
+
+* Fixed context manager usage opening a ``Database``.
+* Fixed attribute error in ``Collection.count``.
+* Fixed document iterator slicing.
+* Experimental CLI utility ``ejdb.cli`` based on Click and ptpython.
+
+
+0.3 (2015-07-01)
+---------------------
+
+* Make EJDB path configurable with ``ejdb.init(path)``.
+
+
+0.2.1 (2015-07-01)
+---------------------
+
+* Add save shortcut on database.
+
+
+0.2 (2015-07-01)
+---------------------
+
+* Fix segmentation fault when converting BSON OID to string.
+* Fix error message retrieval in ``Database.close``.
+* Tests now run on Windows.
+
+
+0.1.1 (2015-06-30)
+---------------------
+
+* Fix encoding error in ``pip install``.
+
+
+0.1.0 (2015-06-28)
+---------------------
+
+* First release on PyPI.
+
+
