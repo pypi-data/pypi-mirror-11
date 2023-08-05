@@ -1,0 +1,63 @@
+lcw: Estimate the number of lines in a file.
+==============================================
+lcw is like ``wc -l`` but faster, less precise, and equally accurate. ::
+
+    usage: lcw [-h] [--sample-size N] [--page-size PAGE_SIZE] [--just-ml] file
+
+    Estimate how many lines are in a file.
+
+    positional arguments:
+      file
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      --sample-size N, -n N
+                            How many pages to count (default: 1000)
+      --page-size PAGE_SIZE, -p PAGE_SIZE
+                            Size of an observation (default: 16384)
+      --just-ml, -j         Only print the maximum likelihood estimate (default:
+                            False)
+
+Speed
+--------
+It's faster than ``wc -l`` on big files. ::
+
+    $ wc -c big-file.csv
+     1071895374 big-file.csv
+
+    $ time lcw big-file.csv
+    2386238 ± 22903 lines (99% confidence)
+
+    real    0m0.172s
+    user    0m0.140s
+    sys     0m0.027s
+
+    $ time wc -l big-file.csv
+     2388430 big-file.csv
+
+    real    0m1.379s
+    user    0m1.170s
+    sys     0m0.197s
+
+Math
+------
+lcw uses elementary statistics to perform unbiased estimates of the
+number of lines in a file. It takes a random sample of "pages" within
+the file and counts how many newlines are in each page.
+
+It multiplies the average count by the number of pages in the file
+in order to get its best guess at the number of lines in the file
+(the maximum likelihood estimate) and then computes a 99% normal
+confidence interval, applying a finite population correction for the
+estimate the standard deviation of sample totals.
+
+Tuning
+--------
+It is best to use the page size that your storage medium uses;
+modern storage media read entire pages at once, so using a page size
+that is too small will be bad for performance.
+
+The sample size is set with ``-n``, and typical rules of thumb say
+that this should be at least 20 for the confidence level to be valid.
+The page size is set with ``-p`` and should be something like
+2048, 4096, 8192, or 16384.
