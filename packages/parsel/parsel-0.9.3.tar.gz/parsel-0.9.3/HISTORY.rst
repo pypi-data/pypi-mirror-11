@@ -1,0 +1,30 @@
+.. :changelog:
+
+History
+-------
+
+0.9.3 (2015-08-07)
+------------------
+
+* Add base_url argument
+
+
+0.9.2 (2015-08-07)
+------------------
+
+* Rename module unified -> selector and promoted root attribute
+* Add create_root_node function
+
+
+0.9.1 (2015-08-04)
+---------------------
+
+* Setup Sphinx build and docs structure
+* Build universal wheels
+* Rename some leftovers from package extraction
+
+
+0.9.0 (2015-07-30)
+---------------------
+
+* First release on PyPI.
