@@ -1,0 +1,56 @@
+#!/bin/bash
+
+eval "$(docopts -V - -h - : "$@" <<EOF
+isreleased
+
+Takes a github pull request (either url or number) or a rev.
+Checks to see which releases contain the object.
+
+usage:
+  isreleased [options] --pull=<pull>
+  isreleased [options] --rev=<pull>
+
+Options:
+  -h --help      Show this screen.
+  --version      Show version.
+  --depot=<path> Use this depot.
+----
+isreleased 0.1.0
+Copyright (C) 2015 Andrew Thomson
+License MIT
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+EOF
+)"
+
+if [ -n "$depot" ]
+then
+  pushd "$depot" >/dev/null 2>/dev/null
+  if [ $? -ne 0 ]
+  then
+    echo "Failed to find depot $depot"
+    exit 1
+  fi
+fi
+
+if [ ! -e "./.git" ]
+then
+  echo "Failed to find depot"
+  exit 1
+fi
+
+if [ ! -z "$pull" ]
+then
+  number=$(echo "$pull" | perl -ne 'if(/^(https?:\/\/github.com\/[^\/]+\/[^\/]+\/pull\/)?(\d+)$/){print "$2\n";exit 0}else{exit 1}')
+  if [ $? -ne 0 ]
+  then
+    echo "Failed to parse $pull"
+    exit 2
+  fi
+  description="Merge pull request #${number} from "
+  #TODO
+  rev=$(git log --all | grep -B5 "$description" | head -1 | awk '{print $2}')
+fi
+
+git tag -l --sort="-version:refname" --contains "$rev"
+
