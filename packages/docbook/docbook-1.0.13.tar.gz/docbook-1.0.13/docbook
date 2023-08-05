@@ -1,0 +1,193 @@
+#!/usr/bin/python
+#coding: utf-8
+
+import sys
+import os
+import subprocess
+import argparse
+import ConfigParser
+import time
+# qiniu
+try:
+    import qiniu.conf
+    import qiniu.rs
+    import qiniu.io
+except:
+    os.system('pip install qiniu==6.1.6 > /dev/null 2>&1')
+
+cf = ConfigParser.ConfigParser()
+p1 = os.curdir
+p2 = os.path.expanduser('~')
+p3 = '/etc/docbook/'
+
+def conf_file():
+    for p in p1,p2,p3:
+        cf = os.path.join(p,'docbook.conf')
+        if os.path.isfile(cf):
+            return cf
+cf.read(conf_file())
+
+def version():
+    with open('/etc/docbook/VERSION') as v:
+        return v.readline().lstrip('v')
+
+###
+parser = argparse.ArgumentParser(description='''
+    This script use to build book and upload to qiniu.
+    ''')
+parser.add_argument(
+                    '-i','--input_dir',
+                    required=False,
+                    help='Build a docbook from a directory'
+                    )
+parser.add_argument(
+                    '-o','--output_dir',
+                    required=False,
+                    default='/tmp/docbook%s/' % time.strftime('%Y%m%d%H%M'),
+                    help='Build a docbook to destination directory.'
+                    )
+parser.add_argument(
+                    '-f','--format',
+                    required=False,
+                    default='site',
+                    help='Build a docbook as a PDF/ebook/site/json,by default format to web site.By default,the value is "site".'
+                    )
+parser.add_argument(
+                    '-b','--bucketname',
+                    required=False,
+                    help='bucket name.'
+                    )
+parser.add_argument(
+                    '-a','--acckey',
+                    required=False,
+                    help='access key.'
+                    )
+parser.add_argument(
+                    '-s','--seckey',
+                    required=False,
+                    help='secret key.'
+                    )
+parser.add_argument(
+                    '-p','--prefix_path',
+                    required=False,
+                    help='File path prefix.'
+                    )
+parser.add_argument(
+                    '-c','--conf',
+                    required=False,
+                    help='Give a config file.'
+                    )
+parser.add_argument('-v','--version',
+                    action='version',
+                    version=version(),
+                    help="show program's version number and exit"
+                    )
+args = parser.parse_args()
+###
+cf_user = ConfigParser.ConfigParser()
+if args.conf is not None:
+    cf_user.read(args.conf)
+    args.input_dir=cf_user.get('docbook','input_dir')
+    args.prefix_path=cf_user.get('docbook','prefix_path')
+    args.format=cf_user.get('docbook','format')
+else:
+    if args.input_dir is not None:
+        pass
+    else:
+        args.input_dir=cf.get('docbook','input_dir')
+    if args.prefix_path is not None:
+        pass
+    else:
+        args.prefix_path=cf.get('docbook','prefix_path')
+    if args.format is not None:
+        pass
+    else:
+        args.format=cf.get('docbook','format')
+
+if args.input_dir:
+    pass
+else:
+    args.input_dir=os.curdir+'/'
+
+print ''
+print ' input_dir is:   %s' % args.input_dir
+print ' output_dir is:  %s' % args.output_dir
+print ' prefix_path is: %s' % args.prefix_path
+print ' format is:      %s' % args.format
+print ''
+
+###
+def os_cmd(cmds):
+    os.system(cmds)
+
+def rec_dir(dir):
+    data = []
+    for a, b, c in os.walk(dir):
+        for f in c:
+            abs_path = os.path.join(a, f)
+            data.append(abs_path)
+    return data
+
+def setup_vars():
+    global bucket_name, uptoken, keys,localfiles
+    if args.conf is not None:
+        qiniu.conf.ACCESS_KEY = cf_user.get('qiniu', 'ACCESS_KEY')
+        qiniu.conf.SECRET_KEY = cf_user.get('qiniu', 'SECRET_KEY')
+        bucket_name = cf_user.get('qiniu', 'bucket_name')
+    else:
+        if args.acckey is not None:
+            qiniu.conf.ACCESS_KEY = args.acckey
+        else:
+            qiniu.conf.ACCESS_KEY = cf.get('qiniu', 'ACCESS_KEY')
+        if args.seckey is not None:
+            qiniu.conf.SECRET_KEY = args.seckey
+        else:
+            qiniu.conf.SECRET_KEY = cf.get('qiniu', 'SECRET_KEY')
+        if args.bucketname is not None:
+            bucket_name = args.bucketname
+        else:
+            bucket_name = cf.get('qiniu', 'bucket_name')
+    policy = qiniu.rs.PutPolicy(bucket_name)
+    uptoken = policy.token()
+    keys = rec_dir(args.output_dir)
+    localfiles = rec_dir(args.output_dir)
+
+
+def return_acc_url():
+    print ''
+    print ' Complete! now you can access your new docbook by: http://%s.qiniudn.com/%s' % (bucket_name,args.prefix_path.strip('/'))
+    print ''
+
+def put_files():
+    rec_dir(args.output_dir)
+    setup_vars()
+    filecount = 0
+    for localfile,ks in zip(localfiles,keys):
+        ks = ks.split(args.output_dir)[1]
+        key = os.path.join(args.prefix_path.strip('/'),ks.strip('/'))
+        qiniu.rs.Client().delete(bucket_name, key)
+        ret, err = qiniu.io.put_file(uptoken, key, localfile)
+        filecount += 1
+        print ' Done! %s' % key
+        if err is not None:
+            print err 
+            sys.stderr.write('error: %s ' % err)
+            sys.exit(1)
+    print''
+    print ' Has upload files: %s' % filecount
+    os_cmd('rm -rf %s' % args.output_dir)
+
+def main():
+    initp = subprocess.Popen("gitbook init %s" % args.input_dir,shell=True)
+    initr = initp.wait()
+    if initr == 0:
+        print 'Init done!'
+    con_p = subprocess.Popen("gitbook build %s %s %s" % (args.input_dir,args.output_dir,args.format),shell=True)
+    con_r = con_p.wait()
+    print ''
+    if con_r == 0:
+        put_files()
+        # return_acc_url()
+
+if __name__ == "__main__":
+    main()

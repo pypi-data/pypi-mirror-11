@@ -1,0 +1,127 @@
+#!/usr/bin/env python
+#coding: utf-8
+
+import os
+import sys
+import argparse
+import ConfigParser 
+
+try:
+    import qiniu.conf
+    import qiniu.rs
+    import qiniu.rsf
+    import qiniu.io
+except:
+    os.system('pip install qiniu==6.1.6 > /dev/null 2>&1')
+
+### manual
+parser = argparse.ArgumentParser(
+                                description='''This script use to batch delete files on qiniu's bucket.'''
+                                )
+
+parser.add_argument(
+                    '-b','--bucket_name', 
+                    required=True,
+                    help='specify bucket name.'
+                    )
+parser.add_argument(
+                    '-p','--prefix', 
+                    required=False,
+                    help='specify prefix.'
+                    )
+parser.add_argument(
+                    '-l','--limit', 
+                    required=False,
+                    help='specify the number of delete files.'
+                    )
+parser.add_argument(
+                    '-a','--action', 
+                    required=True,
+                    help='Give a action: list|delete.'
+                    )
+parser.add_argument('-v','--version',
+                    action='version',
+                    version='1.0.0',
+                    help="show program's version number and exit"
+                    )
+
+args = parser.parse_args()
+
+cf = ConfigParser.ConfigParser()
+p1 = os.curdir
+p2 = os.path.expanduser('~')
+p3 = '/etc/docbook/'
+
+def conf_file():
+    for p in p1,p2,p3:
+        cf = os.path.join(p,'docbook.conf')
+        if os.path.isfile(cf):
+            return cf
+
+cf.read(conf_file())
+
+qiniu.conf.ACCESS_KEY = cf.get('qiniu', 'ACCESS_KEY')
+qiniu.conf.SECRET_KEY = cf.get('qiniu', 'SECRET_KEY')
+
+def list_all(bucket, prefix, rs=None, limit=None):
+    if rs is None:
+        rs = qiniu.rsf.Client()
+    marker = None
+    err = None
+    while err is None:
+        ret, err = rs.list_prefix(bucket, prefix=prefix, limit=limit, marker=marker)
+        marker = ret.get('marker', None)
+        filecount = 0
+        indexs = []
+        for item in ret['items']:
+            item = item['key']
+            if item.find('index.html') != -1:
+                indexs.append(item)
+            filecount += 1
+            print ' %s' % item
+        print ''
+        print ' Total Files: %s' % filecount
+        # for index in indexs:
+            # print ' Access url: http://%s.qiniudn.com/%s' % (bucket,index.split('/index.html')[0])
+        print ''
+    if err is not qiniu.rsf.EOF:
+        sys.stderr.write('error:%s ' % err)
+
+def batch_del(bucket, prefix, rs=None, limit=None):
+    if rs is None:
+        rs = qiniu.rsf.Client()
+    marker = None
+    err = None
+    fileseq = 0
+    while err is None:
+        ret, err = rs.list_prefix(bucket, prefix=prefix, limit=limit, marker=marker)
+        marker = ret.get('marker', None)
+        for item in ret['items']:
+            ikey = item['key']
+            ret, err = qiniu.rs.Client().delete(bucket,ikey)
+            fileseq += 1
+            if err is not None:
+                sys.stderr.write('error:%s ' % err)
+            else:
+                print ' %s Clean: %s ' % (fileseq,ikey)
+    if err is not qiniu.rsf.EOF:
+        return 'delete err:%s' % err
+def main():
+    if args.action == 'list':
+        print ''
+        list_all(args.bucket_name,args.prefix,args.limit)
+    elif args.action == 'delete':
+        if args.prefix is not None:
+            batch_del(args.bucket_name,args.prefix,args.limit)
+            print ''
+            print ' Delete done !'
+            print ''
+        else:
+            print "  Please give prefix"
+    else:
+        print ''
+        print "  Please verify '-a' param !"
+        print ''
+
+if __name__ == "__main__":
+    main()
