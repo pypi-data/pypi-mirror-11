@@ -1,0 +1,71 @@
+#!/usr/bin/env python
+
+from future.utils import iteritems
+from round import client
+from gem_migrator.nacl_passphrasebox import NaclPassphraseBox
+from coinop.passphrasebox import PassphraseBox
+from sys import argv
+from argparse import ArgumentParser, SUPPRESS
+from getpass import getpass
+
+
+parser = ArgumentParser(
+    description=("A simple utility for migrating Gem application wallets. You "
+                 "can find the required parameters in the Gem web console at: "
+                 "https://developers.gem.co"))
+parser.add_argument('-u', '--url', help=SUPPRESS)
+parser.add_argument('api_token', help="Your api_token")
+parser.add_argument('admin_token', help="Your admin_token")
+parser.add_argument('totp_secret', help="Your totp_secret")
+
+if __name__ == '__main__':
+    args = parser.parse_args()
+
+    cli = client(args.url) if args.url else client()
+
+    app = cli.authenticate_application(api_token=args.api_token,
+                                       admin_token=args.admin_token)
+    app.set_totp(args.totp_secret)
+
+    already_updated = []
+    updated = []
+    errored = {}
+    for w in app.wallets.values():
+        if w.primary_private_seed['iv']:
+            already_updated.append(w)
+            continue
+        print("Enter your passphrase for {}".format(w.name))
+        try:
+            passphrase = getpass("passphrase: ")
+            seed = NaclPassphraseBox.decrypt(passphrase, w.primary_private_seed)
+            encrypted_seed = PassphraseBox.encrypt(passphrase, seed)
+            w.with_mfa(app.get_mfa()).resource.update(
+                {'name': w.name,
+                 'primary_private_seed': encrypted_seed})
+            updated.append(w)
+            print("{} updated successfully!".format(w.name))
+        except Exception as e:
+            errored[w.name] = e
+            continue
+
+    print("""
+Done!
+{} wallets were already updated
+""".format(len(already_updated)))
+    for w in already_updated:
+        print("- {}\n".format(w.name))
+
+    print("""
+{} wallets updated successfully
+""".format(len(updated)))
+    for w in updated:
+        print("- {}\n".format(w.name))
+
+    print("""
+{} wallets failed to update
+""".format(len(errored)))
+
+    for wname, e in iteritems(errored):
+        print("""
+- {}
+  {}""".format(wname, e.message))
