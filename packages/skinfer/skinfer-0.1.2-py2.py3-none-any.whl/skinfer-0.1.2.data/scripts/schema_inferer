@@ -1,0 +1,54 @@
+#!python
+# -*- coding: utf-8 -*-
+"""Generates a JSON schema based on samples
+"""
+
+from __future__ import absolute_import, division, print_function
+
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+from skinfer import schema_inferer
+import json
+
+
+def get_samples(samples, jsonlines=False):
+    if jsonlines:
+        return schema_inferer.load_samples_from_jsonlines(samples)
+
+    return schema_inferer.load_samples_from_json(samples)
+
+
+def write_schema(schema):
+    print(json.dumps(schema, indent=4))
+
+
+def try_infer_schema(args):
+    samples = get_samples(args.samples, args.jsonlines)
+    return schema_inferer.generate_and_merge_schemas(samples)
+
+
+def run(args):
+    try:
+        schema = try_infer_schema(args)
+        write_schema(schema)
+    except ValueError as e:
+        if 'Extra data:' in e.message:
+            args.jsonlines = True
+            schema = try_infer_schema(args)
+            write_schema(schema)
+        else:
+            raise
+
+
+if '__main__' == __name__:
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+
+    parser.add_argument('--jsonlines', action='store_true',
+                        help='Assume samples are in JSON lines format')
+    parser.add_argument('samples', nargs='+', metavar='SAMPLE',
+                        help='JSON data sample files')
+
+    args = parser.parse_args()
+    run(args)
