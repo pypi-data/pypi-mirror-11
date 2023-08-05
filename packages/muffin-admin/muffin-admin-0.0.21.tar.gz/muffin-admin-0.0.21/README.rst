@@ -1,0 +1,86 @@
+Muffin-Admin
+############
+
+.. _description:
+
+Muffin-Admin -- Admin interface for Muffin-Framework
+
+.. _badges:
+
+.. image:: http://img.shields.io/travis/klen/muffin-admin.svg?style=flat-square
+    :target: http://travis-ci.org/klen/muffin-admin
+    :alt: Build Status
+
+.. image:: http://img.shields.io/pypi/v/muffin-admin.svg?style=flat-square
+    :target: https://pypi.python.org/pypi/muffin-admin
+
+.. image:: http://img.shields.io/pypi/dm/muffin-admin.svg?style=flat-square
+    :target: https://pypi.python.org/pypi/muffin-admin
+
+.. image:: http://img.shields.io/gratipay/klen.svg?style=flat-square
+    :target: https://www.gratipay.com/klen/
+    :alt: Donate
+
+.. _contents:
+
+.. contents::
+
+.. _requirements:
+
+Requirements
+=============
+
+- python >= 3.3
+
+.. _installation:
+
+Installation
+=============
+
+**Muffin-Admin** should be installed using pip: ::
+
+    pip install muffin-admin
+
+.. _usage:
+
+Usage
+=====
+
+See a example application.
+Enter `make run` for run.
+
+.. _bugtracker:
+
+Bug tracker
+===========
+
+If you have any suggestions, bug reports or
+annoyances please report them to the issue tracker
+at https://github.com/klen/muffin-admin/issues
+
+.. _contributing:
+
+Contributing
+============
+
+Development of Muffin-Admin happens at: https://github.com/klen/muffin-admin
+
+
+Contributors
+=============
+
+* klen_ (Kirill Klenov)
+
+.. _license:
+
+License
+=======
+
+Licensed under a `MIT license`_.
+
+.. _links:
+
+
+.. _klen: https://github.com/klen
+
+.. _MIT license: http://opensource.org/licenses/MIT
