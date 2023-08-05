@@ -1,0 +1,31 @@
+0.4.11 (2015.07.22)
+===================
+
+* Fixes ``wait_for_async_condition`` typos
+* Follow flake8 and pylint recommendation
+
+0.4.10 (2015.07.09)
+==================
+
+* Fixes ``get_location`` to consider AngularJS synchronization, this is specially apparent on IE
+* Adds ``element_attribute_should_contain`` and ``element_attribute_should_not_contain`` keywords to support element attribute verification
+* Adds ``wait_until_location_contains`` and ``wait_until_location_does_not_contain`` to support current URL verification
+* Adds more documentation
+* Adds package registration as part of make task
+
+0.4.9 (2015.07.08)
+==================
+
+* Removes part of ``_input_text_into_text_field`` method and inherits directly from Selenium2Library
+* Overrides ``get_location`` method with cross browser support
+* Removes ``location_should_be`` method
+* Removes ``_is_firefox`` method
+* Inherits class documentation from Selenium2Library with minor adjustments
+* Adds documentation and licensing information
+* Removes unneeded exclude in manifest file
+* Minor syntax adjustments
+
+0.4.8 (2015.06.27)
+==================
+
+* Initial library launch
