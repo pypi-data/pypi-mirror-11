@@ -1,0 +1,1 @@
+bind -x '"\C-t": COMPLETEME_TMPFILE=`mktemp 2> /dev/null || mktemp -t completeme 2> /dev/null` && env completeme $COMPLETEME_TMPFILE && test -e $COMPLETEME_TMPFILE && source $COMPLETEME_TMPFILE; rm -f $COMPLETEME_TMPFILE'
