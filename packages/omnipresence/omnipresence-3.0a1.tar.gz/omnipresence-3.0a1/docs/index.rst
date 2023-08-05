@@ -1,0 +1,18 @@
+Omnipresence
+############
+
+Omnipresence is an IRC utility bot built on Twisted, originally
+developed for the
+`#yackfest channel on EsperNet <https://room208.org/yackfest/>`_.
+Most of its functionality is provided through plugins for commands and
+channel-specific event handlers, with some other sugar thrown in for
+flavor.
+
+.. toctree::
+   :maxdepth: 2
+
+   install
+   settings
+   builtins
+   plugins
+   api
