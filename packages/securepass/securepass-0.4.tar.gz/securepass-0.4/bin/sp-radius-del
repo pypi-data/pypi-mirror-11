@@ -1,0 +1,68 @@
+#!/usr/bin/python
+##
+## SecurePass CLI tools utilities
+## Remove a RADIUS remove
+##
+## (c) 2014 Giuseppe Paterno' (gpaterno@gpaterno.com)
+##          GARL Sagl (www.garl.ch)
+##
+
+
+from securepass import utils
+from securepass import securepass
+import logging
+from optparse import OptionParser
+
+
+parser = OptionParser(usage="""Delete a RADIUS in SecurePass
+
+%prog [options] RADIUS_IP_ADDRESS""")
+
+
+parser.add_option('-D', '--debug',
+                  action='store_true', dest="debug_flag",
+	              help="Enable debug output",)
+
+opts, args = parser.parse_args()
+
+
+## Set debug
+FORMAT = '%(asctime)-15s %(levelname)s: %(message)s'
+if opts.debug_flag:
+    logging.basicConfig(format=FORMAT, level=logging.DEBUG)
+else:
+    logging.basicConfig(format=FORMAT, level=logging.INFO)
+
+
+## Load config
+config =  utils.loadConfig()
+
+## Config the handler
+sp_handler = securepass.SecurePass(app_id=config['app_id'],
+                                   app_secret=config['app_secret'],
+                                   endpoint=config['endpoint'])
+
+## Check
+try:
+    if args[0].strip() == "":
+        print "Missing RADIUS ip address. Try with --help"
+        exit(1)
+except IndexError:
+    print "Missing RADIUS ip address. Try with --help"
+    exit(1)
+
+
+## ask & remove
+choice = raw_input("Do you want to delete RADIUS %s (Y/N)? " % args[0]).lower()
+
+try:
+    if choice == "yes" or choice == "y":
+        sp_handler.radius_del(radius=args[0])
+        exit(0)
+
+    else:
+        exit(1)
+
+except Exception as e:
+    print e
+    exit(1)
