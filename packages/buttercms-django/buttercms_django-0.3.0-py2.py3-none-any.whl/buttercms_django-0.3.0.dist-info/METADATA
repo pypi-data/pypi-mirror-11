@@ -1,0 +1,237 @@
+Metadata-Version: 2.0
+Name: buttercms-django
+Version: 0.3.0
+Summary: Company blogs as a service. Built for developers.
+Home-page: https://www.buttercms.com
+Author: ButterCMS
+Author-email: jake@buttercms.com
+License: MIT
+Keywords: django blog service
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Environment :: Web Environment
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Framework :: Django
+Classifier: Topic :: Software Development :: Build Tools
+Classifier: License :: OSI Approved :: MIT License
+Requires-Dist: requests
+
+Butter CMS for Django
+=========================
+
+https://www.buttercms.com
+
+**Why Butter?**
+
+Butter makes setting up a company blog on Django insanely easy. It's built for Django developers to save us from hosting, DB setup, themeing, maintaining yet another Wordpress install. It's designed to be quickly integrated to an existing Django project.
+
+Butter provides a marketing friendly blogging UI, hosted on buttercms.com, and exposes blog content created via an API.
+
+This package provides thin wrapper that interacts with the Butter API and a quick start blog application.
+
+
+Setup
+-----
+Requires Python 2.7.9 or newer. If you're on an older version of 2.7 please take a few seconds to upgrade: https://www.python.org/downloads/
+
+.. code:: bash
+
+    $ pip install buttercms-django
+
+
+.. code:: python
+
+    # In settings.py
+    # Add buttercms to INSTALLED_APPS
+    INSTALLED_APPS = (
+        ...
+        'buttercms-django',
+    )
+
+Grab your API token from https://buttercms.com/api_token
+
+.. code:: python
+
+    # In settings.py
+    # Add your BUTTER_CMS_TOKEN
+    BUTTER_CMS_TOKEN = '<your_api_token>'
+
+Define your blog path
+
+.. code:: python
+
+    # In urls.py
+    # Add your new blog path
+    urlpatterns = patterns('',
+        ...
+        url(r'^blog/', include('buttercms-django.urls')),
+    )
+
+
+Nice job. You've now got a blog running natively in your Django project. Nothing but Python goodness. (No PHP scripts here ;))
+
+Check it out! http://localhost:8000/blog
+
+Log into https://buttercms.com/ to start blogging!
+
+Sitemap + Feeds
+=====================
+Your new blog comes built-in with a sitemap.xml, RSS + Atom feeds for maximum SEO benefit. You can use these to syndicate your content to social networks, improve search engine indexation, and more.
+
+Sitemap: http://localhost:8000/blog/sitemap.xml
+
+RSS: http://localhost:8000/blog/rss/  (named route blog_rss)
+
+Atom: http://localhost:8000/blog/atom/ (named route blog_atom)
+
+
+Overview of key blog views
+==========================
+The Butter pip package implements several views for your blog and provides a default template for each of them. The pip package also talks to an API that resides on https://buttercms.com to retrieve your blog content and exposes it in each view context.
+
+Here's an overview each view and the available context variables:
+
+home: /blog
+-----------
+.. code:: python
+
+    {{next_page}} # Integer used for blog post pagination (i.e. 2)
+    {{previous_page}} # Integer used for blog post pagination (i.e. 1)
+    {{recent_posts}} # Array of blog posts
+
+post: /blog/<post-slug>
+-----------------------
+.. code:: python
+
+    {{post}} # All content for a blog post
+
+    """
+    {{post}} has the following structure
+    "url": "https://buttercms.com/blog/the-state-of-company-blogs",
+    "created": "05/16/2015",
+    "author": {
+    "first_name": "Butter",
+    "last_name": "Cms",
+    "slug": "butter-cms"
+    },
+    "categories": [
+    {
+    "name": "blogs",
+    "slug": "blogs"
+    },
+    {
+    "name": "butter",
+    "slug": "butter"
+    }
+    ],
+    "slug": "the-state-of-company-blogs",
+    "title": "The State of Company Blogs",
+    "body": "<h3>The problem</h3><p>Countless people and essentially every...</p>",
+    "summary": <h3>The problem</h3><p>Countless people and essentially...</p>,
+    "status": "published"
+    """
+
+author: /blog/author/<author-slug>
+----------------------------------
+.. code:: python
+
+    {{first_name}} # First name of author
+    {{last_name}} # Last name of author
+    {{recent_posts}} # Array of blog posts
+
+category: /blog/category/<category-slug>
+----------------------------------------
+.. code:: python
+
+    {{name}} # Name of the category
+    {{recent_posts}} # Array of blog posts
+
+
+
+Customizing your blog
+=====================
+
+Customize the blog template
+---------------------------
+We've provided a default theme but we expect you'll want skin it with your branding so we've made this as simple as extending your base template.
+
+First create a `blog.html` template in any app templates folder that both extends your base template and your main content block.
+
+.. code:: html
+
+    {% extends "base.html" %} 
+
+    {% block YOUR_MAIN_BLOCK %} <!-- Make sure to update this -->
+    {% block blog_content %}
+        {% for post in recent_posts %}
+        {% include "buttercms_post_list_entry.html" with post=post %}
+        <hr>
+        {% endfor %}
+    {% endblock %}
+    {% endblock %}
+
+Make sure to replace YOUR_MAIN_BLOCK with whatever your main body block between your header and footer is. This is where the blog content will appear.
+
+Then tell Butter about your new blog base template. In settings.py:
+
+.. code:: python
+
+    # In settings.py
+    BLOG_BASE = 'blog.html'
+
+Go to http://localhost:8000/blog and you'll see your new professional branded blog!
+
+Add comments to blog post template
+----------------------------------
+If you want to customize the blog post template (for example to add `Disqus 
+<https://disqus.com/>`_ comments at the bottom), it's simple:
+
+First create a `blog_post.html` template
+
+.. code:: html
+
+    <!-- note it's important this template extends the variable name 'base_template' -->
+    {% extends base_template %}
+
+    {% block blog_content %}
+    <div class="post-preview">
+        <h2 class="post-title">{{ post.title }}</h2>
+        <p class="post-byline">Posted by <a href="{% url 'blog_author' post.author.slug %}">{{ post.author.first_name }} {{ post.author.last_name }}</a> on {{ post.created }}
+        <span class="text-muted"> in </span>
+        {% for category in post.categories %}
+        <span class="label label-default"><a href="{% url 'blog_category' category.slug %}">{{category.name}}</a></span>
+        {% endfor %}
+        </p>
+        <p class="post-subtitle">{{ post.body }}</p>
+    </div>
+
+    <hr>
+
+    <!-- Paste your Disqus embed code here --->
+    {% endblock %}
+
+Tell Butter about this template. In settings.py:
+
+.. code:: python
+
+    # In settings.py
+    BLOG_BASE = 'blog.html'
+    BLOG_POST = 'blog_post.html'
+
+
+Customize other templates
+-------------------------
+You can customize other parts of the blog as well by following the same pattern. A full list of page types + settings is below:
+
+.. code:: python
+
+    # In settings.py
+    BLOG_BASE = 'blog.html'
+    BLOG_POST = 'blog_post.html'
+    BLOG_AUTHOR = 'blog_author.html'
+    BLOG_CATEGORY = 'blog_category.html'
+
+
