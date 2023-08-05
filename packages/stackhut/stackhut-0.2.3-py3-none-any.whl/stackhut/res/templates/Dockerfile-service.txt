@@ -1,0 +1,44 @@
+FROM stackhut/{{ service.from_image }}:latest
+MAINTAINER "{{ service.hutcfg.author }}" <{{ service.usercfg.username }}>
+LABEL description="{{ service.hutcfg.description }}"
+
+{% if service.hutcfg.os_deps %}
+# update the distro and commit
+RUN echo "Starting..." && \
+    {% for cmd in service.baseos.install_os_pkg(service.hutcfg.os_deps) -%}
+    {{ cmd }} && \
+    {% endfor -%}
+    echo "...done" && exit
+{% endif %}
+
+# setup the env and copy all files and dirs across
+WORKDIR /workdir
+COPY Hutfile {{ service.stack.entrypoint }} {{ service.stack.install_service_file }} {{ service.hutcfg.files|join(' ') }} ./
+COPY .stackhut ./.stackhut
+{% for d in service.hutcfg.dirs -%}
+COPY {{ d }} ./{{ d }}
+{% endfor -%}
+
+# setup the entrypoint (using -vv for now)
+ENTRYPOINT ["/usr/bin/python3", "/usr/bin/stackhut", "-vv", "run"]
+
+# HACK for Barrister
+RUN echo "Starting..." && \
+    echo "#!/bin/sh" > /usr/bin/barrister && \
+    chmod 755 /usr/bin/barrister && \
+    echo "...done" && exit
+
+# following commands never cached
+# install stackhut app
+RUN pip3 install --no-cache-dir --compile stackhut  # cache bust - {{ service.build_date }}
+
+{% if service.stack.install_service_file %}
+# install lang packages needed for stack
+RUN {{ service.stack.install_service_pkgs() }}
+{% endif %}
+
+# any other Docker commands
+{% for cmd in service.hutcfg.docker_cmds -%}
+{{ cmd }}
+{% endfor -%}
+
