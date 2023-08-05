@@ -1,0 +1,293 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.parallel &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.parallel</h1><div class="highlight"><pre>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">atexit</span>
+<span class="kn">import</span> <span class="nn">pickle</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">ase.utils</span> <span class="kn">import</span> <span class="n">devnull</span>
+
+
+<span class="k">def</span> <span class="nf">get_txt</span><span class="p">(</span><span class="n">txt</span><span class="p">,</span> <span class="n">rank</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">txt</span><span class="p">,</span> <span class="s">&#39;write&#39;</span><span class="p">):</span>
+        <span class="c"># Note: User-supplied object might write to files from many ranks.</span>
+        <span class="k">return</span> <span class="n">txt</span>
+    <span class="k">elif</span> <span class="n">rank</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">txt</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">devnull</span>
+        <span class="k">elif</span> <span class="n">txt</span> <span class="o">==</span> <span class="s">&#39;-&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">open</span><span class="p">(</span><span class="n">txt</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">devnull</span>
+
+
+<div class="viewcode-block" id="paropen"><a class="viewcode-back" href="../../ase/parallel.html#ase.parallel.paropen">[docs]</a><span class="k">def</span> <span class="nf">paropen</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s">&#39;r&#39;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;MPI-safe version of open function.</span>
+
+<span class="sd">    In read mode, the file is opened on all nodes.  In write and</span>
+<span class="sd">    append mode, the file is opened on the master only, and /dev/null</span>
+<span class="sd">    is opened on all other nodes.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">rank</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">mode</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="s">&#39;r&#39;</span><span class="p">:</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="s">&#39;/dev/null&#39;</span>
+    <span class="k">return</span> <span class="nb">open</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">mode</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="parprint"><a class="viewcode-back" href="../../ase/parallel.html#ase.parallel.parprint">[docs]</a><span class="k">def</span> <span class="nf">parprint</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;MPI-safe print - prints only from master.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">rank</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+</div>
+<span class="k">class</span> <span class="nc">DummyMPI</span><span class="p">:</span>
+    <span class="n">rank</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">size</span> <span class="o">=</span> <span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">sum</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">and</span> <span class="n">a</span><span class="o">.</span><span class="n">ndim</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">a</span>
+    
+    <span class="k">def</span> <span class="nf">barrier</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">broadcast</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">rank</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+
+<span class="k">class</span> <span class="nc">MPI4PY</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="kn">from</span> <span class="nn">mpi4py</span> <span class="kn">import</span> <span class="n">MPI</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">comm</span> <span class="o">=</span> <span class="n">MPI</span><span class="o">.</span><span class="n">COMM_WORLD</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rank</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">comm</span><span class="o">.</span><span class="n">rank</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">comm</span><span class="o">.</span><span class="n">size</span>
+
+    <span class="k">def</span> <span class="nf">sum</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">comm</span><span class="o">.</span><span class="n">allreduce</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">barrier</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">comm</span><span class="o">.</span><span class="n">barrier</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">abort</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">code</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">comm</span><span class="o">.</span><span class="n">Abort</span><span class="p">(</span><span class="n">code</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">broadcast</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">rank</span><span class="p">):</span>
+        <span class="n">a</span><span class="p">[:]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">comm</span><span class="o">.</span><span class="n">bcast</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">rank</span><span class="p">)</span>
+
+
+<span class="c"># Check for special MPI-enabled Python interpreters:</span>
+<span class="k">if</span> <span class="s">&#39;_gpaw&#39;</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="p">:</span>
+    <span class="c"># http://wiki.fysik.dtu.dk/gpaw</span>
+    <span class="kn">from</span> <span class="nn">gpaw.mpi</span> <span class="kn">import</span> <span class="n">world</span>
+<span class="k">elif</span> <span class="s">&#39;asapparallel3&#39;</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="p">:</span>
+    <span class="c"># http://wiki.fysik.dtu.dk/Asap</span>
+    <span class="c"># We cannot import asap3.mpi here, as that creates an import deadlock</span>
+    <span class="kn">import</span> <span class="nn">asapparallel3</span>
+    <span class="n">world</span> <span class="o">=</span> <span class="n">asapparallel3</span><span class="o">.</span><span class="n">Communicator</span><span class="p">()</span>
+<span class="k">elif</span> <span class="s">&#39;Scientific_mpi&#39;</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">Scientific.MPI</span> <span class="kn">import</span> <span class="n">world</span>
+<span class="k">elif</span> <span class="s">&#39;mpi4py&#39;</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="p">:</span>
+    <span class="n">world</span> <span class="o">=</span> <span class="n">MPI4PY</span><span class="p">()</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="c"># This is a standard Python interpreter:</span>
+    <span class="n">world</span> <span class="o">=</span> <span class="n">DummyMPI</span><span class="p">()</span>
+
+<span class="n">rank</span> <span class="o">=</span> <span class="n">world</span><span class="o">.</span><span class="n">rank</span>
+<span class="n">size</span> <span class="o">=</span> <span class="n">world</span><span class="o">.</span><span class="n">size</span>
+<span class="n">barrier</span> <span class="o">=</span> <span class="n">world</span><span class="o">.</span><span class="n">barrier</span>
+
+
+<span class="k">def</span> <span class="nf">broadcast</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">comm</span><span class="o">=</span><span class="n">world</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Broadcast a Python object across an MPI communicator and return it.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">comm</span><span class="o">.</span><span class="n">rank</span> <span class="o">==</span> <span class="n">root</span><span class="p">:</span>
+        <span class="n">string</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">pickle</span><span class="o">.</span><span class="n">HIGHEST_PROTOCOL</span><span class="p">)</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">string</span><span class="p">),</span> <span class="nb">int</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">string</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span>
+    <span class="n">comm</span><span class="o">.</span><span class="n">broadcast</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">root</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">comm</span><span class="o">.</span><span class="n">rank</span> <span class="o">==</span> <span class="n">root</span><span class="p">:</span>
+        <span class="n">string</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fromstring</span><span class="p">(</span><span class="n">string</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">string</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">)</span>
+    <span class="n">comm</span><span class="o">.</span><span class="n">broadcast</span><span class="p">(</span><span class="n">string</span><span class="p">,</span> <span class="n">root</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">comm</span><span class="o">.</span><span class="n">rank</span> <span class="o">==</span> <span class="n">root</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">obj</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pickle</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">string</span><span class="o">.</span><span class="n">tostring</span><span class="p">())</span>
+
+
+<span class="k">def</span> <span class="nf">register_parallel_cleanup_function</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;Call MPI_Abort if python crashes.</span>
+
+<span class="sd">    This will terminate the processes on the other nodes.&quot;&quot;&quot;</span>
+        
+    <span class="k">if</span> <span class="n">size</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="k">def</span> <span class="nf">cleanup</span><span class="p">(</span><span class="n">sys</span><span class="o">=</span><span class="n">sys</span><span class="p">,</span> <span class="n">time</span><span class="o">=</span><span class="n">time</span><span class="p">,</span> <span class="n">world</span><span class="o">=</span><span class="n">world</span><span class="p">):</span>
+        <span class="n">error</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">sys</span><span class="p">,</span> <span class="s">&#39;last_type&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">error</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">((</span><span class="s">&#39;ASE CLEANUP (node </span><span class="si">%d</span><span class="s">): </span><span class="si">%s</span><span class="s"> occurred.  &#39;</span> <span class="o">+</span>
+                              <span class="s">&#39;Calling MPI_Abort!</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span> <span class="o">%</span> <span class="p">(</span><span class="n">world</span><span class="o">.</span><span class="n">rank</span><span class="p">,</span> <span class="n">error</span><span class="p">))</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+            <span class="c"># Give other nodes a moment to crash by themselves (perhaps</span>
+            <span class="c"># producing helpful error messages):</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+            <span class="n">world</span><span class="o">.</span><span class="n">abort</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
+
+    <span class="n">atexit</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">cleanup</span><span class="p">)</span>
+
+    
+<span class="k">def</span> <span class="nf">distribute_cpus</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="n">comm</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Distribute cpus to tasks and calculators.</span>
+
+<span class="sd">    Input:</span>
+<span class="sd">    size: number of nodes per calculator</span>
+<span class="sd">    comm: total communicator object</span>
+
+<span class="sd">    Output:</span>
+<span class="sd">    communicator for this rank, number of calculators, index for this rank</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="k">assert</span> <span class="n">size</span> <span class="o">&lt;=</span> <span class="n">comm</span><span class="o">.</span><span class="n">size</span>
+    <span class="k">assert</span> <span class="n">comm</span><span class="o">.</span><span class="n">size</span> <span class="o">%</span> <span class="n">size</span> <span class="o">==</span> <span class="mi">0</span>
+
+    <span class="n">tasks_rank</span> <span class="o">=</span> <span class="n">comm</span><span class="o">.</span><span class="n">rank</span> <span class="o">//</span> <span class="n">size</span>
+
+    <span class="n">r0</span> <span class="o">=</span> <span class="n">tasks_rank</span> <span class="o">*</span> <span class="n">size</span>
+    <span class="n">ranks</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">r0</span><span class="p">,</span> <span class="n">r0</span> <span class="o">+</span> <span class="n">size</span><span class="p">)</span>
+    <span class="n">mycomm</span> <span class="o">=</span> <span class="n">comm</span><span class="o">.</span><span class="n">new_communicator</span><span class="p">(</span><span class="n">ranks</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">mycomm</span><span class="p">,</span> <span class="n">comm</span><span class="o">.</span><span class="n">size</span> <span class="o">/</span> <span class="n">size</span><span class="p">,</span> <span class="n">tasks_rank</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

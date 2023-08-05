@@ -1,0 +1,198 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.utils.eos &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../../contents.html" />
+    <link rel="index" title="Global index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../../index.html" />
+    <link rel="up" title="ase.utils" href="../utils.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../utils.html" accesskey="U">ase.utils</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.utils.eos</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">ase.utils.sjeos</span> <span class="kn">import</span> <span class="n">EquationOfStateSJEOS</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="c"># ase.utils.eosase2 requires scipy</span>
+    <span class="kn">import</span> <span class="nn">scipy</span>
+    <span class="kn">from</span> <span class="nn">ase.utils.eosase2</span> <span class="kn">import</span> <span class="n">EquationOfStateASE2</span>
+
+<div class="viewcode-block" id="EquationOfState"><a class="viewcode-back" href="../../../ase/utils.html#ase.utils.eos.EquationOfState">[docs]</a>    <span class="k">class</span> <span class="nc">EquationOfState</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;Fit equation of state for bulk systems.</span>
+
+<span class="sd">        The following equation is used::</span>
+
+<span class="sd">           sjeos (default)</span>
+<span class="sd">               A third order inverse polynomial fit 10.1103/PhysRevB.67.026103</span>
+
+<span class="sd">                               2      3        -1/3</span>
+<span class="sd">           E(V) = c + c t + c t  + c t ,  t = V</span>
+<span class="sd">                   0   1     2      3</span>
+
+<span class="sd">           taylor</span>
+<span class="sd">               A third order Taylor series expansion about the minimum volume</span>
+
+<span class="sd">           murnaghan</span>
+<span class="sd">               PRB 28, 5480 (1983)</span>
+
+<span class="sd">           birch</span>
+<span class="sd">               Intermetallic compounds: Principles and Practice,</span>
+<span class="sd">               Vol I: Principles. pages 195-210</span>
+
+<span class="sd">           birchmurnaghan</span>
+<span class="sd">               PRB 70, 224107</span>
+
+<span class="sd">           pouriertarantola</span>
+<span class="sd">               PRB 70, 224107</span>
+
+<span class="sd">           vinet</span>
+<span class="sd">               PRB 70, 224107</span>
+
+<span class="sd">           antonschmidt</span>
+<span class="sd">               Intermetallics 11, 23-32 (2003)</span>
+
+<span class="sd">           p3</span>
+<span class="sd">               A third order polynomial fit</span>
+
+<span class="sd">        Use::</span>
+
+<span class="sd">           eos = EquationOfState(volumes, energies, eos=&#39;sjeos&#39;)</span>
+<span class="sd">           v0, e0, B = eos.fit()</span>
+<span class="sd">           eos.plot()</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">volumes</span><span class="p">,</span> <span class="n">energies</span><span class="p">,</span> <span class="n">eos</span><span class="o">=</span><span class="s">&#39;sjeos&#39;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">eos</span> <span class="o">==</span> <span class="s">&#39;sjeos&#39;</span><span class="p">:</span>
+                <span class="n">eosclass</span> <span class="o">=</span> <span class="n">EquationOfStateSJEOS</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">eosclass</span> <span class="o">=</span> <span class="n">EquationOfStateASE2</span>  <span class="c"># old ASE2 implementation</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_impl</span> <span class="o">=</span> <span class="n">eosclass</span><span class="p">(</span><span class="n">volumes</span><span class="p">,</span> <span class="n">energies</span><span class="p">,</span> <span class="n">eos</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_impl</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+
+        <span class="k">def</span> <span class="nf">plot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">show</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_impl</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">show</span><span class="p">)</span>
+</div>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="c"># ase.utils.sjeos requires only numpy</span>
+    <span class="n">EquationOfState</span> <span class="o">=</span> <span class="n">EquationOfStateSJEOS</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../../overview.html">
+              Overview</a></li>
+            <li><a href="../../../download.html">
+              Installation</a></li>
+            <li><a href="../../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../../faq.html">FAQ</a></li>
+            <li><a href="../../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../utils.html" accesskey="U">ase.utils</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

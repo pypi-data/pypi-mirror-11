@@ -1,0 +1,196 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Electron transport &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="Documentation for modules in ASE" href="../ase.html" />
+    <link rel="next" title="The data module" href="../data.html" />
+    <link rel="prev" title="Bader Analysis" href="../dft/bader.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <span class="target" id="module-ase.transport"></span><div class="section" id="electron-transport">
+<h1>Electron transport<a class="headerlink" href="#electron-transport" title="Permalink to this headline">¶</a></h1>
+<p>The <a class="reference internal" href="#module-ase.transport" title="ase.transport: Electron transport"><tt class="xref py py-mod docutils literal"><span class="pre">ase.transport</span></tt></a> module of ASE assumes the generic setup of the system
+in question sketched below:</p>
+<p>. . . <img alt="setup" class="align-middle" src="../../_images/transport_setup.png" /> . . .</p>
+<p>There is a central region (blue atoms plus the molecule) connected to
+two semi-infinite leads constructed by infinitely repeated <em>principal
+layers</em> (red atoms). The entire structure may be periodic in the
+transverse direction, which can be effectively sampled using
+<strong>k</strong>-points (yellowish atoms).</p>
+<p>The system is described by a Hamiltonian matrix which must be
+represented in terms of a localized basis set such that each element
+of the Hamiltonian can be ascribed to either the left, central, or
+right region, <em>or</em> the coupling between these.</p>
+<p>The Hamiltonian can thus be decomposed as:</p>
+<div class="math">
+\[\begin{split}H = \begin{pmatrix}
+  \ddots      &amp; V_L         &amp;             &amp;             &amp;     \\
+  V_L^\dagger &amp; H_L         &amp; V_L         &amp;             &amp;     \\
+              &amp; V_L^\dagger &amp; H_C         &amp; V_R         &amp;     \\
+              &amp;             &amp; V_R^\dagger &amp; H_R         &amp; V_R \\
+              &amp;             &amp;             &amp; V_R^\dagger &amp; \ddots
+\end{pmatrix}\end{split}\]</div>
+<p>where <span class="math">\(H_{L/R}\)</span> describes the left/right principal layer, and <span class="math">\(H_C\)</span>
+the central region. <span class="math">\(V_{L/R}\)</span> is the coupling between principal
+layers, <em>and</em> from the principal layers into the central region.  The
+central region must contain at least one principal layer on each side,
+and more if the potential has not converged to its bulk value at this
+size. The central region is assumed to be big enough that there is no
+direct coupling between the two leads. The principal layer must be so
+big that there is only coupling between nearest neighbor layers.</p>
+<p>Having defined <span class="math">\(H_{L/R}\)</span>, <span class="math">\(V_{L/R}\)</span>, and <span class="math">\(H_C\)</span>, the elastic
+transmission function can be determined using the Non-equilibrium
+Green Function (NEGF) method.  This is achieved by the class:
+<a class="reference internal" href="#ase.transport.ase.transport.calculators.TransportCalculator" title="ase.transport.ase.transport.calculators.TransportCalculator"><tt class="xref py py-class docutils literal"><span class="pre">TransportCalculator</span></tt></a> (in
+ase.transport.calculators) which makes no requirement on the origin of
+these five matrices.</p>
+<dl class="class">
+<dt id="ase.transport.ase.transport.calculators.TransportCalculator">
+<em class="property">class </em><tt class="descclassname">ase.transport.calculators.</tt><tt class="descname">TransportCalculator</tt><big>(</big><em>energies</em>, <em>h</em>, <em>h1</em>, <em>h2</em>, <em>s=None</em>, <em>s1=None</em>, <em>s2=None</em>, <em>align_bf=False</em><big>)</big><a class="headerlink" href="#ase.transport.ase.transport.calculators.TransportCalculator" title="Permalink to this definition">¶</a></dt>
+<dd><p>Determine transport properties of device sandwiched between
+semi-infinite leads using non-equillibrium Green function methods.</p>
+<p>energies is the energy grid on which the transport properties should
+be determined.</p>
+<p>h1 (h2) is a matrix representation of the Hamiltonian of two
+principal layers of the left (right) lead, and the coupling between
+such layers.</p>
+<p>h is a matrix representation of the Hamiltonian of the scattering
+region. This must include at least on lead principal layer on each
+side. The coupling in (out) of the scattering region is assumed to
+be identical to the coupling between left (right) principal layers.</p>
+<p>s, s1, and s2 are the overlap matrices corresponding to h, h1, and
+h2. Default is the identity operator.</p>
+<p>If align_bf is True, the onsite elements of the Hamiltonians will be
+shifted to a common fermi level.</p>
+</dd></dl>
+
+<p>This module is stand-alone in the sense that it makes no requirement
+on the origin of these five matrices. They can be model Hamiltonians
+or derived from different kinds of electronic structure codes.</p>
+<p>For an example of how to use the <a class="reference internal" href="#module-ase.transport" title="ase.transport: Electron transport"><tt class="xref py py-mod docutils literal"><span class="pre">ase.transport</span></tt></a> module, see the GPAW
+exercise on <a class="reference external" href="http://wiki.fysik.dtu.dk/gpaw/exercises/transport/transport.html">electron transport</a></p>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="../dft/bader.html" title="previous chapter">Bader Analysis</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="../data.html" title="next chapter">The data module</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../../_sources/ase/transport/transport.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

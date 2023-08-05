@@ -1,0 +1,332 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Dimer method &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../contents.html" />
+    <link rel="index" title="Global index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="top" title="ASE  documentation" href="../index.html" />
+    <link rel="up" title="Documentation for modules in ASE" href="ase.html" />
+    <link rel="next" title="Frequently Asked Questions" href="../faq.html" />
+    <link rel="prev" title="GA Search for stable FCC alloys" href="../tutorials/ga/ga_fcc_alloys.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="module-ase.dimer">
+<span id="dimer-method"></span><h1>Dimer method<a class="headerlink" href="#module-ase.dimer" title="Permalink to this headline">¶</a></h1>
+<p>The dimer method is a means of finding a saddle point on a potential energy
+surface starting from a single point (as opposed to a NEB calculation,
+which requires an initial and final state). You can read about this method
+here:</p>
+<ol class="arabic simple">
+<li>&#8216;A dimer method for finding saddle points on high dimensional
+potential surfaces using only first derivatives&#8217;, G. Henkelman
+and H. Jonsson, J. Chem. Phys. 111, 7010, 1999.</li>
+</ol>
+<p>An example is shown below.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.lattice.surface</span> <span class="kn">import</span> <span class="n">fcc100</span><span class="p">,</span> <span class="n">add_adsorbate</span>
+<span class="kn">from</span> <span class="nn">ase.constraints</span> <span class="kn">import</span> <span class="n">FixAtoms</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="kn">from</span> <span class="nn">ase.dimer</span> <span class="kn">import</span> <span class="n">DimerControl</span><span class="p">,</span> <span class="n">MinModeAtoms</span><span class="p">,</span> <span class="n">MinModeTranslate</span>
+
+<span class="c"># Set up a small &quot;slab&quot; with an adatoms</span>
+<span class="n">atoms</span> <span class="o">=</span> <span class="n">fcc100</span><span class="p">(</span><span class="s">&#39;Pt&#39;</span><span class="p">,</span> <span class="n">size</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">vacuum</span> <span class="o">=</span> <span class="mf">10.0</span><span class="p">)</span>
+<span class="n">add_adsorbate</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="s">&#39;Pt&#39;</span><span class="p">,</span> <span class="mf">1.611</span><span class="p">,</span> <span class="s">&#39;hollow&#39;</span><span class="p">)</span>
+
+<span class="c"># Freeze the &quot;slab&quot;</span>
+<span class="n">mask</span> <span class="o">=</span> <span class="p">[</span><span class="n">atom</span><span class="o">.</span><span class="n">tag</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">atoms</span><span class="p">]</span>
+<span class="n">atoms</span><span class="o">.</span><span class="n">set_constraint</span><span class="p">(</span><span class="n">FixAtoms</span><span class="p">(</span><span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span><span class="p">))</span>
+
+<span class="c"># Calculate using EMT</span>
+<span class="n">atoms</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+<span class="n">relaxed_energy</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+
+<span class="c"># Set up the dimer</span>
+<span class="n">d_control</span> <span class="o">=</span> <span class="n">DimerControl</span><span class="p">(</span><span class="n">initial_eigenmode_method</span> <span class="o">=</span> <span class="s">&#39;displacement&#39;</span><span class="p">,</span> \
+                         <span class="n">displacement_method</span> <span class="o">=</span> <span class="s">&#39;vector&#39;</span><span class="p">,</span> <span class="n">logfile</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> \
+                         <span class="n">mask</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="n">d_atoms</span> <span class="o">=</span> <span class="n">MinModeAtoms</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">d_control</span><span class="p">)</span>
+
+<span class="c"># Displace the atoms</span>
+<span class="n">displacement_vector</span> <span class="o">=</span> <span class="p">[[</span><span class="mf">0.0</span><span class="p">]</span><span class="o">*</span><span class="mi">3</span><span class="p">]</span><span class="o">*</span><span class="mi">5</span>
+<span class="n">displacement_vector</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mf">0.1</span>
+<span class="n">d_atoms</span><span class="o">.</span><span class="n">displace</span><span class="p">(</span><span class="n">displacement_vector</span> <span class="o">=</span> <span class="n">displacement_vector</span><span class="p">)</span>
+
+<span class="c"># Converge to a saddle point</span>
+<span class="n">dim_rlx</span> <span class="o">=</span> <span class="n">MinModeTranslate</span><span class="p">(</span><span class="n">d_atoms</span><span class="p">,</span> <span class="n">trajectory</span> <span class="o">=</span> <span class="s">&#39;dimer_method.traj&#39;</span><span class="p">,</span> \
+                           <span class="n">logfile</span> <span class="o">=</span> <span class="bp">None</span><span class="p">)</span>
+<span class="n">dim_rlx</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span> <span class="o">=</span> <span class="mf">0.001</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The module contains several classes.</p>
+<dl class="class">
+<dt id="ase.dimer.DimerControl">
+<em class="property">class </em><tt class="descclassname">ase.dimer.</tt><tt class="descname">DimerControl</tt><big>(</big><em>logfile='-'</em>, <em>eigenmode_logfile=None</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="../_modules/ase/dimer.html#DimerControl"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dimer.DimerControl" title="Permalink to this definition">¶</a></dt>
+<dd><p>A class that takes care of the parameters needed for a Dimer search.</p>
+<p>Parameters:</p>
+<dl class="docutils">
+<dt>eigenmode_method: str</dt>
+<dd>The name of the eigenmode search method.</dd>
+<dt>f_rot_min: float</dt>
+<dd>Size of the rotational force under which no rotation will be
+performed.</dd>
+<dt>f_rot_max: float</dt>
+<dd>Size of the rotational force under which only one rotation will be
+performed.</dd>
+<dt>max_num_rot: int</dt>
+<dd>Maximum number of rotations per optimizer step.</dd>
+<dt>trial_angle: float</dt>
+<dd>Trial angle for the finite difference estimate of the rotational
+angle in radians.</dd>
+<dt>trial_trans_step: float</dt>
+<dd>Trial step size for the MinModeTranslate optimizer.</dd>
+<dt>maximum_translation: float</dt>
+<dd>Maximum step size and forced step size when the curvature is still
+positive for the MinModeTranslate optimizer.</dd>
+<dt>cg_translation: bool</dt>
+<dd>Conjugate Gradient for the MinModeTranslate optimizer.</dd>
+<dt>use_central_forces: bool</dt>
+<dd>Only calculate the forces at one end of the dimer and extrapolate
+the forces to the other.</dd>
+<dt>dimer_separation: float</dt>
+<dd>Separation of the dimer&#8217;s images.</dd>
+<dt>initial_eigenmode_method: str</dt>
+<dd>How to construct the initial eigenmode of the dimer. If an eigenmode
+is given when creating the MinModeAtoms object, this will be ignored.
+Possible choices are: &#8216;gauss&#8217; and &#8216;displacement&#8217;</dd>
+<dt>extrapolate_forces: bool</dt>
+<dd>When more than one rotation is performed, an extrapolation scheme can
+be used to reduce the number of force evaluations.</dd>
+<dt>displacement_method: str</dt>
+<dd>How to displace the atoms. Possible choices are &#8216;gauss&#8217; and &#8216;vector&#8217;.</dd>
+<dt>gauss_std: float</dt>
+<dd>The standard deviation of the gauss curve used when doing random
+displacement.</dd>
+<dt>order: int</dt>
+<dd>How many lowest eigenmodes will be inverted.</dd>
+<dt>mask: list of bool</dt>
+<dd>Which atoms will be moved during displacement.</dd>
+<dt>displacement_center: int or [float, float, float]</dt>
+<dd>The center of displacement, nearby atoms will be displaced.</dd>
+<dt>displacement_radius: float</dt>
+<dd>When choosing which atoms to displace with the <em>displacement_center</em>
+keyword, this decides how many nearby atoms to displace.</dd>
+<dt>number_of_displacement_atoms: int</dt>
+<dd>The amount of atoms near <em>displacement_center</em> to displace.</dd>
+</dl>
+</dd></dl>
+
+<dl class="class">
+<dt id="ase.dimer.MinModeAtoms">
+<em class="property">class </em><tt class="descclassname">ase.dimer.</tt><tt class="descname">MinModeAtoms</tt><big>(</big><em>atoms</em>, <em>control=None</em>, <em>eigenmodes=None</em>, <em>random_seed=None</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="../_modules/ase/dimer.html#MinModeAtoms"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dimer.MinModeAtoms" title="Permalink to this definition">¶</a></dt>
+<dd><p>Wrapper for Atoms with information related to minimum mode searching.</p>
+<p>Contains an Atoms object and pipes all unknown function calls to that
+object.
+Other information that is stored in this object are the estimate for
+the lowest eigenvalue, <em>curvature</em>, and its corresponding eigenmode,
+<em>eigenmode</em>. Furthermore, the original configuration of the Atoms
+object is stored for use in multiple minimum mode searches.
+The forces on the system are modified by inverting the component
+along the eigenmode estimate. This eventually brings the system to
+a saddle point.</p>
+<p>Parameters:</p>
+<dl class="docutils">
+<dt>atoms <span class="classifier-delimiter">:</span> <span class="classifier">Atoms object</span></dt>
+<dd>A regular Atoms object</dd>
+<dt>control <span class="classifier-delimiter">:</span> <span class="classifier">MinModeControl object</span></dt>
+<dd>Contains the parameters necessary for the eigenmode search.
+If no control object is supplied a default DimerControl
+will be created and used.</dd>
+<dt>mask: list of bool</dt>
+<dd>Determines which atoms will be moved when calling displace()</dd>
+<dt>random_seed: int</dt>
+<dd>The seed used for the random number generator. Defaults to
+modified version the current time.</dd>
+</dl>
+<p>References:</p>
+<table class="docutils footnote" frame="void" id="id1" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label">[1]</td><td>Henkelman and Jonsson, JCP 111, 7010 (1999)</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="id2" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label">[2]</td><td>Olsen, Kroes, Henkelman, Arnaldsson, and Jonsson, JCP 121,
+9776 (2004).</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="id3" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label">[3]</td><td>Heyden, Bell, and Keil, JCP 123, 224101 (2005).</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="id4" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label">[4]</td><td>Kastner and Sherwood, JCP 128, 014106 (2008).</td></tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="class">
+<dt id="ase.dimer.MinModeTranslate">
+<em class="property">class </em><tt class="descclassname">ase.dimer.</tt><tt class="descname">MinModeTranslate</tt><big>(</big><em>atoms</em>, <em>logfile='-'</em>, <em>trajectory=None</em><big>)</big><a class="reference internal" href="../_modules/ase/dimer.html#MinModeTranslate"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dimer.MinModeTranslate" title="Permalink to this definition">¶</a></dt>
+<dd><p>An Optimizer specifically tailored to minimum mode following.</p>
+</dd></dl>
+
+<dl class="class">
+<dt id="ase.dimer.DimerEigenmodeSearch">
+<em class="property">class </em><tt class="descclassname">ase.dimer.</tt><tt class="descname">DimerEigenmodeSearch</tt><big>(</big><em>atoms</em>, <em>control=None</em>, <em>eigenmode=None</em>, <em>basis=None</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="../_modules/ase/dimer.html#DimerEigenmodeSearch"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dimer.DimerEigenmodeSearch" title="Permalink to this definition">¶</a></dt>
+<dd><p>An implementation of the Dimer&#8217;s minimum eigenvalue mode search.</p>
+<p>This class implements the rotational part of the dimer saddle point
+searching method.</p>
+<p>Parameters:</p>
+<dl class="docutils">
+<dt>atoms: MinModeAtoms object</dt>
+<dd>MinModeAtoms is an extension to the Atoms object, which includes
+information about the lowest eigenvalue mode.</dd>
+<dt>control: DimerControl object</dt>
+<dd>Contains the parameters necessary for the eigenmode search.
+If no control object is supplied a default DimerControl
+will be created and used.</dd>
+<dt>basis: list of xyz-values</dt>
+<dd>Eigenmode. Must be an ndarray of shape (n, 3).
+It is possible to constrain the eigenmodes to be orthogonal
+to this given eigenmode.</dd>
+</dl>
+<p>Notes:</p>
+<p>The code is inspired, with permission, by code written by the Henkelman
+group, which can be found at <a class="reference external" href="http://theory.cm.utexas.edu/vtsttools/code/">http://theory.cm.utexas.edu/vtsttools/code/</a></p>
+<p>References:</p>
+<ul class="simple">
+<li>Henkelman and Jonsson, JCP 111, 7010 (1999)</li>
+<li>Olsen, Kroes, Henkelman, Arnaldsson, and Jonsson, JCP 121,
+9776 (2004).</li>
+<li>Heyden, Bell, and Keil, JCP 123, 224101 (2005).</li>
+<li>Kastner and Sherwood, JCP 128, 014106 (2008).</li>
+</ul>
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../overview.html">
+              Overview</a></li>
+            <li><a href="../download.html">
+              Installation</a></li>
+            <li><a href="../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="ase.html">
+              Documentation</a></li>
+            <li><a href="../faq.html">FAQ</a></li>
+            <li><a href="../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="../tutorials/ga/ga_fcc_alloys.html" title="previous chapter">GA Search for stable FCC alloys</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="../faq.html" title="next chapter">Frequently Asked Questions</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../_sources/ase/dimermethod.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

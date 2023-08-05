@@ -1,0 +1,573 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>GA Search for stable FCC alloys &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="Genetic Algorithm" href="../../ase/ga.html" />
+    <link rel="next" title="Dimer method" href="../../ase/dimermethod.html" />
+    <link rel="prev" title="Optimization with a Genetic Algorithm" href="ga_optimize.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../ase/ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+          <li><a href="../../ase/ga.html" accesskey="U">Genetic Algorithm</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="ga-search-for-stable-fcc-alloys">
+<span id="fcc-alloys-tutorial"></span><h1><a class="toc-backref" href="#id5">GA Search for stable FCC alloys</a><a class="headerlink" href="#ga-search-for-stable-fcc-alloys" title="Permalink to this headline">¶</a></h1>
+<p>In this tutorial we will emulate an older paper <a class="reference internal" href="#johannesson" id="id1">[Jóhannesson]</a> and determine
+the most stable FCC alloy using the genetic algorithm. Since the purpose is
+only the tutorial we will limit the phase space to the elements supported by
+the <a class="reference internal" href="../../ase/calculators/emt.html#module-ase.calculators.emt" title="ase.calculators.emt: Effective Medium Theory"><tt class="xref py py-mod docutils literal"><span class="pre">EMT</span> <span class="pre">potential</span></tt></a>. The search is also equivalent
+to the recent search for mixed metal ammines with superior properties for
+ammonia storage described here:</p>
+<blockquote>
+<div><div class="line-block">
+<div class="line">P. B. Jensen, S. Lysgaard, U. J. Quaade and T. Vegge</div>
+<div class="line"><a class="reference external" href="http://dx.doi.org/10.1039/C4CP03133D">Designing Mixed Metal Halide Ammines for Ammonia Storage Using Density Functional Theory and Genetic Algorithms</a></div>
+<div class="line">Physical Chemistry Chemical Physics, Vol <strong>16</strong>, No. 36, pp. 19732-19740, (2014)</div>
+</div>
+</div></blockquote>
+<div class="contents topic" id="contents">
+<p class="topic-title first">Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#ga-search-for-stable-fcc-alloys" id="id5">GA Search for stable FCC alloys</a><ul>
+<li><a class="reference internal" href="#basic-outline-of-the-search" id="id6">Basic outline of the search</a></li>
+<li><a class="reference internal" href="#setting-up-reference-database" id="id7">Setting up reference database</a></li>
+<li><a class="reference internal" href="#initial-population" id="id8">Initial population</a></li>
+<li><a class="reference internal" href="#run-the-algorithm" id="id9">Run the algorithm</a></li>
+<li><a class="reference internal" href="#extending-the-algorithm" id="id10">Extending the algorithm</a><ul>
+<li><a class="reference internal" href="#extra-mutation-operators" id="id11">Extra mutation operators</a></li>
+<li><a class="reference internal" href="#prevent-identical-calculations-from-being-performed" id="id12">Prevent identical calculations from being performed</a></li>
+<li><a class="reference internal" href="#reuse-of-calculations-between-algorithm-runs" id="id13">Reuse of calculations between algorithm runs</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="basic-outline-of-the-search">
+<h2><a class="toc-backref" href="#id6">Basic outline of the search</a><a class="headerlink" href="#basic-outline-of-the-search" title="Permalink to this headline">¶</a></h2>
+<ol class="arabic simple">
+<li>Choose the phase space of your problem. Is the number of possible
+individuals large enough to prevent a full screening and is the fitness
+function too discontinuous for a traditional optimization by derivation? If
+so continue.</li>
+<li>Choose model structures and calculate references in those structures. Put
+the results somewhere accesible for a script initiated by the genetic
+algorithm.</li>
+<li>Choose suitable parameters like population size (general rule of thumb for
+the population size: <span class="math">\(log_2(N)\)</span> &lt; pop size &lt; <span class="math">\(2log_2(N)\)</span>, where <span class="math">\(N\)</span> is the
+size of the phase space), convergence criteria etc.</li>
+<li>Create the initial population.</li>
+<li>Choose procreation operators, i.e. how should offspring be produced. New
+operators can easily be created by modifying the existing operators.</li>
+<li>Run the algorithm.</li>
+</ol>
+<p>Here we would like to predict the most stable fcc alloys. In this tutorial we
+only have the <a class="reference internal" href="../../ase/calculators/emt.html#module-ase.calculators.emt" title="ase.calculators.emt: Effective Medium Theory"><tt class="xref py py-mod docutils literal"><span class="pre">ase.calculators.emt</span></tt></a> available thus we are limited to the
+supported metal elements: Al, Ni, Cu, Pd, Ag, Pt and Au. We limit ourselves
+to at most 4 different metals in one structure, thereby having only <span class="math">\(7^4 =
+2401\)</span> candidates in the phase space, symmetry would make this number even
+lower but the number is fitting for this tutorial.</p>
+<p>For a real application of the algorithm it is necessary to use a more
+sophisticated calculator, in that case each individual calculation is
+performed on a cluster by submitting to a queuing system. How this is
+achieved in the algorithm is covered in
+<a class="reference internal" href="ga_optimize.html#genetic-algorithm-optimization-tutorial"><em>Optimization with a Genetic Algorithm</em></a>.</p>
+</div>
+<div class="section" id="setting-up-reference-database">
+<span id="references"></span><h2><a class="toc-backref" href="#id7">Setting up reference database</a><a class="headerlink" href="#setting-up-reference-database" title="Permalink to this headline">¶</a></h2>
+<p>Now we need to set up a database in which
+reference calculations can be stored. This can either
+be in a central database server where keywords distinguish
+between different references or dedicated separate
+databases for each different type of reference calculations.</p>
+<p>In the following script, <a class="reference download internal" href="../../_downloads/ga_fcc_references.py"><tt class="xref download docutils literal"><span class="pre">ga_fcc_references.py</span></tt></a>, we put the
+references in the database file <em>refs.db</em>. Our model structure is fcc which
+is loaded with <tt class="xref py py-func docutils literal"><span class="pre">ase.lattice.cubic.FaceCenteredCubic()</span></tt>. We perform a
+volume relaxation to find the optimal lattice constant and lowest energy,
+which we save in the database as key-value pairs for quick retrieval.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">ase.lattice.cubic</span> <span class="kn">import</span> <span class="n">FaceCenteredCubic</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="kn">from</span> <span class="nn">ase.utils.eos</span> <span class="kn">import</span> <span class="n">EquationOfState</span>
+<span class="kn">from</span> <span class="nn">ase.db</span> <span class="kn">import</span> <span class="n">connect</span>
+
+<span class="n">db</span> <span class="o">=</span> <span class="n">connect</span><span class="p">(</span><span class="s">&#39;refs.db&#39;</span><span class="p">)</span>
+
+<span class="n">metals</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;Al&#39;</span><span class="p">,</span> <span class="s">&#39;Au&#39;</span><span class="p">,</span> <span class="s">&#39;Cu&#39;</span><span class="p">,</span> <span class="s">&#39;Ag&#39;</span><span class="p">,</span> <span class="s">&#39;Pd&#39;</span><span class="p">,</span> <span class="s">&#39;Pt&#39;</span><span class="p">,</span> <span class="s">&#39;Ni&#39;</span><span class="p">]</span>
+<span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">metals</span><span class="p">:</span>
+    <span class="n">atoms</span> <span class="o">=</span> <span class="n">FaceCenteredCubic</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+    <span class="n">atoms</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+    <span class="n">e0</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">cell</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="n">eps</span> <span class="o">=</span> <span class="mf">0.05</span>
+    <span class="n">volumes</span> <span class="o">=</span> <span class="p">(</span><span class="n">a</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">eps</span><span class="p">,</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">eps</span><span class="p">,</span> <span class="mi">9</span><span class="p">))</span><span class="o">**</span><span class="mi">3</span>
+    <span class="n">energies</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">volumes</span><span class="p">:</span>
+        <span class="n">atoms</span><span class="o">.</span><span class="n">set_cell</span><span class="p">([</span><span class="n">v</span><span class="o">**</span><span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="mi">3</span><span class="p">)]</span> <span class="o">*</span> <span class="mi">3</span><span class="p">,</span> <span class="n">scale_atoms</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">energies</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>
+
+    <span class="n">eos</span> <span class="o">=</span> <span class="n">EquationOfState</span><span class="p">(</span><span class="n">volumes</span><span class="p">,</span> <span class="n">energies</span><span class="p">)</span>
+    <span class="n">v1</span><span class="p">,</span> <span class="n">e1</span><span class="p">,</span> <span class="n">B</span> <span class="o">=</span> <span class="n">eos</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+
+    <span class="n">atoms</span><span class="o">.</span><span class="n">set_cell</span><span class="p">([</span><span class="n">v1</span><span class="o">**</span><span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="mi">3</span><span class="p">)]</span> <span class="o">*</span> <span class="mi">3</span><span class="p">,</span> <span class="n">scale_atoms</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    <span class="n">ef</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+
+    <span class="n">db</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">metal</span><span class="o">=</span><span class="n">m</span><span class="p">,</span>
+             <span class="n">latticeconstant</span><span class="o">=</span><span class="n">v1</span><span class="o">**</span><span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="mi">3</span><span class="p">),</span>
+             <span class="n">energy_per_atom</span><span class="o">=</span><span class="n">ef</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="initial-population">
+<h2><a class="toc-backref" href="#id8">Initial population</a><a class="headerlink" href="#initial-population" title="Permalink to this headline">¶</a></h2>
+<p>We choose a population size of 10 individuals and create the initial population by randomly selecting four elements for each starting individual.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">random</span>
+
+<span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">Atoms</span>
+<span class="kn">from</span> <span class="nn">ase.ga.data</span> <span class="kn">import</span> <span class="n">PrepareDB</span>
+
+<span class="n">metals</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;Al&#39;</span><span class="p">,</span> <span class="s">&#39;Au&#39;</span><span class="p">,</span> <span class="s">&#39;Cu&#39;</span><span class="p">,</span> <span class="s">&#39;Ag&#39;</span><span class="p">,</span> <span class="s">&#39;Pd&#39;</span><span class="p">,</span> <span class="s">&#39;Pt&#39;</span><span class="p">,</span> <span class="s">&#39;Ni&#39;</span><span class="p">]</span>
+
+<span class="n">population_size</span> <span class="o">=</span> <span class="mi">10</span>
+
+<span class="c"># Create database</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">PrepareDB</span><span class="p">(</span><span class="s">&#39;fcc_alloys.db&#39;</span><span class="p">,</span>
+               <span class="n">population_size</span><span class="o">=</span><span class="n">population_size</span><span class="p">,</span>
+               <span class="n">metals</span><span class="o">=</span><span class="n">metals</span><span class="p">)</span>
+
+<span class="c"># Create starting population</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">population_size</span><span class="p">):</span>
+    <span class="n">atoms_string</span> <span class="o">=</span> <span class="p">[</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">metals</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">)]</span>
+    <span class="n">db</span><span class="o">.</span><span class="n">add_unrelaxed_candidate</span><span class="p">(</span><span class="n">Atoms</span><span class="p">(</span><span class="n">atoms_string</span><span class="p">),</span>
+                               <span class="n">atoms_string</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">atoms_string</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>Note how we add the population size and metals as extra key-value pairs when
+we create the database <em>fcc_alloys.db</em>. We can then retrieve these parameters
+later when running the main script to avoid having to input the same
+parameters twice.</p>
+<p>We can study our initial population by doing (on the command-line):</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ase-db fcc_alloys.db -c +atoms_string
+</pre></div>
+</div>
+<p>the term <tt class="docutils literal"><span class="pre">atoms_string</span></tt> determines the order in which the elements are put
+into the model structure. So it is possible to fully describe an individual
+by just providing the <tt class="docutils literal"><span class="pre">atoms_string</span></tt>.</p>
+</div>
+<div class="section" id="run-the-algorithm">
+<span id="main-script"></span><h2><a class="toc-backref" href="#id9">Run the algorithm</a><a class="headerlink" href="#run-the-algorithm" title="Permalink to this headline">¶</a></h2>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.ga.data</span> <span class="kn">import</span> <span class="n">DataConnection</span>
+<span class="kn">from</span> <span class="nn">ase.ga.element_mutations</span> <span class="kn">import</span> <span class="n">RandomElementMutation</span>
+<span class="kn">from</span> <span class="nn">ase.ga.element_crossovers</span> <span class="kn">import</span> <span class="n">OnePointElementCrossover</span>
+<span class="kn">from</span> <span class="nn">ase.ga.offspring_creator</span> <span class="kn">import</span> <span class="n">OperationSelector</span>
+<span class="kn">from</span> <span class="nn">ase.ga.population</span> <span class="kn">import</span> <span class="n">Population</span>
+<span class="kn">from</span> <span class="nn">ase.ga.convergence</span> <span class="kn">import</span> <span class="n">GenerationRepetitionConvergence</span>
+
+<span class="kn">from</span> <span class="nn">ga_fcc_alloys_relax</span> <span class="kn">import</span> <span class="n">relax</span>
+
+<span class="c"># Specify the number of generations this script will run</span>
+<span class="n">num_gens</span> <span class="o">=</span> <span class="mi">40</span>
+
+<span class="n">db</span> <span class="o">=</span> <span class="n">DataConnection</span><span class="p">(</span><span class="s">&#39;fcc_alloys.db&#39;</span><span class="p">)</span>
+<span class="n">ref_db</span> <span class="o">=</span> <span class="s">&#39;refs.db&#39;</span>
+
+<span class="c"># Retrieve saved parameters</span>
+<span class="n">population_size</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">get_param</span><span class="p">(</span><span class="s">&#39;population_size&#39;</span><span class="p">)</span>
+<span class="n">metals</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">get_param</span><span class="p">(</span><span class="s">&#39;metals&#39;</span><span class="p">)</span>
+
+<span class="c"># Specify the procreation operators for the algorithm</span>
+<span class="c"># Try and play with the mutation operators that move to nearby</span>
+<span class="c"># places in the periodic table</span>
+<span class="n">oclist</span> <span class="o">=</span> <span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="n">RandomElementMutation</span><span class="p">(</span><span class="n">metals</span><span class="p">),</span>
+                   <span class="n">OnePointElementCrossover</span><span class="p">(</span><span class="n">metals</span><span class="p">)])</span>
+<span class="n">operation_selector</span> <span class="o">=</span> <span class="n">OperationSelector</span><span class="p">(</span><span class="o">*</span><span class="n">oclist</span><span class="p">)</span>
+
+<span class="c"># Pass parameters to the population instance</span>
+<span class="n">pop</span> <span class="o">=</span> <span class="n">Population</span><span class="p">(</span><span class="n">data_connection</span><span class="o">=</span><span class="n">db</span><span class="p">,</span>
+                 <span class="n">population_size</span><span class="o">=</span><span class="n">population_size</span><span class="p">)</span>
+
+<span class="c"># We form generations in this algorithm run and can therefore set</span>
+<span class="c"># a convergence criteria based on generations</span>
+<span class="n">cc</span> <span class="o">=</span> <span class="n">GenerationRepetitionConvergence</span><span class="p">(</span><span class="n">pop</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+
+<span class="c"># Relax the starting population</span>
+<span class="k">while</span> <span class="n">db</span><span class="o">.</span><span class="n">get_number_of_unrelaxed_candidates</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">get_an_unrelaxed_candidate</span><span class="p">()</span>
+    <span class="n">relax</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">ref_db</span><span class="p">)</span>
+    <span class="n">db</span><span class="o">.</span><span class="n">add_relaxed_step</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+<span class="n">pop</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
+
+<span class="c"># Run the algorithm</span>
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_gens</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">cc</span><span class="o">.</span><span class="n">converged</span><span class="p">():</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;converged&#39;</span><span class="p">)</span>
+        <span class="k">break</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">population_size</span><span class="p">):</span>
+        <span class="n">a1</span><span class="p">,</span> <span class="n">a2</span> <span class="o">=</span> <span class="n">pop</span><span class="o">.</span><span class="n">get_two_candidates</span><span class="p">(</span><span class="n">with_history</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+        <span class="n">op</span> <span class="o">=</span> <span class="n">operation_selector</span><span class="o">.</span><span class="n">get_operator</span><span class="p">()</span>
+        <span class="n">a3</span><span class="p">,</span> <span class="n">desc</span> <span class="o">=</span> <span class="n">op</span><span class="o">.</span><span class="n">get_new_individual</span><span class="p">([</span><span class="n">a1</span><span class="p">,</span> <span class="n">a2</span><span class="p">])</span>
+
+        <span class="n">db</span><span class="o">.</span><span class="n">add_unrelaxed_candidate</span><span class="p">(</span><span class="n">a3</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="n">desc</span><span class="p">)</span>
+
+        <span class="n">relax</span><span class="p">(</span><span class="n">a3</span><span class="p">,</span> <span class="n">ref_db</span><span class="p">)</span>
+        <span class="n">db</span><span class="o">.</span><span class="n">add_relaxed_step</span><span class="p">(</span><span class="n">a3</span><span class="p">)</span>
+
+    <span class="n">pop</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
+
+    <span class="c"># Print the current population to monitor the evolution</span>
+    <span class="k">print</span><span class="p">([</span><span class="s">&#39;-&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">())</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pop</span><span class="o">.</span><span class="n">pop</span><span class="p">])</span>
+</pre></div>
+</div>
+<p>In this script we run a generational GA as opposed to the pool GA outlined in
+<a class="reference internal" href="ga_optimize.html#genetic-algorithm-optimization-tutorial"><em>Optimization with a Genetic Algorithm</em></a>. This is achieved by having
+two for-loops; the innermost loop runs the number of times specified by the
+population size it corresponds to one generation. The outermost loop runs as
+many generations as specified in <tt class="docutils literal"><span class="pre">num_gens</span></tt>. The function
+<tt class="xref py py-func docutils literal"><span class="pre">pop.update()</span></tt> is called after the innermost loop has finished thereby
+only adding individuals to the population after a whole generation is
+calculated.</p>
+<p>After each generation is finished the population is printed to the screen so
+we can follow the evolution. The calculated individuals are continuously
+added to <tt class="docutils literal"><span class="pre">fcc_alloys.db</span></tt>, we can evaluate them directly by doing from the
+command line (in another shell instance if the GA is still running):</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ase-db fcc_alloys.db -c +atoms_string,raw_score,generation,hof -s raw_score
+</pre></div>
+</div>
+<p><em>Note:</em> When reading the database using ase-db, it might be necessary to
+increase the number of shown entries, e.g. <tt class="docutils literal"><span class="pre">ase-db</span> <span class="pre">fcc-alloys.db</span> <span class="pre">--limit</span>
+<span class="pre">N</span></tt>, where <tt class="docutils literal"><span class="pre">N</span></tt> is the number of entries to show (as default the first 500
+entries are shown, <tt class="docutils literal"><span class="pre">--limit</span> <span class="pre">0</span></tt> will show all. For further info use <tt class="docutils literal"><span class="pre">ase-db</span>
+<span class="pre">–help</span></tt>, or consult the <a class="reference internal" href="../../ase/db/db.html#ase-db"><em>ase-db</em></a> manual).</p>
+<p>To prevent clutter we import the relax function from the following script:</p>
+<div class="highlight-python" id="relaxation-script"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">ase.lattice.cubic</span> <span class="kn">import</span> <span class="n">FaceCenteredCubic</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="kn">from</span> <span class="nn">ase.utils.eos</span> <span class="kn">import</span> <span class="n">EquationOfState</span>
+<span class="kn">from</span> <span class="nn">ase.db</span> <span class="kn">import</span> <span class="n">connect</span>
+
+
+<span class="k">def</span> <span class="nf">relax</span><span class="p">(</span><span class="n">input_atoms</span><span class="p">,</span> <span class="n">ref_db</span><span class="p">):</span>
+    <span class="n">atoms_string</span> <span class="o">=</span> <span class="n">input_atoms</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">()</span>
+
+    <span class="c"># Open connection to the database with reference data</span>
+    <span class="n">db</span> <span class="o">=</span> <span class="n">connect</span><span class="p">(</span><span class="n">ref_db</span><span class="p">)</span>
+
+    <span class="c"># Load our model structure which is just FCC</span>
+    <span class="n">atoms</span> <span class="o">=</span> <span class="n">FaceCenteredCubic</span><span class="p">(</span><span class="s">&#39;X&#39;</span><span class="p">,</span> <span class="n">latticeconstant</span><span class="o">=</span><span class="mf">1.</span><span class="p">)</span>
+    <span class="n">atoms</span><span class="o">.</span><span class="n">set_chemical_symbols</span><span class="p">(</span><span class="n">atoms_string</span><span class="p">)</span>
+
+    <span class="c"># Compute the average lattice constant of the metals in this individual</span>
+    <span class="c"># and the sum of energies of the constituent metals in the fcc lattice</span>
+    <span class="c"># we will need this for calculating the heat of formation</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">ei</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="nb">set</span><span class="p">(</span><span class="n">atoms_string</span><span class="p">):</span>
+        <span class="n">dct</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">metal</span><span class="o">=</span><span class="n">m</span><span class="p">)</span>
+        <span class="n">count</span> <span class="o">=</span> <span class="n">atoms_string</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+        <span class="n">a</span> <span class="o">+=</span> <span class="n">count</span> <span class="o">*</span> <span class="n">dct</span><span class="o">.</span><span class="n">latticeconstant</span>
+        <span class="n">ei</span> <span class="o">+=</span> <span class="n">count</span> <span class="o">*</span> <span class="n">dct</span><span class="o">.</span><span class="n">energy_per_atom</span>
+    <span class="n">a</span> <span class="o">/=</span> <span class="nb">len</span><span class="p">(</span><span class="n">atoms_string</span><span class="p">)</span>
+    <span class="n">atoms</span><span class="o">.</span><span class="n">set_cell</span><span class="p">([</span><span class="n">a</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">a</span><span class="p">],</span> <span class="n">scale_atoms</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+    <span class="c"># Since calculations are extremely fast with EMT we can also do a volume</span>
+    <span class="c"># relaxation</span>
+    <span class="n">atoms</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+    <span class="n">eps</span> <span class="o">=</span> <span class="mf">0.05</span>
+    <span class="n">volumes</span> <span class="o">=</span> <span class="p">(</span><span class="n">a</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">eps</span><span class="p">,</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">eps</span><span class="p">,</span> <span class="mi">9</span><span class="p">))</span><span class="o">**</span><span class="mi">3</span>
+    <span class="n">energies</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">volumes</span><span class="p">:</span>
+        <span class="n">atoms</span><span class="o">.</span><span class="n">set_cell</span><span class="p">([</span><span class="n">v</span><span class="o">**</span><span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="mi">3</span><span class="p">)]</span> <span class="o">*</span> <span class="mi">3</span><span class="p">,</span> <span class="n">scale_atoms</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">energies</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>
+
+    <span class="n">eos</span> <span class="o">=</span> <span class="n">EquationOfState</span><span class="p">(</span><span class="n">volumes</span><span class="p">,</span> <span class="n">energies</span><span class="p">)</span>
+    <span class="n">v1</span><span class="p">,</span> <span class="n">ef</span><span class="p">,</span> <span class="n">B</span> <span class="o">=</span> <span class="n">eos</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+    <span class="n">latticeconstant</span> <span class="o">=</span> <span class="n">v1</span><span class="o">**</span><span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="mi">3</span><span class="p">)</span>
+
+    <span class="c"># Calculate the heat of formation by subtracting ef with ei</span>
+    <span class="n">hof</span> <span class="o">=</span> <span class="p">(</span><span class="n">ef</span> <span class="o">-</span> <span class="n">ei</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+
+    <span class="c"># Place the calculated parameters in the info dictionary of the</span>
+    <span class="c"># input_atoms object</span>
+    <span class="n">input_atoms</span><span class="o">.</span><span class="n">info</span><span class="p">[</span><span class="s">&#39;key_value_pairs&#39;</span><span class="p">][</span><span class="s">&#39;hof&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">hof</span>
+    <span class="c"># Raw score must always be set</span>
+    <span class="n">input_atoms</span><span class="o">.</span><span class="n">info</span><span class="p">[</span><span class="s">&#39;key_value_pairs&#39;</span><span class="p">][</span><span class="s">&#39;raw_score&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">hof</span>
+    <span class="n">input_atoms</span><span class="o">.</span><span class="n">info</span><span class="p">[</span><span class="s">&#39;key_value_pairs&#39;</span><span class="p">][</span><span class="s">&#39;latticeconstant&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">latticeconstant</span>
+
+    <span class="c"># Setting the atoms_string directly for easier analysis</span>
+    <span class="n">atoms_string</span> <span class="o">=</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">input_atoms</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">())</span>
+    <span class="n">input_atoms</span><span class="o">.</span><span class="n">info</span><span class="p">[</span><span class="s">&#39;key_value_pairs&#39;</span><span class="p">][</span><span class="s">&#39;atoms_string&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">atoms_string</span>
+</pre></div>
+</div>
+<p>The relaxation script is naturally similar to the script we used to calculate
+the <a class="reference internal" href="#references">references</a>.</p>
+<p><em>Note</em> that the global optimum is PtNi<sub>3</sub> with a -0.12 eV heat of
+formation, whereas the second worst alloy is AlNi<sub>3</sub> heat of formation
+0.26 eV. This result is in complete contrast to the conclusion obtained in
+<a class="reference internal" href="#johannesson" id="id3">[Jóhannesson]</a>, where AlNi<sub>3</sub> is the most stable alloy within the phase
+space chosen here. Obviously there is a limit to the predictive power of EMT!</p>
+</div>
+<div class="section" id="extending-the-algorithm">
+<h2><a class="toc-backref" href="#id10">Extending the algorithm</a><a class="headerlink" href="#extending-the-algorithm" title="Permalink to this headline">¶</a></h2>
+<p>There are different ways one can extend the algorithm and make it more
+complex and sophisticated, all employed in <a class="reference internal" href="#jensen" id="id4">[Jensen]</a>:</p>
+<div class="section" id="extra-mutation-operators">
+<h3><a class="toc-backref" href="#id11">Extra mutation operators</a><a class="headerlink" href="#extra-mutation-operators" title="Permalink to this headline">¶</a></h3>
+<p>Instead of only using random operations we can include some that mutates
+elements to other elements nearby in the periodic table:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.ga.element_mutations</span> <span class="kn">import</span> <span class="n">RandomElementMutation</span>
+<span class="kn">from</span> <span class="nn">ase.ga.element_mutations</span> <span class="kn">import</span> <span class="n">MoveDownMutation</span>
+<span class="kn">from</span> <span class="nn">ase.ga.element_mutations</span> <span class="kn">import</span> <span class="n">MoveUpMutation</span>
+<span class="kn">from</span> <span class="nn">ase.ga.element_mutations</span> <span class="kn">import</span> <span class="n">MoveLeftMutation</span>
+<span class="kn">from</span> <span class="nn">ase.ga.element_mutations</span> <span class="kn">import</span> <span class="n">MoveRightMutation</span>
+<span class="kn">from</span> <span class="nn">ase.ga.element_crossovers</span> <span class="kn">import</span> <span class="n">OnePointElementCrossover</span>
+
+<span class="o">...</span>
+
+<span class="n">oclist</span> <span class="o">=</span> <span class="p">([</span><span class="mi">4</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">8</span><span class="p">],</span> <span class="p">[</span><span class="n">RandomElementMutation</span><span class="p">([</span><span class="n">metals</span><span class="p">]),</span>
+                          <span class="n">MoveDownMutation</span><span class="p">([</span><span class="n">metals</span><span class="p">]),</span>
+                          <span class="n">MoveUpMutation</span><span class="p">([</span><span class="n">metals</span><span class="p">]),</span>
+                          <span class="n">MoveLeftMutation</span><span class="p">([</span><span class="n">metals</span><span class="p">]),</span>
+                          <span class="n">MoveRightMutation</span><span class="p">([</span><span class="n">metals</span><span class="p">]),</span>
+                          <span class="n">OnePointElementCrossover</span><span class="p">([</span><span class="n">metals</span><span class="p">])])</span>
+<span class="n">mut_selector</span> <span class="o">=</span> <span class="n">MutationSelector</span><span class="p">(</span><span class="o">*</span><span class="n">oclist</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>These operators takes advantage of the fact that chemically like elements
+(close in the periodic table) exhibit similar properties and the substitution
+of one to a chemically similar elements could refine the properties of an
+alloy in the population. A natural extension of these operators would be to
+use a different ordering of the elements than the periodic table; e.g.
+Pettifor chemical scale, electronegativity, etc.</p>
+<p>Note how we have set the probabilities for selecting operators differently.
+The probability for <tt class="docutils literal"><span class="pre">RandomElementMutation</span></tt> is equal to the sum of the
+<em>move</em> mutations. Similarly the probability of <tt class="docutils literal"><span class="pre">OnePointElementCrossover</span></tt>
+is equal to the sum of all the mutation operators. This is to prevent the
+search from being purely local.</p>
+</div>
+<div class="section" id="prevent-identical-calculations-from-being-performed">
+<h3><a class="toc-backref" href="#id12">Prevent identical calculations from being performed</a><a class="headerlink" href="#prevent-identical-calculations-from-being-performed" title="Permalink to this headline">¶</a></h3>
+<p>In the current <a class="reference internal" href="#main-script">main script</a> there is no check to determine whether an
+identical calculation has been performed, this is easy to check in this
+regime where model structures are used and we can just use the
+<tt class="docutils literal"><span class="pre">atoms_string</span></tt>. We insert the following in the inner loop:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">population_size</span><span class="p">):</span>
+    <span class="n">dup</span> <span class="o">=</span> <span class="bp">True</span>
+    <span class="k">while</span> <span class="n">dup</span><span class="p">:</span>
+        <span class="n">a1</span><span class="p">,</span> <span class="n">a2</span> <span class="o">=</span> <span class="n">pop</span><span class="o">.</span><span class="n">get_two_candidates</span><span class="p">(</span><span class="n">with_history</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+        <span class="n">op</span> <span class="o">=</span> <span class="n">operation_selector</span><span class="o">.</span><span class="n">get_operator</span><span class="p">()</span>
+        <span class="n">a3</span><span class="p">,</span> <span class="n">desc</span> <span class="o">=</span> <span class="n">op</span><span class="o">.</span><span class="n">get_new_individual</span><span class="p">([</span><span class="n">a1</span><span class="p">,</span> <span class="n">a2</span><span class="p">])</span>
+
+        <span class="n">dup</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">is_duplicate</span><span class="p">(</span><span class="n">atoms_string</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">a3</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">()))</span>
+</pre></div>
+</div>
+<p>Since the fcc model structure is completely symmetric we could compare sorted
+versions of the <tt class="docutils literal"><span class="pre">atoms_string</span></tt>, thereby ruling out individuals containing
+the same elements in different order.</p>
+</div>
+<div class="section" id="reuse-of-calculations-between-algorithm-runs">
+<h3><a class="toc-backref" href="#id13">Reuse of calculations between algorithm runs</a><a class="headerlink" href="#reuse-of-calculations-between-algorithm-runs" title="Permalink to this headline">¶</a></h3>
+<p>Since genetic algorithms are inherently random in nature one can never be
+sure to obtain the global minimum with only one algorithm run, it is
+customary to perform more runs and check that the results agree. In this case
+it is vital to be able to reuse identical calculations between runs.</p>
+<p>We do the following from the command line to create a new database file
+containing only the relaxed structures:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ase-db fcc_alloys.db relaxed=1 -i all_relaxed.db
+</pre></div>
+</div>
+<p>We subsequently add this to the <a class="reference internal" href="#relaxation-script">relaxation script</a>:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">relax</span><span class="p">(</span><span class="n">input_atoms</span><span class="p">,</span> <span class="n">ref_db</span><span class="p">):</span>
+    <span class="n">atoms_string</span> <span class="o">=</span> <span class="n">input_atoms</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">()</span>
+    <span class="n">relaxed_db</span> <span class="o">=</span> <span class="n">connect</span><span class="p">(</span><span class="s">&#39;all_relaxed.db&#39;</span><span class="p">)</span>
+    <span class="n">save_relax</span> <span class="o">=</span> <span class="bp">True</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">dct</span> <span class="o">=</span> <span class="n">relaxed_db</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">atoms_string</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">atoms_string</span><span class="p">))</span>
+    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="c"># Open connection to the database with reference data</span>
+        <span class="n">db</span> <span class="o">=</span> <span class="n">connect</span><span class="p">(</span><span class="n">ref_db</span><span class="p">)</span>
+
+    <span class="c"># Omitting lines up to the point where hof has been calculated</span>
+        <span class="o">...</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">hof</span> <span class="o">=</span> <span class="n">dct</span><span class="o">.</span><span class="n">hof</span>
+        <span class="n">latticeconstant</span> <span class="o">=</span> <span class="n">dct</span><span class="o">.</span><span class="n">latticeconstant</span>
+        <span class="n">save_relax</span> <span class="o">=</span> <span class="bp">False</span>
+    <span class="c"># Place the calculated parameters in the info dictionary of the</span>
+    <span class="c"># input_atoms object</span>
+
+    <span class="o">...</span>
+
+    <span class="c"># Put this at the very end</span>
+    <span class="k">if</span> <span class="n">save_relax</span><span class="p">:</span>
+        <span class="n">relaxed_db</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">input_atoms</span><span class="p">,</span><span class="n">relaxed</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                         <span class="n">key_value_pairs</span><span class="o">=</span><span class="n">input_atoms</span><span class="o">.</span><span class="n">info</span><span class="p">[</span><span class="s">&#39;key_value_pairs&#39;</span><span class="p">])</span>
+</pre></div>
+</div>
+<p>Before the actual calculation is performed <tt class="docutils literal"><span class="pre">all_relaxed.db</span></tt> is checked to
+see if it has been calculated before; if so we just collect the heat of
+formation, but if not we do the calculation and save it directly to
+<tt class="docutils literal"><span class="pre">all_relaxed.db</span></tt>. <em>Note:</em> this addition assumes that <a class="reference internal" href="#prevent-identical-calculations-from-being-performed">Prevent identical
+calculations from being performed</a>.</p>
+<table class="docutils citation" frame="void" id="johannesson" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label">[Jóhannesson]</td><td><em>(<a class="fn-backref" href="#id1">1</a>, <a class="fn-backref" href="#id3">2</a>)</em> G. Jóhannesson, T. Bligaard, A. Ruban, H. Skriver, K. Jacobsen and J. Nørskov.
+Combined Electronic Structure and Evolutionary Search Approach to Materials Design,
+Phys. Rev. Lett., Vol <strong>88</strong>, No. 25, pp. 1-5 (2002)</td></tr>
+</tbody>
+</table>
+<table class="docutils citation" frame="void" id="jensen" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id4">[Jensen]</a></td><td>P. B. Jensen, S. Lysgaard, U. J. Quaade and T. Vegge.
+Designing Mixed Metal Halide Ammines for Ammonia Storage Using Density Functional Theory and Genetic Algorithms
+Phys. Chem. Chem. Phys., Vol <strong>16</strong>, No. 36, pp. 19732-19740, (2014)</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>This Page</h3>
+            <ul>
+<li><a class="reference internal" href="#">GA Search for stable FCC alloys</a><ul>
+<li><a class="reference internal" href="#basic-outline-of-the-search">Basic outline of the search</a></li>
+<li><a class="reference internal" href="#setting-up-reference-database">Setting up reference database</a></li>
+<li><a class="reference internal" href="#initial-population">Initial population</a></li>
+<li><a class="reference internal" href="#run-the-algorithm">Run the algorithm</a></li>
+<li><a class="reference internal" href="#extending-the-algorithm">Extending the algorithm</a><ul>
+<li><a class="reference internal" href="#extra-mutation-operators">Extra mutation operators</a></li>
+<li><a class="reference internal" href="#prevent-identical-calculations-from-being-performed">Prevent identical calculations from being performed</a></li>
+<li><a class="reference internal" href="#reuse-of-calculations-between-algorithm-runs">Reuse of calculations between algorithm runs</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="ga_optimize.html" title="previous chapter">Optimization with a Genetic Algorithm</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="../../ase/dimermethod.html" title="next chapter">Dimer method</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../../_sources/tutorials/ga/ga_fcc_alloys.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../ase/ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+          <li><a href="../../ase/ga.html" accesskey="U">Genetic Algorithm</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

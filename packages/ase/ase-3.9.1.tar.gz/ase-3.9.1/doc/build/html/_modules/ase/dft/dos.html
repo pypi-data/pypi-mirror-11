@@ -1,0 +1,194 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.dft.dos &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../../contents.html" />
+    <link rel="index" title="Global index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../../index.html" />
+    <link rel="up" title="ase.dft" href="../dft.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../dft.html" accesskey="U">ase.dft</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.dft.dos</h1><div class="highlight"><pre>
+<span class="kn">from</span> <span class="nn">math</span> <span class="kn">import</span> <span class="n">pi</span><span class="p">,</span> <span class="n">sqrt</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+
+<div class="viewcode-block" id="DOS"><a class="viewcode-back" href="../../../ase/dft/dos.html#ase.dft.dos.DOS">[docs]</a><span class="k">class</span> <span class="nc">DOS</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">calc</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">window</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">npts</span><span class="o">=</span><span class="mi">201</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Electronic Density Of States object.</span>
+
+<span class="sd">        calc: calculator object</span>
+<span class="sd">            Any ASE compliant calculator object.</span>
+<span class="sd">        width: float</span>
+<span class="sd">            Width of guassian smearing.</span>
+<span class="sd">        window: tuple of two float</span>
+<span class="sd">            Use ``window=(emin, emax)``.  If not specified, a window</span>
+<span class="sd">            big enough to hold all the eigenvalues will be used.</span>
+<span class="sd">        npts: int</span>
+<span class="sd">            Number of points.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">npts</span> <span class="o">=</span> <span class="n">npts</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">width</span> <span class="o">=</span> <span class="n">width</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">w_k</span> <span class="o">=</span> <span class="n">calc</span><span class="o">.</span><span class="n">get_k_point_weights</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nspins</span> <span class="o">=</span> <span class="n">calc</span><span class="o">.</span><span class="n">get_number_of_spins</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">e_skn</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">calc</span><span class="o">.</span><span class="n">get_eigenvalues</span><span class="p">(</span><span class="n">kpt</span><span class="o">=</span><span class="n">k</span><span class="p">,</span> <span class="n">spin</span><span class="o">=</span><span class="n">s</span><span class="p">)</span>
+                                <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">w_k</span><span class="p">))]</span>
+                               <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nspins</span><span class="p">)])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">e_skn</span> <span class="o">-=</span> <span class="n">calc</span><span class="o">.</span><span class="n">get_fermi_level</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">window</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">emin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">e_skn</span><span class="o">.</span><span class="n">min</span><span class="p">()</span> <span class="o">-</span> <span class="mi">5</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">width</span>
+            <span class="n">emax</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">e_skn</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">+</span> <span class="mi">5</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">width</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">emin</span><span class="p">,</span> <span class="n">emax</span> <span class="o">=</span> <span class="n">window</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">energies</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">emin</span><span class="p">,</span> <span class="n">emax</span><span class="p">,</span> <span class="n">npts</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DOS.get_energies"><a class="viewcode-back" href="../../../ase/dft/dos.html#ase.dft.dos.DOS.get_energies">[docs]</a>    <span class="k">def</span> <span class="nf">get_energies</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the array of energies used to sample the DOS. The energies are reported relative to the Fermi level.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">energies</span>
+</div>
+    <span class="k">def</span> <span class="nf">delta</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">energy</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return a delta-function centered at &#39;energy&#39;.&quot;&quot;&quot;</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="o">-</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">energies</span> <span class="o">-</span> <span class="n">energy</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">width</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">sqrt</span><span class="p">(</span><span class="n">pi</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">width</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DOS.get_dos"><a class="viewcode-back" href="../../../ase/dft/dos.html#ase.dft.dos.DOS.get_dos">[docs]</a>    <span class="k">def</span> <span class="nf">get_dos</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spin</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Get array of DOS values.</span>
+
+<span class="sd">        The *spin* argument can be 0 or 1 (spin up or down) - if not</span>
+<span class="sd">        specified, the total DOS is returned.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        
+        <span class="k">if</span> <span class="n">spin</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">nspins</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="c"># Spin-polarized calculation, but no spin specified -</span>
+                <span class="c"># return the total DOS:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_dos</span><span class="p">(</span><span class="n">spin</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_dos</span><span class="p">(</span><span class="n">spin</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">spin</span> <span class="o">=</span> <span class="mi">0</span>
+        
+        <span class="n">dos</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">npts</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">w</span><span class="p">,</span> <span class="n">e_n</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">w_k</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">e_skn</span><span class="p">[</span><span class="n">spin</span><span class="p">]):</span>
+            <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">e_n</span><span class="p">:</span>
+                <span class="n">dos</span> <span class="o">+=</span> <span class="n">w</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">delta</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">dos</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../../overview.html">
+              Overview</a></li>
+            <li><a href="../../../download.html">
+              Installation</a></li>
+            <li><a href="../../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../../faq.html">FAQ</a></li>
+            <li><a href="../../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../dft.html" accesskey="U">ase.dft</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

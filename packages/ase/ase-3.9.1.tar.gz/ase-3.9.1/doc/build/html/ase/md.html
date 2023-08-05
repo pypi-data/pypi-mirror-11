@@ -1,0 +1,515 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Molecular dynamics &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../contents.html" />
+    <link rel="index" title="Global index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="top" title="ASE  documentation" href="../index.html" />
+    <link rel="up" title="Documentation for modules in ASE" href="ase.html" />
+    <link rel="next" title="Density Functional Theory" href="dft/dft.html" />
+    <link rel="prev" title="Infrared intensities" href="infrared.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="module-ase.md">
+<span id="molecular-dynamics"></span><h1>Molecular dynamics<a class="headerlink" href="#module-ase.md" title="Permalink to this headline">¶</a></h1>
+<p>Typical computer simulations involve moving the atoms around, either
+to optimize a structure (energy minimization) or to do molecular
+dynamics.  This chapter discusses molecular dynamics, energy
+minimization algorithms will be discussed in the <a class="reference internal" href="optimize.html#module-ase.optimize" title="ase.optimize: Structure Optimization"><tt class="xref py py-mod docutils literal"><span class="pre">ase.optimize</span></tt></a>
+section.</p>
+<p>A molecular dynamics object will operate on the atoms by moving them
+according to their forces - it integrates Newton&#8217;s second law
+numerically.  A typical molecular dynamics simulation will use the
+<a class="reference internal" href="#velocity-verlet-dynamics">Velocity Verlet dynamics</a>.  You create the
+<a class="reference internal" href="#ase.md.verlet.VelocityVerlet" title="ase.md.verlet.VelocityVerlet"><tt class="xref py py-class docutils literal"><span class="pre">ase.md.verlet.VelocityVerlet</span></tt></a> object, giving it the atoms and a time
+step, and then you perform dynamics by calling its <tt class="xref py py-meth docutils literal"><span class="pre">run()</span></tt> method:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">dyn</span> <span class="o">=</span> <span class="n">VelocityVerlet</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="mf">5.0</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">fs</span><span class="p">)</span>
+<span class="n">dyn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="mi">1000</span><span class="p">)</span>  <span class="c"># take 1000 steps</span>
+</pre></div>
+</div>
+<p>A number of different algorithms can be used to perform molecular
+dynamics, with slightly different results.</p>
+<div class="section" id="choosing-the-time-step">
+<h2>Choosing the time step<a class="headerlink" href="#choosing-the-time-step" title="Permalink to this headline">¶</a></h2>
+<p>All the dynamics objects need a time step.  Choosing it too small will
+waste computer time, choosing it too large will make the dynamics
+unstable, typically the energy increases dramatically (the system
+&#8220;blows up&#8221;).  If the time step is only a little to large, the lack of
+energy conservation is most obvious in <a class="reference internal" href="#velocity-verlet-dynamics">Velocity Verlet dynamics</a>,
+where energy should otherwise be conserved.</p>
+<p>Experience has shown that 5 femtoseconds is a good choice for most metallic
+systems.  Systems with light atoms (e.g. hydrogen) and/or with strong
+bonds (carbon) will need a smaller time step.</p>
+<p>All the dynamics objects documented here are sufficiently related to
+have the same optimal time step.</p>
+</div>
+<div class="section" id="file-output">
+<h2>File output<a class="headerlink" href="#file-output" title="Permalink to this headline">¶</a></h2>
+<p>The time evolution of the system can be saved in a trajectory file,
+by creating a trajectory object, and attaching it to the dynamics
+object.  This is documented in the module <a class="reference internal" href="trajectory.html#module-ase.io.trajectory" title="ase.io.trajectory: Trajectory input-output module"><tt class="xref py py-mod docutils literal"><span class="pre">ase.io.trajectory</span></tt></a>.</p>
+<p>Unlike the geometry optimization classes, the molecular dynamics
+classes do not support giving a trajectory file name in the
+constructor.  Instead the trajectory must be attached explicitly to
+the dynamics, and it is <em>strongly recommended</em> to use the optional
+<tt class="docutils literal"><span class="pre">interval</span></tt> argument, so every time step is not written to the file.</p>
+</div>
+<div class="section" id="logging">
+<h2>Logging<a class="headerlink" href="#logging" title="Permalink to this headline">¶</a></h2>
+<p>A logging mechanism is provided, printing time; total, potential and
+kinetic energy; and temperature (calculated from the kinetic energy).
+It is enabled by giving the <tt class="docutils literal"><span class="pre">logfile</span></tt> argument when the dynamics
+object is created, <tt class="docutils literal"><span class="pre">logfile</span></tt> may be an open file, a filename or the
+string &#8216;-&#8216; meaning standard output.  Per default, a line is printed
+for each timestep, specifying the <tt class="docutils literal"><span class="pre">loginterval</span></tt> argument will chance
+this to a more reasonable frequency.</p>
+<p>The logging can be customized by explicitly attaching a
+<tt class="xref py py-class docutils literal"><span class="pre">MDLogger</span></tt> object to the dynamics:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.md</span> <span class="kn">import</span> <span class="n">MDLogger</span>
+<span class="n">dyn</span> <span class="o">=</span> <span class="n">VelocityVerlet</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="mi">2</span><span class="o">*</span><span class="n">ase</span><span class="o">.</span><span class="n">units</span><span class="o">.</span><span class="n">fs</span><span class="p">)</span>
+<span class="n">dyn</span><span class="o">.</span><span class="n">attach</span><span class="p">(</span><span class="n">MDLogger</span><span class="p">(</span><span class="n">dyn</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="s">&#39;md.log&#39;</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">stress</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+           <span class="n">peratom</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s">&quot;a&quot;</span><span class="p">),</span> <span class="n">interval</span><span class="o">=</span><span class="mi">1000</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>This example will skip the header line and write energies per atom
+instead of total energies.  The parameters are</p>
+<blockquote>
+<div><p><tt class="docutils literal"><span class="pre">header</span></tt>: Print a header line defining the columns.</p>
+<p><tt class="docutils literal"><span class="pre">stress</span></tt>: Print the six components of the stress tensor.</p>
+<p><tt class="docutils literal"><span class="pre">peratom</span></tt>:  Print energy per atom instead of total energy.</p>
+<p><tt class="docutils literal"><span class="pre">mode</span></tt>:  If &#8216;a&#8217;, append to existing file, if &#8216;w&#8217; overwrite
+existing file.</p>
+</div></blockquote>
+<p>Despite appearances, attaching a logger like this does <em>not</em> create a
+cyclic reference to the dynamics.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">If building your own logging class, be sure not to attach the dynamics
+object directly to the logging object. Instead, create a weak reference
+using the <tt class="docutils literal"><span class="pre">proxy</span></tt> method of the <tt class="docutils literal"><span class="pre">weakref</span></tt> package. See the
+<em>ase.md.MDLogger</em> source code for an example. (If this is not done, a
+cyclic reference may be created which can cause certain calculators,
+such as Jacapo, to not terminate correctly.)</p>
+</div>
+</div>
+<div class="section" id="constant-nve-simulations-the-microcanonical-ensemble">
+<h2>Constant NVE simulations (the microcanonical ensemble)<a class="headerlink" href="#constant-nve-simulations-the-microcanonical-ensemble" title="Permalink to this headline">¶</a></h2>
+<p>Newton&#8217;s second law preserves the total energy of the system, and a
+straightforward integration of Newton&#8217;s second law therefore leads to
+simulations preserving the total energy of the system (E), the number
+of atoms (N) and the volume of the system (V).  The most appropriate
+algorithm for doing this is velocity Verlet dynamics, since it gives
+very good long-term stability of the total energy even with quite
+large time steps.  Fancier algorithms such as Runge-Kutta may give
+very good short-term energy preservation, but at the price of a slow
+drift in energy over longer timescales, causing trouble for long
+simulations.</p>
+<p>In a typical NVE simulation, the temperature will remain approximately
+constant, but if significant structural changes occurs they may result
+in temperature changes.  If external work is done on the system, the
+temperature is likely to rise significantly.</p>
+<div class="section" id="module-ase.md.verlet">
+<span id="velocity-verlet-dynamics"></span><h3>Velocity Verlet dynamics<a class="headerlink" href="#module-ase.md.verlet" title="Permalink to this headline">¶</a></h3>
+<dl class="class">
+<dt id="ase.md.verlet.VelocityVerlet">
+<em class="property">class </em><tt class="descclassname">ase.md.verlet.</tt><tt class="descname">VelocityVerlet</tt><big>(</big><em>atoms</em>, <em>timestep</em><big>)</big><a class="reference internal" href="../_modules/ase/md/verlet.html#VelocityVerlet"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.md.verlet.VelocityVerlet" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<p><tt class="docutils literal"><span class="pre">VelocityVerlet</span></tt> is the only dynamics implementing the NVE ensemble.
+It requires two arguments, the atoms and the time step.  Choosing
+a too large time step will immediately be obvious, as the energy will
+increase with time, often very rapidly.</p>
+<p>Example: See the tutorial <a class="reference internal" href="../tutorials/md/md.html#md-tutorial"><em>Molecular dynamics</em></a>.</p>
+</div>
+</div>
+<div class="section" id="constant-nvt-simulations-the-canonical-ensemble">
+<h2>Constant NVT simulations (the canonical ensemble)<a class="headerlink" href="#constant-nvt-simulations-the-canonical-ensemble" title="Permalink to this headline">¶</a></h2>
+<p>Since Newton&#8217;s second law conserves energy and not temperature,
+simulations at constant temperature will somehow involve coupling the
+system to a heat bath.  This cannot help being somewhat artificial.
+Two different approaches are possible within ASE.  In Langevin
+dynamics, each atom is coupled to a heat bath through a fluctuating
+force and a friction term.  In Nosé-Hoover dynamics, a term
+representing the heat bath through a single degree of freedom is
+introduced into the Hamiltonian.</p>
+<div class="section" id="module-ase.md.langevin">
+<span id="langevin-dynamics"></span><h3>Langevin dynamics<a class="headerlink" href="#module-ase.md.langevin" title="Permalink to this headline">¶</a></h3>
+<dl class="class">
+<dt id="ase.md.langevin.Langevin">
+<em class="property">class </em><tt class="descclassname">ase.md.langevin.</tt><tt class="descname">Langevin</tt><big>(</big><em>atoms</em>, <em>timestep</em>, <em>temperature</em>, <em>friction</em><big>)</big><a class="reference internal" href="../_modules/ase/md/langevin.html#Langevin"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.md.langevin.Langevin" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<p>The Langevin class implements Langevin dynamics, where a (small)
+friction term and a fluctuating force are added to Newton&#8217;s second law
+which is then integrated numerically.  The temperature of the heat
+bath and magnitude of the friction is specified by the user, the
+amplitude of the fluctuating force is then calculated to give that
+temperature.  This procedure has some physical justification: in a
+real metal the atoms are (weakly) coupled to the electron gas, and the
+electron gas therefore acts like a heat bath for the atoms.  If heat
+is produced locally, the atoms locally get a temperature that is
+higher than the temperature of the electrons, heat is transferred to
+the electrons and then rapidly transported away by them.  A Langevin
+equation is probably a reasonable model for this process.</p>
+<p>A disadvantage of using Langevin dynamics is that if significant heat
+is produced in the simulation, then the temperature will stabilize at
+a value higher than the specified temperature of the heat bath, since
+a temperature difference between the system and the heat bath is
+necessary to get a finite heat flow.  Another disadvantage is that the
+fluctuating force is stochastic in nature, so repeating the simulation
+will not give exactly the same trajectory.</p>
+<p>When the <tt class="docutils literal"><span class="pre">Langevin</span></tt> object is created, you must specify a time step,
+a temperature (in energy units) and a friction.  Typical values for
+the friction are 0.01-0.02 atomic units.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># Room temperature simulation</span>
+<span class="n">dyn</span> <span class="o">=</span> <span class="n">Langevin</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="mi">5</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">fs</span><span class="p">,</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span> <span class="o">*</span> <span class="mi">300</span><span class="p">,</span> <span class="mf">0.002</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Both the friction and the temperature can be replaced with arrays
+giving per-atom values.  This is mostly useful for the friction, where
+one can choose a rather high friction near the boundaries, and set it
+to zero in the part of the system where the phenomenon being studied
+is located.</p>
+</div>
+<div class="section" id="nose-hoover-dynamics">
+<h3>Nosé-Hoover dynamics<a class="headerlink" href="#nose-hoover-dynamics" title="Permalink to this headline">¶</a></h3>
+<p>In Nosé-Hoover dynamics, an extra term is added to the Hamiltonian
+representing the coupling to the heat bath.  From a pragmatic point of
+view one can regard Nosé-Hoover dynamics as adding a friction term to
+Newton&#8217;s second law, but dynamically changing the friction coefficient
+to move the system towards the desired temperature.  Typically the
+&#8220;friction coefficient&#8221; will fluctuate around zero.</p>
+<p>Nosé-Hoover dynamics is not implemented as a separate class, but is a
+special case of NPT dynamics.</p>
+</div>
+<div class="section" id="module-ase.md.nvtberendsen">
+<span id="berendsen-nvt-dynamics"></span><h3>Berendsen NVT dynamics<a class="headerlink" href="#module-ase.md.nvtberendsen" title="Permalink to this headline">¶</a></h3>
+<dl class="class">
+<dt id="ase.md.nvtberendsen.NVTBerendsen">
+<em class="property">class </em><tt class="descclassname">ase.md.nvtberendsen.</tt><tt class="descname">NVTBerendsen</tt><big>(</big><em>atoms</em>, <em>timestep</em>, <em>temperature</em>, <em>taut</em>, <em>fixcm</em><big>)</big><a class="reference internal" href="../_modules/ase/md/nvtberendsen.html#NVTBerendsen"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.md.nvtberendsen.NVTBerendsen" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<p>In Berendsen NVT simulations the velocities are scaled to achieve the desired
+temperature. The speed of the scaling is determined by the parameter taut.</p>
+<p>This method does not result proper NVT sampling but it usually is
+sufficiently good in practise (with large taut). For discussion see
+the gromacs manual at www.gromacs.org.</p>
+<dl class="docutils">
+<dt><em>atoms</em>:</dt>
+<dd>The list of atoms.</dd>
+<dt><em>timestep</em>:</dt>
+<dd>The time step.</dd>
+<dt><em>temperature</em>:</dt>
+<dd>The desired temperature, in Kelvin.</dd>
+<dt><em>taut</em>:</dt>
+<dd>Time constant for Berendsen temperature coupling.</dd>
+<dt><em>fixcm</em>:</dt>
+<dd>If True, the position and momentum of the center of mass is
+kept unperturbed.  Default: True.</dd>
+</dl>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># Room temperature simulation (300K, 0.1 fs time step)</span>
+<span class="n">dyn</span> <span class="o">=</span> <span class="n">NVTBerendsen</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="mf">0.1</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">fs</span><span class="p">,</span> <span class="mi">300</span><span class="p">,</span> <span class="n">taut</span><span class="o">=</span><span class="mf">0.5</span><span class="o">*</span><span class="mi">1000</span><span class="o">*</span><span class="n">units</span><span class="o">.</span><span class="n">fs</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="section" id="module-ase.md.npt">
+<span id="constant-npt-simulations-the-isothermal-isobaric-ensemble"></span><h2>Constant NPT simulations (the isothermal-isobaric ensemble)<a class="headerlink" href="#module-ase.md.npt" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="ase.md.npt.NPT">
+<em class="property">class </em><tt class="descclassname">ase.md.npt.</tt><tt class="descname">NPT</tt><big>(</big><em>atoms</em>, <em>timestep</em>, <em>temperature</em>, <em>externalstress</em>, <em>ttime</em>, <em>pfactor</em>, <em>mask=None</em><big>)</big><a class="reference internal" href="../_modules/ase/md/npt.html#NPT"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.md.npt.NPT" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<p>Dynamics with constant pressure (or optionally, constant stress) and
+constant temperature (NPT or N,stress,T ensemble).  It uses the
+combination of Nosé-Hoover and Parrinello-Rahman dynamics proposed by
+Melchionna et al. [1] and later modified by Melchionna [2].  The
+differential equations are integrated using a centered difference
+method [3].  Details of the implementation are available in the
+document XXX NPTdynamics.tex, distributed with the module.</p>
+<p>The dynamics object is called with the following parameters:</p>
+<dl class="docutils">
+<dt><em>atoms</em>:</dt>
+<dd>The atoms object.</dd>
+<dt><em>timestep</em>:</dt>
+<dd>The timestep in units matching eV, Å, u.  Use the <em>units.fs</em> constant.</dd>
+<dt><em>temperature</em>:</dt>
+<dd>The desired temperature in eV.</dd>
+<dt><em>externalstress</em>:</dt>
+<dd>The external stress in eV/Å^3.  Either a symmetric
+3x3 tensor, a 6-vector representing the same, or a scalar
+representing the pressure.  Note that the stress is positive in
+tension whereas the pressure is positive in compression: giving a
+scalar p is equivalent to giving the tensor (-p. -p, -p, 0, 0, 0).</dd>
+<dt><em>ttime</em>:</dt>
+<dd>Characteristic timescale of the thermostat.  Set to None to
+disable the thermostat.</dd>
+<dt><em>pfactor</em>:</dt>
+<dd>A constant in the barostat differential equation.  If a
+characteristic barostat timescale of ptime is desired, set pfactor
+to ptime^2 * B (where B is the Bulk Modulus).  Set to None to
+disable the barostat.  Typical metallic bulk moduli are of the order
+of 100 GPa or 0.6 eV/Å^3.</dd>
+<dt><em>mask=None</em>:</dt>
+<dd>Optional argument.  A tuple of three integers (0 or 1),
+indicating if the system can change size along the three Cartesian
+axes.  Set to (1,1,1) or None to allow a fully flexible
+computational box.  Set to (1,1,0) to disallow elongations along the
+z-axis etc.</dd>
+</dl>
+<p>Useful parameter values:</p>
+<ul class="simple">
+<li>The same <em>timestep</em> can be used as in Verlet dynamics, i.e. 5 fs is fine
+for bulk copper.</li>
+<li>The <em>ttime</em> and <em>pfactor</em> are quite critical[4], too small values may
+cause instabilites and/or wrong fluctuations in T / p.  Too
+large values cause an oscillation which is slow to die.  Good
+values for the characteristic times seem to be 25 fs for <em>ttime</em>,
+and 75 fs for <em>ptime</em> (used to calculate pfactor), at least for
+bulk copper with 15000-200000 atoms.  But this is not well
+tested, it is IMPORTANT to monitor the temperature and
+stress/pressure fluctuations.</li>
+</ul>
+<p>It has the following methods:</p>
+<dl class="method">
+<dt>
+<tt class="descname">NPT.run(n):</tt></dt>
+<dd><p>Perform n timesteps.</p>
+</dd></dl>
+
+<dl class="method">
+<dt>
+<tt class="descname">NPT.initialize():</tt></dt>
+<dd><p>Estimates the dynamic variables for time=-1 to start the
+algorithm.  This is automatically called before the first timestep.</p>
+</dd></dl>
+
+<dl class="method">
+<dt>
+<tt class="descname">NPT.set_stress():</tt></dt>
+<dd><p>Set the external stress.  Use with care.  It is
+preferable to set the right value when creating the object.</p>
+</dd></dl>
+
+<dl class="method">
+<dt>
+<tt class="descname">NPT.set_mask():</tt></dt>
+<dd><p>Change the mask.  Use with care, as you may &#8220;freeze&#8221; a
+fluctuation in the strain rate.</p>
+</dd></dl>
+
+<dl class="method">
+<dt>
+<tt class="descname">NPT.set_strainrate(eps):</tt></dt>
+<dd><p>Set the strain rate.  <tt class="docutils literal"><span class="pre">eps</span></tt> must be an upper-triangular matrix.
+If you set a strain rate along a direction that is &#8220;masked out&#8221;
+(see <tt class="docutils literal"><span class="pre">set_mask</span></tt>), the strain rate along that direction will be
+maintained constantly.</p>
+</dd></dl>
+
+<dl class="method">
+<dt>
+<tt class="descname">NPT.get_gibbs_free_energy():</tt></dt>
+<dd><p>Gibbs free energy is supposed to be
+preserved by this dynamics.  This is mainly intended as a diagnostic
+tool.</p>
+</dd></dl>
+
+<p>References:</p>
+<p>[1] S. Melchionna, G. Ciccotti and B. L. Holian, Molecular Physics
+78, p. 533 (1993).</p>
+<p>[2] S. Melchionna, Physical Review E 61, p. 6165 (2000).</p>
+<p>[3] B. L. Holian, A. J. De Groot, W. G. Hoover, and C. G. Hoover,
+Physical Review A 41, p. 4552 (1990).</p>
+<p>[4] F. D. Di Tolla and M. Ronchetti, Physical Review E 48, p. 1726 (1993).</p>
+<div class="admonition seealso">
+<p class="first admonition-title">See also</p>
+<p class="last">The <a class="reference internal" href="../glossary.html#term-api"><em class="xref std std-term">API</em></a> documentation: <a class="reference external" href="http://wiki.fysik.dtu.dk/ase/epydoc/ase.md-module.html">md</a></p>
+</div>
+<div class="section" id="module-ase.md.nptberendsen">
+<span id="berendsen-npt-dynamics"></span><h3>Berendsen NPT dynamics<a class="headerlink" href="#module-ase.md.nptberendsen" title="Permalink to this headline">¶</a></h3>
+<dl class="class">
+<dt id="ase.md.nptberendsen.NPTBerendsen">
+<em class="property">class </em><tt class="descclassname">ase.md.nptberendsen.</tt><tt class="descname">NPTBerendsen</tt><big>(</big><em>atoms</em>, <em>timestep</em>, <em>temperature</em>, <em>taut</em>, <em>pressure</em>, <em>taup</em>, <em>compressibility</em>, <em>fixcm</em><big>)</big><a class="reference internal" href="../_modules/ase/md/nptberendsen.html#NPTBerendsen"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.md.nptberendsen.NPTBerendsen" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<p>In Berendsen NPT simulations the velocities are scaled to achieve the desired
+temperature. The speed of the scaling is determined by the parameter taut.</p>
+<p>The atom positions and the simulation cell are scaled in order to achieve
+the desired pressure.</p>
+<p>This method does not result proper NPT sampling but it usually is
+sufficiently good in practise (with large taut and taup). For discussion see
+the gromacs manual at www.gromacs.org. or amber at ambermd.org</p>
+<dl class="docutils">
+<dt><em>atoms</em>:</dt>
+<dd>The list of atoms.</dd>
+<dt><em>timestep</em>:</dt>
+<dd>The time step.</dd>
+<dt><em>temperature</em>:</dt>
+<dd>The desired temperature, in Kelvin.</dd>
+<dt><em>taut</em>:</dt>
+<dd>Time constant for Berendsen temperature coupling.</dd>
+<dt><em>pressure</em>:</dt>
+<dd>The desired pressure, in bar (1 bar = 1e5 Pa).</dd>
+<dt><em>taup</em>:</dt>
+<dd>Time constant for Berendsen pressure coupling.</dd>
+<dt><em>compressibility</em>:</dt>
+<dd>The compressibility of the material, water 4.57E-5 bar-1, in bar-1</dd>
+<dt><em>fixcm</em>:</dt>
+<dd>If True, the position and momentum of the center of mass is
+kept unperturbed.  Default: True.</dd>
+</dl>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># Room temperature simulation (300K, 0.1 fs time step, atmospheric pressure)</span>
+<span class="n">dyn</span> <span class="o">=</span> <span class="n">NPTBerendsen</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">timestep</span><span class="o">=</span><span class="mf">0.1</span><span class="o">*</span><span class="n">units</span><span class="o">.</span><span class="n">fs</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="mi">300</span><span class="p">,</span>
+                 <span class="n">taut</span><span class="o">=</span><span class="mf">0.1</span><span class="o">*</span><span class="mi">1000</span><span class="o">*</span><span class="n">units</span><span class="o">.</span><span class="n">fs</span><span class="p">,</span> <span class="n">pressure</span> <span class="o">=</span> <span class="mf">1.01325</span><span class="p">,</span>
+                 <span class="n">taup</span><span class="o">=</span><span class="mf">1.0</span><span class="o">*</span><span class="mi">1000</span><span class="o">*</span><span class="n">units</span><span class="o">.</span><span class="n">fs</span><span class="p">,</span> <span class="n">compressibility</span><span class="o">=</span><span class="mf">4.57e-5</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../overview.html">
+              Overview</a></li>
+            <li><a href="../download.html">
+              Installation</a></li>
+            <li><a href="../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="ase.html">
+              Documentation</a></li>
+            <li><a href="../faq.html">FAQ</a></li>
+            <li><a href="../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>This Page</h3>
+            <ul>
+<li><a class="reference internal" href="#">Molecular dynamics</a><ul>
+<li><a class="reference internal" href="#choosing-the-time-step">Choosing the time step</a></li>
+<li><a class="reference internal" href="#file-output">File output</a></li>
+<li><a class="reference internal" href="#logging">Logging</a></li>
+<li><a class="reference internal" href="#constant-nve-simulations-the-microcanonical-ensemble">Constant NVE simulations (the microcanonical ensemble)</a><ul>
+<li><a class="reference internal" href="#module-ase.md.verlet">Velocity Verlet dynamics</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#constant-nvt-simulations-the-canonical-ensemble">Constant NVT simulations (the canonical ensemble)</a><ul>
+<li><a class="reference internal" href="#module-ase.md.langevin">Langevin dynamics</a></li>
+<li><a class="reference internal" href="#nose-hoover-dynamics">Nosé-Hoover dynamics</a></li>
+<li><a class="reference internal" href="#module-ase.md.nvtberendsen">Berendsen NVT dynamics</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#module-ase.md.npt">Constant NPT simulations (the isothermal-isobaric ensemble)</a><ul>
+<li><a class="reference internal" href="#module-ase.md.nptberendsen">Berendsen NPT dynamics</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="infrared.html" title="previous chapter">Infrared intensities</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="dft/dft.html" title="next chapter">Density Functional Theory</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../_sources/ase/md.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

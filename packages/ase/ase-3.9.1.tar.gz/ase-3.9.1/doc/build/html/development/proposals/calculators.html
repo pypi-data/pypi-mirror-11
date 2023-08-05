@@ -1,0 +1,323 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Calculator interface proposal &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="ASE enhancement proposals" href="proposals.html" />
+    <link rel="next" title="Command line tools" href="cli.html" />
+    <link rel="prev" title="ASE enhancement proposals" href="proposals.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../development.html" accesskey="U">ASE development</a> &raquo;</li>
+          <li><a href="proposals.html" accesskey="U">ASE enhancement proposals</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="calculator-interface-proposal">
+<span id="aep1"></span><h1>Calculator interface proposal<a class="headerlink" href="#calculator-interface-proposal" title="Permalink to this headline">¶</a></h1>
+<p>All ASE calculators should behave similarly if there is no good reason
+for them not to.  This should make it simpler for both users and developers.</p>
+<p>This proposal tries to define how a good ASE calculator should behave.
+The goal is to have ASE calculators:</p>
+<ul class="simple">
+<li>that share more code</li>
+<li>are more uniform to use</li>
+<li>are better tested</li>
+<li>are portable</li>
+</ul>
+<p>Setting some standards is a good thing, but we should also be careful
+not to set too strict rules that could limit each calculator to the
+lowest common denominator.</p>
+<div class="section" id="behavior">
+<h2>Behavior<a class="headerlink" href="#behavior" title="Permalink to this headline">¶</a></h2>
+<p>When a calculator calculates the energy, forces, stress tensor, total
+magnetic moment, atomic magnetic moments or dipole moment, it should
+store a copy of the system (atomic numbers, atomic positions, unit
+cell and boundary conditions).  When asked again, it should return the
+value already calculated if the system hasn&#8217;t been changed.</p>
+<p>If calculational parameters such as plane wave cutoff or XC-functional
+has been changed the calculator should throw away old calculated
+values.</p>
+</div>
+<div class="section" id="standards-parameters">
+<h2>Standards parameters<a class="headerlink" href="#standards-parameters" title="Permalink to this headline">¶</a></h2>
+<p>The standard keywords that all calculators must use (if they make
+sense) are: <tt class="docutils literal"><span class="pre">xc</span></tt>, <tt class="docutils literal"><span class="pre">kpts</span></tt>, <tt class="docutils literal"><span class="pre">smearing</span></tt>, <tt class="docutils literal"><span class="pre">charge</span></tt> and <tt class="docutils literal"><span class="pre">nbands</span></tt>.
+Each calculator will have its own default values for these parameters
+&#8212; see recommendations below.  In addition, calculators will
+typically have many other parameters.  The units are eV and Å.</p>
+<p>Initial magnetic moments are taken from the <a class="reference internal" href="../../ase/atoms.html#ase.atoms.Atoms" title="ase.atoms.Atoms"><tt class="xref py py-class docutils literal"><span class="pre">Atoms</span></tt></a>
+object.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">xc:</th><td class="field-body"><p class="first">It is recommended that <tt class="docutils literal"><span class="pre">'LDA'</span></tt> and <tt class="docutils literal"><span class="pre">'PBE'</span></tt> are valid options.</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">kpts:</th><td class="field-body"><ul class="first simple">
+<li><tt class="docutils literal"><span class="pre">(1,1,1)</span></tt>: Gamma-point</li>
+<li><tt class="docutils literal"><span class="pre">(n1,n2,n3)</span></tt>: Monkhorst-Pack grid</li>
+<li><tt class="docutils literal"><span class="pre">(n1,n2,n3,'gamma')</span></tt>: Shifted Monkhorst-Pack grid that includes <span class="math">\(\Gamma\)</span></li>
+<li><tt class="docutils literal"><span class="pre">[(k11,k12,k13),(k21,k22,k23),...]</span></tt>: Explicit list in units of the
+reciprocal lattice vectors</li>
+<li><tt class="docutils literal"><span class="pre">kpts=3.5</span></tt>: <span class="math">\(\vec k\)</span>-point density as in 3.5 <span class="math">\(\vec k\)</span>-points per
+Å<span class="math">\(^{-1}\)</span></li>
+</ul>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">smearing:</th><td class="field-body"><p class="first">The smearing parameter must be given as a tuple:</p>
+<ul class="simple">
+<li><tt class="docutils literal"><span class="pre">('Fermi-Dirac',</span> <span class="pre">width)</span></tt></li>
+<li><tt class="docutils literal"><span class="pre">('Gaussian',</span> <span class="pre">width)</span></tt></li>
+<li><tt class="docutils literal"><span class="pre">('Methfessel-Paxton',</span> <span class="pre">width,</span> <span class="pre">n)</span></tt>, where <span class="math">\(n\)</span> is the order (<span class="math">\(n=0\)</span>
+is the same as <tt class="docutils literal"><span class="pre">'Gaussian'</span></tt>)</li>
+</ul>
+<p>Lower-case strings are also allowed.  The <tt class="docutils literal"><span class="pre">width</span></tt> parameter used
+for the chosen smearing method is in eV units.</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">charge:</th><td class="field-body"><p class="first">Charge of the system in units of <span class="math">\(|e|\)</span> (<tt class="docutils literal"><span class="pre">charge=1</span></tt> means one
+electron has been removed).</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">nbands:</th><td class="field-body"><p class="first last">Each band can be occupied by two electrons.</p>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="abc-calculator-example">
+<h2>ABC calculator example<a class="headerlink" href="#abc-calculator-example" title="Permalink to this headline">¶</a></h2>
+<p>The constructor will look like this:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">ABC</span><span class="p">(</span><span class="n">restart</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">ignore_bad_restart</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+    <span class="n">atoms</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>A calculator should be able to prefix all output files with a given
+label or run the calculation in a directory with a specified name.
+This is handled by the <tt class="docutils literal"><span class="pre">label</span></tt> argument.  There are three
+possibilities:</p>
+<ul class="simple">
+<li>Name of a file containing all results of a calculation (possibly
+containing a directory).</li>
+<li>A prefix used for several files containing results.  The label may
+have both a directory part and a prefix part like <tt class="docutils literal"><span class="pre">'LDA/mol1'</span></tt>.</li>
+<li>Name of a directory containing result files with fixed names.</li>
+</ul>
+<p>Each calculator can decide what the default value is: <tt class="docutils literal"><span class="pre">None</span></tt> for no
+output, <tt class="docutils literal"><span class="pre">'-'</span></tt> for standard output or something else.</p>
+<p>If the <tt class="docutils literal"><span class="pre">restart</span></tt> argument is given, atomic configuration, input
+parameters and results will be read from a previous calculation from
+the file(s) pointed to by the <tt class="docutils literal"><span class="pre">restart</span></tt> argument.  It is an error if
+those files don&#8217;t exist and are corrupted.  This error can be ignored
+bu using <tt class="docutils literal"><span class="pre">ignore_bad_restart=True</span></tt>.</p>
+<p>The <tt class="docutils literal"><span class="pre">atoms</span></tt> argument is discussed below.  All additional parameters
+are given as keyword arguments.</p>
+<p>Example:  Do a calculation with ABC calculator and write results to
+<tt class="file docutils literal"><span class="pre">si.abc</span></tt>:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">atoms</span> <span class="o">=</span> <span class="o">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">atoms</span><span class="o">.</span><span class="n">calc</span> <span class="o">=</span> <span class="n">ABC</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s">&#39;si.abc&#39;</span><span class="p">,</span> <span class="n">xc</span><span class="o">=</span><span class="s">&#39;LDA&#39;</span><span class="p">,</span> <span class="n">kpts</span><span class="o">=</span><span class="mf">3.0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+<span class="go">-1.2</span>
+</pre></div>
+</div>
+<p>Read atoms with ABC calculator attaced from a previous calculation:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">atoms</span> <span class="o">=</span> <span class="n">ABC</span><span class="o">.</span><span class="n">read_atoms</span><span class="p">(</span><span class="s">&#39;si.abc&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">atoms</span><span class="o">.</span><span class="n">calc</span>
+<span class="go">&lt;ABC-calculator&gt;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+<span class="go">-1.2</span>
+</pre></div>
+</div>
+<p>The <tt class="docutils literal"><span class="pre">ABC.read_atoms('si.abc')</span></tt> statement is equivalent to:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">ABC</span><span class="p">(</span><span class="n">restart</span><span class="o">=</span><span class="s">&#39;si.abc&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s">&#39;si.abc&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">get_atoms</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>If we do:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">atoms</span> <span class="o">=</span> <span class="n">ABC</span><span class="o">.</span><span class="n">read_atoms</span><span class="p">(</span><span class="s">&#39;si.abc&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">atoms</span><span class="o">.</span><span class="n">rattle</span><span class="p">()</span>            <span class="c"># change positions and/or</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">atoms</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xc</span><span class="o">=</span><span class="s">&#39;PBE&#39;</span><span class="p">)</span>  <span class="c"># change a calculator-parameter</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+<span class="go">-0.7</span>
+</pre></div>
+</div>
+<p>then the <tt class="file docutils literal"><span class="pre">si.abc</span></tt> will be overwritten or maybe appended to.</p>
+<p>An alternative way to connect atoms and calculator:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">atoms</span> <span class="o">=</span> <span class="o">...</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">calc</span> <span class="o">=</span> <span class="n">ABC</span><span class="p">(</span><span class="n">restart</span><span class="o">=</span><span class="s">&#39;si.abc&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s">&#39;si.abc&#39;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">=</span><span class="n">atoms</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+<span class="go">-0.7</span>
+</pre></div>
+</div>
+<p>This will automatically attach the calculator to the atoms and the
+atoms will be updated form the file.  If you add
+<tt class="docutils literal"><span class="pre">ignore_bad_restart=True</span></tt>, you will be able to use the same
+script to do the initial calculation where <tt class="file docutils literal"><span class="pre">si.abc</span></tt> does not
+exist and following calculations where atoms may have been moved
+arround by an optimization algorithm.</p>
+<p>The command used to start the ABC code can be given in an environment
+variable called <span class="target" id="index-0"></span><tt class="xref std std-envvar docutils literal"><span class="pre">ASE_ABC_COMMAND</span></tt> or as a <tt class="docutils literal"><span class="pre">command</span></tt>
+keyword.  The command can look like this:</p>
+<div class="highlight-python"><div class="highlight"><pre>mpiexec abc PREFIX.input &gt; PREFIX.output
+</pre></div>
+</div>
+<p>or like this:</p>
+<div class="highlight-python"><div class="highlight"><pre>~/bin/start_abc.py PREFIX
+</pre></div>
+</div>
+<p>The <tt class="docutils literal"><span class="pre">PREFIX</span></tt> strings will be substituted by the <tt class="docutils literal"><span class="pre">label</span></tt> keyword.</p>
+</div>
+<div class="section" id="implementation">
+<h2>Implementation<a class="headerlink" href="#implementation" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li>Portability (Linux/Windows): <tt class="docutils literal"><span class="pre">os.system('Linux</span> <span class="pre">commands')</span></tt> not allowed.</li>
+<li>Common base class for all calculators: <tt class="docutils literal"><span class="pre">Calculator</span></tt>.  Takes care
+of restart from file logic, handles setting of parameters and checks
+for state changes.</li>
+<li>A <tt class="docutils literal"><span class="pre">FileIOCalculator</span></tt> for the case where we need to:<ul>
+<li>write input file(s)</li>
+<li>run Fortran/C/C++ code</li>
+<li>read output file(s)</li>
+</ul>
+</li>
+<li>Helper function to deal with <tt class="docutils literal"><span class="pre">kpts</span></tt> keyword.</li>
+</ul>
+</div>
+<div class="section" id="testing">
+<h2>Testing<a class="headerlink" href="#testing" title="Permalink to this headline">¶</a></h2>
+<p>An interface must pass the tests located under <a class="reference external" href="http://svn.fysik.dtu.dk/projects/ase/trunk/ase/test/calculator/">ase/test/calculator/</a>.</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>This Page</h3>
+            <ul>
+<li><a class="reference internal" href="#">Calculator interface proposal</a><ul>
+<li><a class="reference internal" href="#behavior">Behavior</a></li>
+<li><a class="reference internal" href="#standards-parameters">Standards parameters</a></li>
+<li><a class="reference internal" href="#abc-calculator-example">ABC calculator example</a></li>
+<li><a class="reference internal" href="#implementation">Implementation</a></li>
+<li><a class="reference internal" href="#testing">Testing</a></li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="proposals.html" title="previous chapter">ASE enhancement proposals</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="cli.html" title="next chapter">Command line tools</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../../_sources/development/proposals/calculators.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../development.html" accesskey="U">ASE development</a> &raquo;</li>
+          <li><a href="proposals.html" accesskey="U">ASE enhancement proposals</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

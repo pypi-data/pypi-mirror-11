@@ -1,0 +1,1050 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.phasediagram &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.phasediagram</h1><div class="highlight"><pre>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">division</span><span class="p">,</span> <span class="n">print_function</span>
+<span class="kn">import</span> <span class="nn">fractions</span>
+<span class="kn">import</span> <span class="nn">functools</span>
+<span class="kn">import</span> <span class="nn">re</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy.spatial</span> <span class="kn">import</span> <span class="n">ConvexHull</span><span class="p">,</span> <span class="n">Delaunay</span>
+
+<span class="kn">import</span> <span class="nn">ase.units</span> <span class="kn">as</span> <span class="nn">units</span>
+<span class="kn">from</span> <span class="nn">ase.atoms</span> <span class="kn">import</span> <span class="n">string2symbols</span>
+<span class="kn">from</span> <span class="nn">ase.utils</span> <span class="kn">import</span> <span class="n">hill</span>
+
+
+<span class="n">_solvated</span> <span class="o">=</span> <span class="p">[]</span>
+
+
+<span class="k">def</span> <span class="nf">parse_formula</span><span class="p">(</span><span class="n">formula</span><span class="p">):</span>
+    <span class="n">aq</span> <span class="o">=</span> <span class="n">formula</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;(aq)&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">aq</span><span class="p">:</span>
+        <span class="n">formula</span> <span class="o">=</span> <span class="n">formula</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">]</span>
+    <span class="n">charge</span> <span class="o">=</span> <span class="n">formula</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s">&#39;+&#39;</span><span class="p">)</span> <span class="o">-</span> <span class="n">formula</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s">&#39;-&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">charge</span><span class="p">:</span>
+        <span class="n">formula</span> <span class="o">=</span> <span class="n">formula</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s">&#39;+-&#39;</span><span class="p">)</span>
+    <span class="n">count</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">symbol</span> <span class="ow">in</span> <span class="n">string2symbols</span><span class="p">(</span><span class="n">formula</span><span class="p">):</span>
+        <span class="n">count</span><span class="p">[</span><span class="n">symbol</span><span class="p">]</span> <span class="o">=</span> <span class="n">count</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">symbol</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">count</span><span class="p">,</span> <span class="n">charge</span><span class="p">,</span> <span class="n">aq</span>
+
+    
+<span class="k">def</span> <span class="nf">float2str</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="n">f</span> <span class="o">=</span> <span class="n">fractions</span><span class="o">.</span><span class="n">Fraction</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">limit_denominator</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">numerator</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">denominator</span>
+    <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">n</span> <span class="o">/</span> <span class="n">d</span> <span class="o">-</span> <span class="n">f</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mf">1e-6</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#39;{0:.3f}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">d</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#39;0&#39;</span>
+    <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">denominator</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s">&#39;{0}/{1}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">numerator</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">denominator</span><span class="p">)</span>
+    
+    
+<div class="viewcode-block" id="solvated"><a class="viewcode-back" href="../../ase/phasediagram/phasediagram.html#ase.phasediagram.solvated">[docs]</a><span class="k">def</span> <span class="nf">solvated</span><span class="p">(</span><span class="n">symbols</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Extract solvation energies from database.</span>
+<span class="sd">    </span>
+<span class="sd">    symbols: str</span>
+<span class="sd">        Extract only those molecules that contain the chemical elements</span>
+<span class="sd">        given by the symbols string (plus water and H+).</span>
+<span class="sd">        </span>
+<span class="sd">    Data from:</span>
+
+<span class="sd">        Johnson JW, Oelkers EH, Helgeson HC (1992)</span>
+<span class="sd">        Comput Geosci 18(7):899.</span>
+<span class="sd">        doi:10.1016/0098-3004(92)90029-Q</span>
+
+<span class="sd">    and:</span>
+
+<span class="sd">        Pourbaix M (1966)</span>
+<span class="sd">        Atlas of electrochemical equilibria in aqueous solutions.</span>
+<span class="sd">        No. v. 1 in Atlas of Electrochemical Equilibria in Aqueous Solutions.</span>
+<span class="sd">        Pergamon Press, New York.</span>
+<span class="sd">        </span>
+<span class="sd">    Returns list of (name, energy) tuples.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">symbols</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">symbols</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">string2symbols</span><span class="p">(</span><span class="n">symbols</span><span class="p">))</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">_solvated</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">_aqueous</span><span class="o">.</span><span class="n">splitlines</span><span class="p">():</span>
+            <span class="n">energy</span><span class="p">,</span> <span class="n">formula</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">formula</span> <span class="o">+</span> <span class="s">&#39;(aq)&#39;</span>
+            <span class="n">count</span><span class="p">,</span> <span class="n">charge</span><span class="p">,</span> <span class="n">aq</span> <span class="o">=</span> <span class="n">parse_formula</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+            <span class="n">energy</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">energy</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.001</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">kcal</span> <span class="o">/</span> <span class="n">units</span><span class="o">.</span><span class="n">mol</span>
+            <span class="n">_solvated</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">name</span><span class="p">,</span> <span class="n">count</span><span class="p">,</span> <span class="n">charge</span><span class="p">,</span> <span class="n">aq</span><span class="p">,</span> <span class="n">energy</span><span class="p">))</span>
+    <span class="n">references</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">count</span><span class="p">,</span> <span class="n">charge</span><span class="p">,</span> <span class="n">aq</span><span class="p">,</span> <span class="n">energy</span> <span class="ow">in</span> <span class="n">_solvated</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">symbol</span> <span class="ow">in</span> <span class="n">count</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">symbol</span> <span class="ow">not</span> <span class="ow">in</span> <span class="s">&#39;HO&#39;</span> <span class="ow">and</span> <span class="n">symbol</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">symbols</span><span class="p">:</span>
+                <span class="k">break</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">references</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">name</span><span class="p">,</span> <span class="n">energy</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">references</span>
+
+    </div>
+<span class="k">def</span> <span class="nf">bisect</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">,</span> <span class="n">f</span><span class="p">):</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">A</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                <span class="n">A</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">Y</span><span class="p">[</span><span class="n">j</span><span class="p">])</span>
+            <span class="n">a</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">A</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">])</span>
+            
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">ptp</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">A</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">return</span>
+    <span class="k">if</span> <span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+        <span class="n">A</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">a</span><span class="p">[</span><span class="mi">3</span><span class="p">]:</span>
+        <span class="n">A</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">a</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">==</span> <span class="n">a</span><span class="p">[</span><span class="mi">2</span><span class="p">]:</span>
+        <span class="n">A</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">a</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+        <span class="n">A</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">A</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+        <span class="k">return</span>
+    <span class="n">i</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">X</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">Y</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span>
+    <span class="n">bisect</span><span class="p">(</span><span class="n">A</span><span class="p">[:</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="p">:</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">X</span><span class="p">[:</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">Y</span><span class="p">[:</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">f</span><span class="p">)</span>
+    <span class="n">bisect</span><span class="p">(</span><span class="n">A</span><span class="p">[:</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">j</span><span class="p">:],</span> <span class="n">X</span><span class="p">[:</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">Y</span><span class="p">[</span><span class="n">j</span><span class="p">:],</span> <span class="n">f</span><span class="p">)</span>
+    <span class="n">bisect</span><span class="p">(</span><span class="n">A</span><span class="p">[</span><span class="n">i</span><span class="p">:,</span> <span class="p">:</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">X</span><span class="p">[</span><span class="n">i</span><span class="p">:],</span> <span class="n">Y</span><span class="p">[:</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">f</span><span class="p">)</span>
+    <span class="n">bisect</span><span class="p">(</span><span class="n">A</span><span class="p">[</span><span class="n">i</span><span class="p">:,</span> <span class="n">j</span><span class="p">:],</span> <span class="n">X</span><span class="p">[</span><span class="n">i</span><span class="p">:],</span> <span class="n">Y</span><span class="p">[</span><span class="n">j</span><span class="p">:],</span> <span class="n">f</span><span class="p">)</span>
+
+    
+<span class="k">def</span> <span class="nf">print_results</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
+    <span class="n">total_energy</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;reference    coefficient      energy&#39;</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;------------------------------------&#39;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">coef</span><span class="p">,</span> <span class="n">energy</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
+        <span class="n">total_energy</span> <span class="o">+=</span> <span class="n">coef</span> <span class="o">*</span> <span class="n">energy</span>
+        <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">coef</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-7</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;{0:14}{1:&gt;10}{2:12.3f}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">float2str</span><span class="p">(</span><span class="n">coef</span><span class="p">),</span> <span class="n">energy</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;------------------------------------&#39;</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;Total energy: {0:22.3f}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">total_energy</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;------------------------------------&#39;</span><span class="p">)</span>
+
+    
+<div class="viewcode-block" id="Pourbaix"><a class="viewcode-back" href="../../ase/phasediagram/phasediagram.html#ase.phasediagram.Pourbaix">[docs]</a><span class="k">class</span> <span class="nc">Pourbaix</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="n">formula</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="mf">300.0</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Pourbaix object.</span>
+<span class="sd">        </span>
+<span class="sd">        references: list of (name, energy) tuples</span>
+<span class="sd">            Examples of names: ZnO2, H+(aq), H2O(aq), Zn++(aq), ...</span>
+<span class="sd">        formula: str</span>
+<span class="sd">            Stoichiometry.  Example: ``&#39;ZnO&#39;``.  Can also be given as</span>
+<span class="sd">            keyword arguments: ``Pourbaix(refs, Zn=1, O=1)``.</span>
+<span class="sd">        T: float</span>
+<span class="sd">            Temperature in Kelvin.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        
+        <span class="k">if</span> <span class="n">formula</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="ow">not</span> <span class="n">kwargs</span>
+            <span class="n">kwargs</span> <span class="o">=</span> <span class="n">parse_formula</span><span class="p">(</span><span class="n">formula</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">kT</span> <span class="o">=</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span> <span class="o">*</span> <span class="n">T</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">references</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">energy</span> <span class="ow">in</span> <span class="n">references</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="o">==</span> <span class="s">&#39;O&#39;</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">count</span><span class="p">,</span> <span class="n">charge</span><span class="p">,</span> <span class="n">aq</span> <span class="o">=</span> <span class="n">parse_formula</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">symbol</span> <span class="ow">in</span> <span class="n">count</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">aq</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">symbol</span> <span class="ow">in</span> <span class="s">&#39;HO&#39;</span> <span class="ow">or</span> <span class="n">symbol</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">):</span>
+                        <span class="k">break</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">symbol</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+                        <span class="k">break</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">references</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">count</span><span class="p">,</span> <span class="n">charge</span><span class="p">,</span> <span class="n">aq</span><span class="p">,</span> <span class="n">energy</span><span class="p">,</span> <span class="n">name</span><span class="p">))</span>
+                
+        <span class="bp">self</span><span class="o">.</span><span class="n">references</span><span class="o">.</span><span class="n">append</span><span class="p">(({},</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="bp">False</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s">&#39;e-&#39;</span><span class="p">))</span>  <span class="c"># an electron</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">count</span> <span class="o">=</span> <span class="n">kwargs</span>
+        
+        <span class="k">if</span> <span class="s">&#39;O&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">count</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">count</span><span class="p">[</span><span class="s">&#39;O&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">N</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;e-&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s">&#39;H&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">}</span>
+        <span class="k">for</span> <span class="n">symbol</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">symbol</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">N</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">N</span><span class="p">[</span><span class="n">symbol</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">N</span><span class="p">)</span>
+                
+<div class="viewcode-block" id="Pourbaix.decompose"><a class="viewcode-back" href="../../ase/phasediagram/phasediagram.html#ase.phasediagram.Pourbaix.decompose">[docs]</a>    <span class="k">def</span> <span class="nf">decompose</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">U</span><span class="p">,</span> <span class="n">pH</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">concentration</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Decompose material.</span>
+<span class="sd">        </span>
+<span class="sd">        U: float</span>
+<span class="sd">            Potential in eV.</span>
+<span class="sd">        pH: float</span>
+<span class="sd">            pH value.</span>
+<span class="sd">        verbose: bool</span>
+<span class="sd">            Default is True.</span>
+<span class="sd">        concentration: float</span>
+<span class="sd">            Concentration of solvated references.</span>
+<span class="sd">        </span>
+<span class="sd">        Returns optimal coefficients and energy.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        
+        <span class="n">alpha</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">kT</span>
+        <span class="n">entropy</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">concentration</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">kT</span>
+        
+        <span class="c"># We want to minimize np.dot(energies, x) under the constraints:</span>
+        <span class="c">#</span>
+        <span class="c">#     np.dot(x, eq2) == eq1</span>
+        <span class="c">#</span>
+        <span class="c"># with bounds[i,0] &lt;= x[i] &lt;= bounds[i, 1].</span>
+        <span class="c">#</span>
+        <span class="c"># First two equations are charge and number of hydrogens, and</span>
+        <span class="c"># the rest are the remaining species.</span>
+        
+        <span class="n">eq1</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">count</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="n">eq2</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">energies</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">bounds</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">names</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">count</span><span class="p">,</span> <span class="n">charge</span><span class="p">,</span> <span class="n">aq</span><span class="p">,</span> <span class="n">energy</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">references</span><span class="p">:</span>
+            <span class="n">eq</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">N</span><span class="p">))</span>
+            <span class="n">eq</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">charge</span>
+            <span class="k">for</span> <span class="n">symbol</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">count</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">eq</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">N</span><span class="p">[</span><span class="n">symbol</span><span class="p">]]</span> <span class="o">=</span> <span class="n">n</span>
+            <span class="n">eq2</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">eq</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;H2O(aq)&#39;</span><span class="p">,</span> <span class="s">&#39;H+(aq)&#39;</span><span class="p">,</span> <span class="s">&#39;e-&#39;</span><span class="p">]:</span>
+                <span class="n">bounds</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">name</span> <span class="o">==</span> <span class="s">&#39;e-&#39;</span><span class="p">:</span>
+                    <span class="n">energy</span> <span class="o">=</span> <span class="o">-</span><span class="n">U</span>
+                <span class="k">elif</span> <span class="n">name</span> <span class="o">==</span> <span class="s">&#39;H+(aq)&#39;</span><span class="p">:</span>
+                    <span class="n">energy</span> <span class="o">=</span> <span class="o">-</span><span class="n">pH</span> <span class="o">*</span> <span class="n">alpha</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">bounds</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">aq</span><span class="p">:</span>
+                    <span class="n">energy</span> <span class="o">-=</span> <span class="n">entropy</span>
+            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">&#39;{0:&lt;5}{1:10}{2:10.3f}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">energies</span><span class="p">),</span>
+                                                     <span class="n">name</span><span class="p">,</span> <span class="n">energy</span><span class="p">))</span>
+            <span class="n">energies</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">energy</span><span class="p">)</span>
+            <span class="n">names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+            
+        <span class="k">try</span><span class="p">:</span>
+            <span class="kn">from</span> <span class="nn">scipy.optimize</span> <span class="kn">import</span> <span class="n">linprog</span>
+        <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+            <span class="kn">from</span> <span class="nn">ase.utils._linprog</span> <span class="kn">import</span> <span class="n">linprog</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">linprog</span><span class="p">(</span><span class="n">energies</span><span class="p">,</span> <span class="bp">None</span><span class="p">,</span> <span class="bp">None</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">eq2</span><span class="p">),</span> <span class="n">eq1</span><span class="p">,</span> <span class="n">bounds</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="n">print_results</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">names</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">energies</span><span class="p">))</span>
+                    
+        <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">fun</span>
+        </div>
+<div class="viewcode-block" id="Pourbaix.diagram"><a class="viewcode-back" href="../../ase/phasediagram/phasediagram.html#ase.phasediagram.Pourbaix.diagram">[docs]</a>    <span class="k">def</span> <span class="nf">diagram</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">U</span><span class="p">,</span> <span class="n">pH</span><span class="p">,</span> <span class="n">plot</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">show</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculate Pourbaix diagram.</span>
+<span class="sd">        </span>
+<span class="sd">        U: list of float</span>
+<span class="sd">            Potentials in eV.</span>
+<span class="sd">        pH: list of float</span>
+<span class="sd">            pH values.</span>
+<span class="sd">        plot: bool</span>
+<span class="sd">            Create plot.</span>
+<span class="sd">        show: bool</span>
+<span class="sd">            Show plot.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        
+        <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">U</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">pH</span><span class="p">)),</span> <span class="nb">int</span><span class="p">)</span>
+        <span class="n">a</span><span class="p">[:]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="n">colors</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="n">functools</span><span class="o">.</span><span class="n">partial</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">colorfunction</span><span class="p">,</span> <span class="n">colors</span><span class="o">=</span><span class="n">colors</span><span class="p">)</span>
+        <span class="n">bisect</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">U</span><span class="p">,</span> <span class="n">pH</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
+        <span class="n">compositions</span> <span class="o">=</span> <span class="p">[</span><span class="bp">None</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">colors</span><span class="p">)</span>
+        <span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="n">ref</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">ref</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">references</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">indices</span><span class="p">,</span> <span class="n">color</span> <span class="ow">in</span> <span class="n">colors</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">compositions</span><span class="p">[</span><span class="n">color</span><span class="p">]</span> <span class="o">=</span> <span class="s">&#39; + &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">names</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">indices</span>
+                                             <span class="k">if</span> <span class="n">names</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="ow">not</span> <span class="ow">in</span>
+                                             <span class="p">[</span><span class="s">&#39;H2O(aq)&#39;</span><span class="p">,</span> <span class="s">&#39;H+(aq)&#39;</span><span class="p">,</span> <span class="s">&#39;e-&#39;</span><span class="p">])</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">compositions</span><span class="p">):</span>
+            <span class="n">b</span> <span class="o">=</span> <span class="p">(</span><span class="n">a</span> <span class="o">==</span> <span class="n">i</span><span class="p">)</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">b</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span> <span class="n">U</span><span class="p">)</span> <span class="o">/</span> <span class="n">b</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+            <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">b</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="n">pH</span><span class="p">)</span> <span class="o">/</span> <span class="n">b</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">&#39;(\S)([+-]+)&#39;</span><span class="p">,</span> <span class="s">r&#39;\1$^{\2}$&#39;</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">&#39;(\d+)&#39;</span><span class="p">,</span> <span class="s">r&#39;$_{\1}$&#39;</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+            <span class="n">text</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">name</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="n">plot</span><span class="p">:</span>
+            <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="kn">as</span> <span class="nn">plt</span>
+            <span class="kn">import</span> <span class="nn">matplotlib.cm</span> <span class="kn">as</span> <span class="nn">cm</span>
+            <span class="n">plt</span><span class="o">.</span><span class="n">pcolormesh</span><span class="p">(</span><span class="n">pH</span><span class="p">,</span> <span class="n">U</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="n">cm</span><span class="o">.</span><span class="n">Accent</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">text</span><span class="p">:</span>
+                <span class="n">plt</span><span class="o">.</span><span class="n">text</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">horizontalalignment</span><span class="o">=</span><span class="s">&#39;center&#39;</span><span class="p">)</span>
+            <span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s">&#39;pH&#39;</span><span class="p">)</span>
+            <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s">&#39;potential [eV]&#39;</span><span class="p">)</span>
+            <span class="n">plt</span><span class="o">.</span><span class="n">xlim</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">pH</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">pH</span><span class="p">))</span>
+            <span class="n">plt</span><span class="o">.</span><span class="n">ylim</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">U</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">U</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">show</span><span class="p">:</span>
+                <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+        
+        <span class="k">return</span> <span class="n">a</span><span class="p">,</span> <span class="n">compositions</span><span class="p">,</span> <span class="n">text</span>
+        </div>
+    <span class="k">def</span> <span class="nf">colorfunction</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">U</span><span class="p">,</span> <span class="n">pH</span><span class="p">,</span> <span class="n">colors</span><span class="p">):</span>
+        <span class="n">coefs</span><span class="p">,</span> <span class="n">energy</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">decompose</span><span class="p">(</span><span class="n">U</span><span class="p">,</span> <span class="n">pH</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+        <span class="n">indices</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">coefs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mf">1e-7</span><span class="p">)[</span><span class="mi">0</span><span class="p">]))</span>
+        <span class="n">color</span> <span class="o">=</span> <span class="n">colors</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">indices</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">color</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">color</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">colors</span><span class="p">)</span>
+            <span class="n">colors</span><span class="p">[</span><span class="n">indices</span><span class="p">]</span> <span class="o">=</span> <span class="n">color</span>
+        <span class="k">return</span> <span class="n">color</span>
+        
+</div>
+<div class="viewcode-block" id="PhaseDiagram"><a class="viewcode-back" href="../../ase/phasediagram/phasediagram.html#ase.phasediagram.PhaseDiagram">[docs]</a><span class="k">class</span> <span class="nc">PhaseDiagram</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">references</span><span class="p">,</span> <span class="nb">filter</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Phase-diagram.</span>
+<span class="sd">        </span>
+<span class="sd">        references: list of (name, energy) tuples</span>
+<span class="sd">            List of references.  The names can also be dicts like</span>
+<span class="sd">            ``{&#39;Zn&#39;: 1, &#39;O&#39;: 2}`` which would be equivalent to ``&#39;ZnO2&#39;``.</span>
+<span class="sd">        filter: str or list of str</span>
+<span class="sd">            Use only those references that match the given filter.</span>
+<span class="sd">            Example: ``filter=&#39;ZnO&#39;`` will select those that</span>
+<span class="sd">            contain zinc or oxygen.</span>
+<span class="sd">        verbose: bool</span>
+<span class="sd">            Write information.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="nb">filter</span> <span class="o">=</span> <span class="n">parse_formula</span><span class="p">(</span><span class="nb">filter</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">species</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">references</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">energy</span> <span class="ow">in</span> <span class="n">references</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="n">count</span> <span class="o">=</span> <span class="n">parse_formula</span><span class="p">(</span><span class="n">name</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">count</span> <span class="o">=</span> <span class="n">name</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="n">hill</span><span class="p">(</span><span class="n">count</span><span class="p">)</span>
+               
+            <span class="k">if</span> <span class="nb">filter</span> <span class="ow">and</span> <span class="nb">any</span><span class="p">(</span><span class="n">symbol</span> <span class="ow">not</span> <span class="ow">in</span> <span class="nb">filter</span> <span class="k">for</span> <span class="n">symbol</span> <span class="ow">in</span> <span class="n">count</span><span class="p">):</span>
+                <span class="k">continue</span>
+                    
+            <span class="n">natoms</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">symbol</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">count</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">natoms</span> <span class="o">+=</span> <span class="n">n</span>
+                <span class="k">if</span> <span class="n">symbol</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="p">[</span><span class="n">symbol</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">references</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">count</span><span class="p">,</span> <span class="n">energy</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">natoms</span><span class="p">))</span>
+        
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;Species:&#39;</span><span class="p">,</span> <span class="s">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="p">))</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;References:&#39;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">references</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">energy</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">natoms</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">references</span><span class="p">):</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">&#39;{0:&lt;5}{1:10}{2:10.3f}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">energy</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">points</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">references</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">s</span><span class="p">,</span> <span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">energy</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">natoms</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">references</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">symbol</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">count</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">points</span><span class="p">[</span><span class="n">s</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="p">[</span><span class="n">symbol</span><span class="p">]]</span> <span class="o">=</span> <span class="n">n</span> <span class="o">/</span> <span class="n">natoms</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">points</span><span class="p">[</span><span class="n">s</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">energy</span> <span class="o">/</span> <span class="n">natoms</span>
+        
+        <span class="n">hull</span> <span class="o">=</span> <span class="n">ConvexHull</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">points</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:])</span>
+        
+        <span class="c"># Find relevant vertices:</span>
+        <span class="n">ok</span> <span class="o">=</span> <span class="n">hull</span><span class="o">.</span><span class="n">equations</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">2</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">0</span>
+        <span class="n">vertices</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">simplex</span> <span class="ow">in</span> <span class="n">hull</span><span class="o">.</span><span class="n">simplices</span><span class="p">[</span><span class="n">ok</span><span class="p">]:</span>
+            <span class="n">vertices</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">simplex</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vertices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">vertices</span><span class="p">))</span>
+        
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;Simplices:&#39;</span><span class="p">,</span> <span class="n">ok</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+        
+        <span class="c"># Create triangulation:</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">D</span> <span class="o">=</span> <span class="n">Delaunay1D</span>  <span class="c"># scipy&#39;s Delaunay doesn&#39;t like 1-d!</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">D</span> <span class="o">=</span> <span class="n">Delaunay</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tri</span> <span class="o">=</span> <span class="n">D</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">points</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">vertices</span><span class="p">,</span> <span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        
+<div class="viewcode-block" id="PhaseDiagram.decompose"><a class="viewcode-back" href="../../ase/phasediagram/phasediagram.html#ase.phasediagram.PhaseDiagram.decompose">[docs]</a>    <span class="k">def</span> <span class="nf">decompose</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">formula</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Find the combination of the references with the lowest energy.</span>
+<span class="sd">        </span>
+<span class="sd">        formula: str</span>
+<span class="sd">            Stoichiometry.  Example: ``&#39;ZnO&#39;``.  Can also be given as</span>
+<span class="sd">            keyword arguments: ``decompose(Zn=1, O=1)``.</span>
+<span class="sd">        </span>
+<span class="sd">        Example::</span>
+<span class="sd">            </span>
+<span class="sd">            pd = PhaseDiagram(...)</span>
+<span class="sd">            pd.decompose(Zn=1, O=3)</span>
+<span class="sd">            </span>
+<span class="sd">        Returns energy, indices of references and coefficients.&quot;&quot;&quot;</span>
+        
+        <span class="k">if</span> <span class="n">formula</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="ow">not</span> <span class="n">kwargs</span>
+            <span class="n">kwargs</span> <span class="o">=</span> <span class="n">parse_formula</span><span class="p">(</span><span class="n">formula</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="n">point</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="p">))</span>
+        <span class="n">natoms</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">symbol</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">point</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="p">[</span><span class="n">symbol</span><span class="p">]]</span> <span class="o">=</span> <span class="n">n</span>
+            <span class="n">natoms</span> <span class="o">+=</span> <span class="n">n</span>
+        <span class="n">i</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tri</span><span class="o">.</span><span class="n">find_simplex</span><span class="p">(</span><span class="n">point</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">/</span> <span class="n">natoms</span><span class="p">)</span>
+        <span class="n">indices</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vertices</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">tri</span><span class="o">.</span><span class="n">simplices</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+        <span class="n">points</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">points</span><span class="p">[</span><span class="n">indices</span><span class="p">]</span>
+        <span class="n">scaledcoefs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">points</span><span class="p">[:,</span> <span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">point</span><span class="p">)</span>
+        <span class="n">energy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">scaledcoefs</span><span class="p">,</span> <span class="n">points</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        
+        <span class="n">coefs</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">coef</span><span class="p">,</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">scaledcoefs</span><span class="p">,</span> <span class="n">indices</span><span class="p">):</span>
+            <span class="n">count</span><span class="p">,</span> <span class="n">e</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">natoms</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">references</span><span class="p">[</span><span class="n">s</span><span class="p">]</span>
+            <span class="n">coef</span> <span class="o">/=</span> <span class="n">natoms</span>
+            <span class="n">coefs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">coef</span><span class="p">)</span>
+            <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">name</span><span class="p">,</span> <span class="n">coef</span><span class="p">,</span> <span class="n">e</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">:</span>
+            <span class="n">print_results</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+            
+        <span class="k">return</span> <span class="n">energy</span><span class="p">,</span> <span class="n">indices</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">coefs</span><span class="p">)</span>
+        </div>
+<div class="viewcode-block" id="PhaseDiagram.plot"><a class="viewcode-back" href="../../ase/phasediagram/phasediagram.html#ase.phasediagram.PhaseDiagram.plot">[docs]</a>    <span class="k">def</span> <span class="nf">plot</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Plot datapoints and convex hull.</span>
+<span class="sd">        </span>
+<span class="sd">        Works only for 2 and 3 components systems.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">plot2d</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">plot3d</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;...&#39;</span><span class="p">)</span>
+            </div>
+    <span class="k">def</span> <span class="nf">plot2d</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="kn">as</span> <span class="nn">plt</span>
+        <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">points</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">T</span>
+        <span class="n">xsymbol</span> <span class="o">=</span> <span class="p">[</span><span class="n">symbol</span> <span class="k">for</span> <span class="n">symbol</span><span class="p">,</span> <span class="nb">id</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="nb">id</span> <span class="o">==</span> <span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="s">&#39;or&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">j</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">tri</span><span class="o">.</span><span class="n">simplices</span><span class="p">:</span>
+            <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">([</span><span class="n">x</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">x</span><span class="p">[</span><span class="n">j</span><span class="p">]],</span> <span class="p">[</span><span class="n">y</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">y</span><span class="p">[</span><span class="n">j</span><span class="p">]],</span> <span class="s">&#39;-g&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">count</span><span class="p">,</span> <span class="n">energy</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">natoms</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">references</span><span class="p">:</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">&#39;(\d+)&#39;</span><span class="p">,</span> <span class="s">r&#39;$_{\1}$&#39;</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+            <span class="n">plt</span><span class="o">.</span><span class="n">text</span><span class="p">(</span><span class="n">count</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">xsymbol</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">/</span> <span class="n">natoms</span><span class="p">,</span> <span class="n">energy</span> <span class="o">/</span> <span class="n">natoms</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span>
+                     <span class="n">horizontalalignment</span><span class="o">=</span><span class="s">&#39;center&#39;</span><span class="p">,</span> <span class="n">verticalalignment</span><span class="o">=</span><span class="s">&#39;bottom&#39;</span><span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="n">xsymbol</span><span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s">&#39;energy&#39;</span><span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+        
+        </div>
+<span class="k">class</span> <span class="nc">Delaunay1D</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Simple 1-d implementation.&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">points</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">points</span> <span class="o">=</span> <span class="n">points</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>
+        <span class="n">a</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">points</span><span class="o">.</span><span class="n">argsort</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">simplices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">a</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">:]])</span><span class="o">.</span><span class="n">T</span>
+
+    <span class="k">def</span> <span class="nf">find_simplex</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">point</span><span class="p">):</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="n">point</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">simplices</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]):</span>
+            <span class="k">if</span> <span class="n">p</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">points</span><span class="p">[</span><span class="n">s</span><span class="p">]:</span>
+                <span class="k">return</span> <span class="n">i</span>
+        <span class="k">return</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
+
+
+<span class="n">_aqueous</span> <span class="o">=</span> <span class="s">&quot;&quot;&quot;</span><span class="se">\</span>
+<span class="s">-525700,SiF6--</span>
+<span class="s">-514100,Rh(SO4)3----</span>
+<span class="s">-504800,Ru(SO4)3----</span>
+<span class="s">-499900,Pd(SO4)3----</span>
+<span class="s">-495200,Ru(SO4)3---</span>
+<span class="s">-485700,H4P2O7</span>
+<span class="s">-483700,Rh(SO4)3---</span>
+<span class="s">-483600,H3P2O7-</span>
+<span class="s">-480400,H2P2O7--</span>
+<span class="s">-480380,Pt(SO4)3----</span>
+<span class="s">-471400,HP2O7---</span>
+<span class="s">-458700,P2O7----</span>
+<span class="s">-447500,LaF4-</span>
+<span class="s">-437600,LaH2PO4++</span>
+<span class="s">-377900,LaF3</span>
+<span class="s">-376299,Ca(HSiO3)+</span>
+<span class="s">-370691,BeF4--</span>
+<span class="s">-355400,BF4-</span>
+<span class="s">-353025,Mg(HSiO3)+</span>
+<span class="s">-346900,LaSO4+</span>
+<span class="s">-334100,Rh(SO4)2--</span>
+<span class="s">-325400,Ru(SO4)2--</span>
+<span class="s">-319640,Pd(SO4)2--</span>
+<span class="s">-317900,Ru(SO4)2-</span>
+<span class="s">-312970,Cr2O7--</span>
+<span class="s">-312930,CaSO4</span>
+<span class="s">-307890,NaHSiO3</span>
+<span class="s">-307800,LaF2+</span>
+<span class="s">-307000,LaHCO3++</span>
+<span class="s">-306100,Rh(SO4)2-</span>
+<span class="s">-302532,BeF3-</span>
+<span class="s">-300670,Pt(SO4)2--</span>
+<span class="s">-299900,LaCO3+</span>
+<span class="s">-289477,MgSO4</span>
+<span class="s">-288400,LaCl4-</span>
+<span class="s">-281500,HZrO3-</span>
+<span class="s">-279200,HHfO3-</span>
+<span class="s">-276720,Sr(HCO3)+</span>
+<span class="s">-275700,Ba(HCO3)+</span>
+<span class="s">-273830,Ca(HCO3)+</span>
+<span class="s">-273100,H3PO4</span>
+<span class="s">-270140,H2PO4-</span>
+<span class="s">-266500,S2O8--</span>
+<span class="s">-264860,Sr(CO3)</span>
+<span class="s">-264860,SrCO3</span>
+<span class="s">-263830,Ba(CO3)</span>
+<span class="s">-263830,BaCO3</span>
+<span class="s">-262850,Ca(CO3)</span>
+<span class="s">-262850,CaCO3</span>
+<span class="s">-260310,HPO4--</span>
+<span class="s">-257600,LaCl3</span>
+<span class="s">-250200,Mg(HCO3)+</span>
+<span class="s">-249200,H3VO4</span>
+<span class="s">-248700,S4O6--</span>
+<span class="s">-246640,KSO4-</span>
+<span class="s">-243990,H2VO4-</span>
+<span class="s">-243500,PO4---</span>
+<span class="s">-243400,KHSO4</span>
+<span class="s">-242801,HSiO3-</span>
+<span class="s">-241700,HYO2</span>
+<span class="s">-241476,NaSO4-</span>
+<span class="s">-239700,HZrO2+</span>
+<span class="s">-239300,LaO2H</span>
+<span class="s">-238760,Mg(CO3)</span>
+<span class="s">-238760,MgCO3</span>
+<span class="s">-237800,HHfO2+</span>
+<span class="s">-236890,Ag(CO3)2---</span>
+<span class="s">-236800,HNbO3</span>
+<span class="s">-236600,LaF++</span>
+<span class="s">-235640,MnSO4</span>
+<span class="s">-233400,ZrO2</span>
+<span class="s">-233000,HVO4--</span>
+<span class="s">-231600,HScO2</span>
+<span class="s">-231540,B(OH)3</span>
+<span class="s">-231400,HfO2</span>
+<span class="s">-231386,BeF2</span>
+<span class="s">-231000,S2O6--</span>
+<span class="s">-229000,S3O6--</span>
+<span class="s">-229000,S5O6--</span>
+<span class="s">-228460,HTiO3-</span>
+<span class="s">-227400,YO2-</span>
+<span class="s">-227100,NbO3-</span>
+<span class="s">-226700,LaCl2+</span>
+<span class="s">-223400,HWO4-</span>
+<span class="s">-221700,LaO2-</span>
+<span class="s">-218500,WO4--</span>
+<span class="s">-218100,ScO2-</span>
+<span class="s">-214900,VO4---</span>
+<span class="s">-210000,YOH++</span>
+<span class="s">-208900,LaOH++</span>
+<span class="s">-207700,HAlO2</span>
+<span class="s">-206400,HMoO4-</span>
+<span class="s">-204800,H3PO3</span>
+<span class="s">-202350,H2PO3-</span>
+<span class="s">-202290,SrF+</span>
+<span class="s">-201807,BaF+</span>
+<span class="s">-201120,BaF+</span>
+<span class="s">-200400,MoO4--</span>
+<span class="s">-200390,CaF+</span>
+<span class="s">-199190,SiO2</span>
+<span class="s">-198693,AlO2-</span>
+<span class="s">-198100,YO+</span>
+<span class="s">-195900,LaO+</span>
+<span class="s">-195800,LaCl++</span>
+<span class="s">-194000,CaCl2</span>
+<span class="s">-194000,HPO3--</span>
+<span class="s">-191300,LaNO3++</span>
+<span class="s">-190400,ZrOH+++</span>
+<span class="s">-189000,HfOH+++</span>
+<span class="s">-189000,S2O5--</span>
+<span class="s">-187600,ZrO++</span>
+<span class="s">-186000,HfO++</span>
+<span class="s">-183700,HCrO4-</span>
+<span class="s">-183600,ScO+</span>
+<span class="s">-183100,H3AsO4</span>
+<span class="s">-180630,HSO4-</span>
+<span class="s">-180010,H2AsO4-</span>
+<span class="s">-177930,SO4--</span>
+<span class="s">-177690,MgF+</span>
+<span class="s">-174800,CrO4--</span>
+<span class="s">-173300,SrOH+</span>
+<span class="s">-172300,BaOH+</span>
+<span class="s">-172200,HBeO2-</span>
+<span class="s">-171300,CaOH+</span>
+<span class="s">-170790,HAsO4--</span>
+<span class="s">-166000,ReO4-</span>
+<span class="s">-165800,SrCl+</span>
+<span class="s">-165475,Al(OH)++</span>
+<span class="s">-165475,AlOH++</span>
+<span class="s">-164730,BaCl+</span>
+<span class="s">-164000,La+++</span>
+<span class="s">-163800,Y+++</span>
+<span class="s">-163100,CaCl+</span>
+<span class="s">-162240,BO2-</span>
+<span class="s">-158493,BeF+</span>
+<span class="s">-158188,AlO+</span>
+<span class="s">-155700,VOOH+</span>
+<span class="s">-155164,CdF2</span>
+<span class="s">-154970,AsO4---</span>
+<span class="s">-153500,Rh(SO4)</span>
+<span class="s">-152900,BeO2--</span>
+<span class="s">-152370,HSO5-</span>
+<span class="s">-151540,RuCl6---</span>
+<span class="s">-149255,MgOH+</span>
+<span class="s">-147400,H2S2O4</span>
+<span class="s">-146900,HS2O4-</span>
+<span class="s">-146081,CdCl4--</span>
+<span class="s">-145521,BeCl2</span>
+<span class="s">-145200,Ru(SO4)</span>
+<span class="s">-145056,PbF2</span>
+<span class="s">-143500,S2O4--</span>
+<span class="s">-140330,H2AsO3-</span>
+<span class="s">-140300,VO2+</span>
+<span class="s">-140282,HCO3-</span>
+<span class="s">-140200,Sc+++</span>
+<span class="s">-139900,BeOH+</span>
+<span class="s">-139700,MgCl+</span>
+<span class="s">-139200,Ru(SO4)+</span>
+<span class="s">-139000,Pd(SO4)</span>
+<span class="s">-138160,HF2-</span>
+<span class="s">-138100,HCrO2</span>
+<span class="s">-138000,TiO++</span>
+<span class="s">-137300,HGaO2</span>
+<span class="s">-136450,RbF</span>
+<span class="s">-134760,Sr++</span>
+<span class="s">-134030,Ba++</span>
+<span class="s">-133270,Zr++++</span>
+<span class="s">-133177,PbCl4--</span>
+<span class="s">-132600,Hf++++</span>
+<span class="s">-132120,Ca++</span>
+<span class="s">-129310,ZnCl3-</span>
+<span class="s">-128700,GaO2-</span>
+<span class="s">-128600,BeO</span>
+<span class="s">-128570,NaF</span>
+<span class="s">-128000,H2S2O3</span>
+<span class="s">-127500,Rh(SO4)+</span>
+<span class="s">-127200,HS2O3-</span>
+<span class="s">-126191,CO3--</span>
+<span class="s">-126130,HSO3-</span>
+<span class="s">-125300,CrO2-</span>
+<span class="s">-125100,H3PO2</span>
+<span class="s">-124900,S2O3--</span>
+<span class="s">-123641,MnF+</span>
+<span class="s">-122400,H2PO2-</span>
+<span class="s">-121000,HMnO2-</span>
+<span class="s">-120700,RuCl5--</span>
+<span class="s">-120400,MnO4--</span>
+<span class="s">-120300,Pt(SO4)</span>
+<span class="s">-119800,HInO2</span>
+<span class="s">-116300,SO3--</span>
+<span class="s">-115971,CdCl3-</span>
+<span class="s">-115609,Al+++</span>
+<span class="s">-115316,BeCl+</span>
+<span class="s">-112280,AgCl4---</span>
+<span class="s">-111670,TiO2++</span>
+<span class="s">-111500,VOH++</span>
+<span class="s">-111430,Ag(CO3)-</span>
+<span class="s">-110720,HZnO2-</span>
+<span class="s">-108505,Mg++</span>
+<span class="s">-108100,HSeO4-</span>
+<span class="s">-108000,LiOH</span>
+<span class="s">-107600,MnO4-</span>
+<span class="s">-106988,HgCl4--</span>
+<span class="s">-106700,InO2-</span>
+<span class="s">-106700,VO++</span>
+<span class="s">-106100,VO+</span>
+<span class="s">-105500,SeO4--</span>
+<span class="s">-105100,RbOH</span>
+<span class="s">-105000,CsOH</span>
+<span class="s">-104500,KOH</span>
+<span class="s">-104109,ZnF+</span>
+<span class="s">-103900,PdCl4--</span>
+<span class="s">-103579,CuCl4--</span>
+<span class="s">-102600,MnO2--</span>
+<span class="s">-102150,PbCl3-</span>
+<span class="s">-101850,H2SeO3</span>
+<span class="s">-101100,HFeO2</span>
+<span class="s">-100900,CsCl</span>
+<span class="s">-100500,CrOH++</span>
+<span class="s">-99900,NaOH</span>
+<span class="s">-99800,VOH+</span>
+<span class="s">-99250,LiCl</span>
+<span class="s">-98340,HSeO3-</span>
+<span class="s">-98300,ZnCl2</span>
+<span class="s">-97870,RbCl</span>
+<span class="s">-97400,HSbO2</span>
+<span class="s">-97300,HSnO2-</span>
+<span class="s">-97300,MnOH+</span>
+<span class="s">-97016,InF++</span>
+<span class="s">-96240,HAsO2</span>
+<span class="s">-95430,KCl</span>
+<span class="s">-95400,HFeO2-</span>
+<span class="s">-94610,CsBr</span>
+<span class="s">-93290,ZnO2--</span>
+<span class="s">-93250,RhCl4--</span>
+<span class="s">-92910,NaCl</span>
+<span class="s">-92800,CrO+</span>
+<span class="s">-92250,CO2</span>
+<span class="s">-91210,PtCl4--</span>
+<span class="s">-91157,FeF+</span>
+<span class="s">-91100,GaOH++</span>
+<span class="s">-91010,RbBr</span>
+<span class="s">-90550,Be++</span>
+<span class="s">-90010,KBr</span>
+<span class="s">-89963,CuCl3--</span>
+<span class="s">-89730,RuCl4-</span>
+<span class="s">-88400,SeO3--</span>
+<span class="s">-88000,FeO2-</span>
+<span class="s">-87373,CdF+</span>
+<span class="s">-86600,GaO+</span>
+<span class="s">-86500,HCdO2-</span>
+<span class="s">-86290,MnCl+</span>
+<span class="s">-85610,NaBr</span>
+<span class="s">-84851,CdCl2</span>
+<span class="s">-83900,RuCl4--</span>
+<span class="s">-83650,AsO2-</span>
+<span class="s">-83600,Ti+++</span>
+<span class="s">-83460,CsI</span>
+<span class="s">-83400,HCoO2-</span>
+<span class="s">-82710,AgCl3--</span>
+<span class="s">-82400,SbO2-</span>
+<span class="s">-81980,HNiO2-</span>
+<span class="s">-81732,CoF+</span>
+<span class="s">-81500,MnO</span>
+<span class="s">-81190,ZnOH+</span>
+<span class="s">-81000,HPbO2-</span>
+<span class="s">-79768,NiF+</span>
+<span class="s">-79645,FeF++</span>
+<span class="s">-79300,HBiO2</span>
+<span class="s">-78900,RbI</span>
+<span class="s">-77740,KI</span>
+<span class="s">-77700,La++</span>
+<span class="s">-77500,RhCl4-</span>
+<span class="s">-75860,PbF+</span>
+<span class="s">-75338,CuCl3-</span>
+<span class="s">-75216,TlF</span>
+<span class="s">-75100,Ti++</span>
+<span class="s">-74600,InOH++</span>
+<span class="s">-74504,HgCl3-</span>
+<span class="s">-73480,FeCl2</span>
+<span class="s">-72900,NaI</span>
+<span class="s">-71980,SO2</span>
+<span class="s">-71662,HF</span>
+<span class="s">-71600,RuO4--</span>
+<span class="s">-71200,PbCl2</span>
+<span class="s">-69933,Li+</span>
+<span class="s">-69810,PdCl3-</span>
+<span class="s">-69710,Cs+</span>
+<span class="s">-69400,InO+</span>
+<span class="s">-67811,AuCl3--</span>
+<span class="s">-67800,Rb+</span>
+<span class="s">-67510,K+</span>
+<span class="s">-67420,ZnO</span>
+<span class="s">-67340,F-</span>
+<span class="s">-67300,CdO2--</span>
+<span class="s">-66850,ZnCl+</span>
+<span class="s">-65850,FeOH+</span>
+<span class="s">-65550,TlOH</span>
+<span class="s">-64200,NiO2--</span>
+<span class="s">-63530,RhCl3-</span>
+<span class="s">-63200,CoO2--</span>
+<span class="s">-62591,Na+</span>
+<span class="s">-61700,BiO2-</span>
+<span class="s">-61500,CdOH+</span>
+<span class="s">-60100,HCuO2-</span>
+<span class="s">-59226,InCl++</span>
+<span class="s">-58600,SnOH+</span>
+<span class="s">-58560,RuCl3</span>
+<span class="s">-58038,CuCl2-</span>
+<span class="s">-57900,V+++</span>
+<span class="s">-57800,FeOH++</span>
+<span class="s">-57760,PtCl3-</span>
+<span class="s">-57600,HTlO2</span>
+<span class="s">-56690,H2O</span>
+<span class="s">-56025,CoOH+</span>
+<span class="s">-55100,Mn++</span>
+<span class="s">-54380,RuCl3-</span>
+<span class="s">-53950,PbOH+</span>
+<span class="s">-53739,CuF+</span>
+<span class="s">-53600,SnO</span>
+<span class="s">-53100,FeO+</span>
+<span class="s">-53030,FeCl+</span>
+<span class="s">-52850,NiOH+</span>
+<span class="s">-52627,CdCl+</span>
+<span class="s">-52000,V++</span>
+<span class="s">-51560,AgCl2-</span>
+<span class="s">-50720,FeO</span>
+<span class="s">-49459,AgF</span>
+<span class="s">-49300,Cr+++</span>
+<span class="s">-47500,CdO</span>
+<span class="s">-46190,RhCl3</span>
+<span class="s">-46142,CuCl2</span>
+<span class="s">-45200,HHgO2-</span>
+<span class="s">-45157,CoCl+</span>
+<span class="s">-44000,CoO</span>
+<span class="s">-42838,HgCl2</span>
+<span class="s">-41600,TlO2-</span>
+<span class="s">-41200,CuO2--</span>
+<span class="s">-40920,NiCl+</span>
+<span class="s">-39815,TlCl</span>
+<span class="s">-39400,Cr++</span>
+<span class="s">-39350,PbO</span>
+<span class="s">-39340,NiO</span>
+<span class="s">-39050,PbCl+</span>
+<span class="s">-38000,Ga+++</span>
+<span class="s">-37518,FeCl++</span>
+<span class="s">-36781,AuCl2-</span>
+<span class="s">-35332,AuCl4-</span>
+<span class="s">-35200,Zn++</span>
+<span class="s">-35160,PdCl2</span>
+<span class="s">-33970,RhCl2</span>
+<span class="s">-32300,BiOH++</span>
+<span class="s">-31700,HIO3</span>
+<span class="s">-31379,Cl-</span>
+<span class="s">-30600,IO3-</span>
+<span class="s">-30410,HCl</span>
+<span class="s">-30204,HgF+</span>
+<span class="s">-30200,CuOH+</span>
+<span class="s">-29300,BiO+</span>
+<span class="s">-28682,CO</span>
+<span class="s">-26507,NO3-</span>
+<span class="s">-26440,RuCl2+</span>
+<span class="s">-25590,Br3-</span>
+<span class="s">-25060,RuCl2</span>
+<span class="s">-24870,Br-</span>
+<span class="s">-24730,HNO3</span>
+<span class="s">-23700,HIO</span>
+<span class="s">-23400,In+++</span>
+<span class="s">-23280,OCN-</span>
+<span class="s">-23000,CoOH++</span>
+<span class="s">-22608,CuCl</span>
+<span class="s">-22290,PtCl2</span>
+<span class="s">-21900,AgOH</span>
+<span class="s">-21870,Fe++</span>
+<span class="s">-20800,CuO</span>
+<span class="s">-20300,Mn+++</span>
+<span class="s">-20058,Pb(HS)2</span>
+<span class="s">-19700,HBrO</span>
+<span class="s">-19100,HClO</span>
+<span class="s">-19100,ScOH++</span>
+<span class="s">-18990,NH4+</span>
+<span class="s">-18971,Pb(HS)3-</span>
+<span class="s">-18560,Cd++</span>
+<span class="s">-18290,Rh(OH)+</span>
+<span class="s">-17450,AgCl</span>
+<span class="s">-16250,CuCl+</span>
+<span class="s">-14780,RhCl2+</span>
+<span class="s">-14000,IO4-</span>
+<span class="s">-13130,Pd(OH)+</span>
+<span class="s">-13000,Co++</span>
+<span class="s">-12700,HgOH+</span>
+<span class="s">-12410,I-</span>
+<span class="s">-12300,I3-</span>
+<span class="s">-12190,Ru(OH)++</span>
+<span class="s">-12100,HNO2</span>
+<span class="s">-11500,PdO</span>
+<span class="s">-10900,Ni++</span>
+<span class="s">-10470,Ru(OH)+</span>
+<span class="s">-10450,RuO+</span>
+<span class="s">-9200,IO-</span>
+<span class="s">-8900,HgO</span>
+<span class="s">-8800,ClO-</span>
+<span class="s">-8000,BrO-</span>
+<span class="s">-7740,Tl+</span>
+<span class="s">-7738,AgNO3</span>
+<span class="s">-7700,NO2-</span>
+<span class="s">-7220,RhO</span>
+<span class="s">-6673,H2S</span>
+<span class="s">-6570,Sn++</span>
+<span class="s">-6383,NH3</span>
+<span class="s">-5710,Pb++</span>
+<span class="s">-5500,AgO-</span>
+<span class="s">-4500,TlOH++</span>
+<span class="s">-4120,Fe+++</span>
+<span class="s">-3380,RhCl+</span>
+<span class="s">-3200,TlO+</span>
+<span class="s">-3184,AuCl</span>
+<span class="s">-2155,HgCl+</span>
+<span class="s">-2040,ClO4-</span>
+<span class="s">-1900,ClO3-</span>
+<span class="s">-1130,PtO</span>
+<span class="s">-820,Rh(OH)++</span>
+<span class="s">0,Ag(HS)2-</span>
+<span class="s">0,H+</span>
+<span class="s">230,RuO</span>
+<span class="s">1400,HClO2</span>
+<span class="s">1560,Pt(OH)+</span>
+<span class="s">2429,Au(HS)2-</span>
+<span class="s">2500,PdCl+</span>
+<span class="s">2860,HS-</span>
+<span class="s">3140,RhO+</span>
+<span class="s">3215,Xe</span>
+<span class="s">3554,Kr</span>
+<span class="s">3890,Ar</span>
+<span class="s">4100,ClO2-</span>
+<span class="s">4347,N2</span>
+<span class="s">4450,BrO3-</span>
+<span class="s">4565,Ne</span>
+<span class="s">4658,He</span>
+<span class="s">5210,RuCl+</span>
+<span class="s">7100,RuCl++</span>
+<span class="s">8600,H2N2O2</span>
+<span class="s">9375,TlCl++</span>
+<span class="s">10500,HSe-</span>
+<span class="s">11950,Cu+</span>
+<span class="s">15675,Cu++</span>
+<span class="s">15700,S5--</span>
+<span class="s">16500,S4--</span>
+<span class="s">17600,S3--</span>
+<span class="s">18200,HN2O2-</span>
+<span class="s">18330,RhCl++</span>
+<span class="s">18380,PtCl+</span>
+<span class="s">18427,Ag+</span>
+<span class="s">19000,S2--</span>
+<span class="s">19500,SeCN-</span>
+<span class="s">19700,N2H5+</span>
+<span class="s">21100,N2H6++</span>
+<span class="s">22160,SCN-</span>
+<span class="s">22880,Bi+++</span>
+<span class="s">27700,Rh++</span>
+<span class="s">28200,BrO4-</span>
+<span class="s">28600,HCN</span>
+<span class="s">32000,Co+++</span>
+<span class="s">33200,N2O2--</span>
+<span class="s">35900,Ru++</span>
+<span class="s">36710,Hg2++</span>
+<span class="s">39360,Hg++</span>
+<span class="s">41200,CN-</span>
+<span class="s">41440,Ru+++</span>
+<span class="s">42200,Pd++</span>
+<span class="s">51300,Tl+++</span>
+<span class="s">52450,Rh+++</span>
+<span class="s">61600,Pt++</span>
+<span class="s">64300,Ag++</span>
+<span class="s">103600,Au+++&quot;&quot;&quot;</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

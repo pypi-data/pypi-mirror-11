@@ -1,0 +1,407 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Molecular dynamics &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="Tutorials" href="../tutorials.html" />
+    <link rel="next" title="Partly occupied Wannier Functions" href="../wannier/wannier.html" />
+    <link rel="prev" title="Using the spacegroup subpackage" href="../spacegroup/spacegroup.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../tutorials.html" accesskey="U">Tutorials</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="molecular-dynamics">
+<span id="md-tutorial"></span><h1>Molecular dynamics<a class="headerlink" href="#molecular-dynamics" title="Permalink to this headline">¶</a></h1>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">These examples <em>can</em> be used without Asap installed, then
+the ase.EMT calculator (implemented in Python) is used, but nearly
+superhuman patience is required.</p>
+</div>
+<p>Here we demonstrate now simple molecular dynamics is performed.  A
+crystal is set up, the atoms are given momenta corresponding to a
+temperature of 300K, then Newtons second law is integrated numerically
+with a time step of 5 fs (a good choice for copper).</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="sd">&quot;&quot;&quot;Demonstrates molecular dynamics with constant energy.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">ase.lattice.cubic</span> <span class="kn">import</span> <span class="n">FaceCenteredCubic</span>
+<span class="kn">from</span> <span class="nn">ase.md.velocitydistribution</span> <span class="kn">import</span> <span class="n">MaxwellBoltzmannDistribution</span>
+<span class="kn">from</span> <span class="nn">ase.md.verlet</span> <span class="kn">import</span> <span class="n">VelocityVerlet</span>
+<span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">units</span>
+
+<span class="c"># Use Asap for a huge performance increase if it is installed</span>
+<span class="n">use_asap</span> <span class="o">=</span> <span class="bp">False</span>
+
+<span class="k">if</span> <span class="n">use_asap</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">asap3</span> <span class="kn">import</span> <span class="n">EMT</span>
+    <span class="n">size</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+    <span class="n">size</span> <span class="o">=</span> <span class="mi">3</span>
+    
+<span class="c"># Set up a crystal</span>
+<span class="n">atoms</span> <span class="o">=</span> <span class="n">FaceCenteredCubic</span><span class="p">(</span><span class="n">directions</span><span class="o">=</span><span class="p">[[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]],</span>
+                          <span class="n">symbol</span><span class="o">=</span><span class="s">&#39;Cu&#39;</span><span class="p">,</span>
+                          <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">size</span><span class="p">),</span>
+                          <span class="n">pbc</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+<span class="c"># Describe the interatomic interactions with the Effective Medium Theory</span>
+<span class="n">atoms</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+
+<span class="c"># Set the momenta corresponding to T=300K</span>
+<span class="n">MaxwellBoltzmannDistribution</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="mi">300</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span><span class="p">)</span>
+
+<span class="c"># We want to run MD with constant energy using the VelocityVerlet algorithm.</span>
+<span class="n">dyn</span> <span class="o">=</span> <span class="n">VelocityVerlet</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="mi">5</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">fs</span><span class="p">)</span>  <span class="c"># 5 fs time step.</span>
+
+
+<span class="k">def</span> <span class="nf">printenergy</span><span class="p">(</span><span class="n">a</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Function to print the potential, kinetic and total energy&quot;&quot;&quot;</span>
+    <span class="n">epot</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+    <span class="n">ekin</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">get_kinetic_energy</span><span class="p">()</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;Energy per atom: Epot = </span><span class="si">%.3f</span><span class="s">eV  Ekin = </span><span class="si">%.3f</span><span class="s">eV (T=</span><span class="si">%3.0f</span><span class="s">K)  &#39;</span>
+          <span class="s">&#39;Etot = </span><span class="si">%.3f</span><span class="s">eV&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">epot</span><span class="p">,</span> <span class="n">ekin</span><span class="p">,</span> <span class="n">ekin</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.5</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span><span class="p">),</span> <span class="n">epot</span> <span class="o">+</span> <span class="n">ekin</span><span class="p">))</span>
+
+<span class="c"># Now run the dynamics</span>
+<span class="n">printenergy</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">):</span>
+    <span class="n">dyn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+    <span class="n">printenergy</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Note how the total energy is conserved, but the kinetic energy quickly
+drops to half the expected value.  Why?</p>
+<p>Instead of printing within a loop, it is possible to use an &#8220;observer&#8221;
+to observe the atoms and do the printing (or more sophisticated
+analysis).</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="sd">&quot;&quot;&quot;Demonstrates molecular dynamics with constant energy.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">ase.lattice.cubic</span> <span class="kn">import</span> <span class="n">FaceCenteredCubic</span>
+<span class="kn">from</span> <span class="nn">ase.md.velocitydistribution</span> <span class="kn">import</span> <span class="n">MaxwellBoltzmannDistribution</span>
+<span class="kn">from</span> <span class="nn">ase.md.verlet</span> <span class="kn">import</span> <span class="n">VelocityVerlet</span>
+<span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">units</span>
+
+<span class="c"># Use Asap for a huge performance increase if it is installed</span>
+<span class="n">use_asap</span> <span class="o">=</span> <span class="bp">True</span>
+
+<span class="k">if</span> <span class="n">use_asap</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">asap3</span> <span class="kn">import</span> <span class="n">EMT</span>
+    <span class="n">size</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+    <span class="n">size</span> <span class="o">=</span> <span class="mi">3</span>
+    
+<span class="c"># Set up a crystal</span>
+<span class="n">atoms</span> <span class="o">=</span> <span class="n">FaceCenteredCubic</span><span class="p">(</span><span class="n">directions</span><span class="o">=</span><span class="p">[[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]],</span>
+                          <span class="n">symbol</span><span class="o">=</span><span class="s">&quot;Cu&quot;</span><span class="p">,</span>
+                          <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">size</span><span class="p">),</span>
+                          <span class="n">pbc</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+<span class="c"># Describe the interatomic interactions with the Effective Medium Theory</span>
+<span class="n">atoms</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+
+<span class="c"># Set the momenta corresponding to T=300K</span>
+<span class="n">MaxwellBoltzmannDistribution</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="mi">300</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span><span class="p">)</span>
+
+<span class="c"># We want to run MD with constant energy using the VelocityVerlet algorithm.</span>
+<span class="n">dyn</span> <span class="o">=</span> <span class="n">VelocityVerlet</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="mi">5</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">fs</span><span class="p">)</span>  <span class="c"># 5 fs time step.</span>
+
+
+<span class="k">def</span> <span class="nf">printenergy</span><span class="p">(</span><span class="n">a</span><span class="o">=</span><span class="n">atoms</span><span class="p">):</span>  <span class="c"># store a reference to atoms in the definition.</span>
+    <span class="sd">&quot;&quot;&quot;Function to print the potential, kinetic and total energy.&quot;&quot;&quot;</span>
+    <span class="n">epot</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+    <span class="n">ekin</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">get_kinetic_energy</span><span class="p">()</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;Energy per atom: Epot = </span><span class="si">%.3f</span><span class="s">eV  Ekin = </span><span class="si">%.3f</span><span class="s">eV (T=</span><span class="si">%3.0f</span><span class="s">K)  &#39;</span>
+          <span class="s">&#39;Etot = </span><span class="si">%.3f</span><span class="s">eV&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">epot</span><span class="p">,</span> <span class="n">ekin</span><span class="p">,</span> <span class="n">ekin</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.5</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span><span class="p">),</span> <span class="n">epot</span> <span class="o">+</span> <span class="n">ekin</span><span class="p">))</span>
+
+<span class="c"># Now run the dynamics</span>
+<span class="n">dyn</span><span class="o">.</span><span class="n">attach</span><span class="p">(</span><span class="n">printenergy</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">printenergy</span><span class="p">()</span>
+<span class="n">dyn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="mi">200</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="section" id="constant-temperature-md">
+<h2>Constant temperature MD<a class="headerlink" href="#constant-temperature-md" title="Permalink to this headline">¶</a></h2>
+<p>Often, you want to control the temperature of an MD simulation.  This
+can be done with the Langevin dynamics module.  In the previous
+examples, replace the line <tt class="docutils literal"><span class="pre">dyn</span> <span class="pre">=</span> <span class="pre">VelocityVerlet(...)</span></tt> with:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">dyn</span> <span class="o">=</span> <span class="n">Langevin</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="mi">5</span><span class="o">*</span><span class="n">units</span><span class="o">.</span><span class="n">fs</span><span class="p">,</span> <span class="n">T</span><span class="o">*</span><span class="n">units</span><span class="o">.</span><span class="n">kB</span><span class="p">,</span> <span class="mf">0.002</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>where T is the desired temperature in Kelvin.  You also need to import
+Langevin, see the class below.</p>
+<p>The Langevin dynamics will then slowly adjust the total energy of the
+system so the temperature approaches the desired one.</p>
+<p>As a slightly less boring example, let us use this to melt a chunk of
+copper by starting the simulation without any momentum of the atoms
+(no kinetic energy), and with a desired temperature above the melting
+point.  We will also save information about the atoms in a trajectory
+file called moldyn3.traj.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="sd">&quot;&quot;&quot;Demonstrates molecular dynamics with constant energy.&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+
+<span class="kn">from</span> <span class="nn">ase.lattice.cubic</span> <span class="kn">import</span> <span class="n">FaceCenteredCubic</span>
+<span class="kn">from</span> <span class="nn">ase.md.langevin</span> <span class="kn">import</span> <span class="n">Langevin</span>
+<span class="kn">from</span> <span class="nn">ase.io.trajectory</span> <span class="kn">import</span> <span class="n">Trajectory</span>
+<span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">units</span>
+
+<span class="kn">from</span> <span class="nn">asap3</span> <span class="kn">import</span> <span class="n">EMT</span>  <span class="c"># Way too slow with ase.EMT !</span>
+<span class="n">size</span> <span class="o">=</span> <span class="mi">10</span>
+
+<span class="n">T</span> <span class="o">=</span> <span class="mi">1500</span>  <span class="c"># Kelvin</span>
+
+<span class="c"># Set up a crystal</span>
+<span class="n">atoms</span> <span class="o">=</span> <span class="n">FaceCenteredCubic</span><span class="p">(</span><span class="n">directions</span><span class="o">=</span><span class="p">[[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]],</span>
+                          <span class="n">symbol</span><span class="o">=</span><span class="s">&quot;Cu&quot;</span><span class="p">,</span>
+                          <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">size</span><span class="p">),</span>
+                          <span class="n">pbc</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+
+<span class="c"># Describe the interatomic interactions with the Effective Medium Theory</span>
+<span class="n">atoms</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+
+<span class="c"># We want to run MD with constant energy using the Langevin algorithm</span>
+<span class="c"># with a time step of 5 fs, the temperature T and the friction</span>
+<span class="c"># coefficient to 0.02 atomic units.</span>
+<span class="n">dyn</span> <span class="o">=</span> <span class="n">Langevin</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="mi">5</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">fs</span><span class="p">,</span> <span class="n">T</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span><span class="p">,</span> <span class="mf">0.002</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">printenergy</span><span class="p">(</span><span class="n">a</span><span class="o">=</span><span class="n">atoms</span><span class="p">):</span>  <span class="c"># store a reference to atoms in the definition.</span>
+    <span class="sd">&quot;&quot;&quot;Function to print the potential, kinetic and total energy.&quot;&quot;&quot;</span>
+    <span class="n">epot</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+    <span class="n">ekin</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">get_kinetic_energy</span><span class="p">()</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;Energy per atom: Epot = </span><span class="si">%.3f</span><span class="s">eV  Ekin = </span><span class="si">%.3f</span><span class="s">eV (T=</span><span class="si">%3.0f</span><span class="s">K)  &#39;</span>
+          <span class="s">&#39;Etot = </span><span class="si">%.3f</span><span class="s">eV&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">epot</span><span class="p">,</span> <span class="n">ekin</span><span class="p">,</span> <span class="n">ekin</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.5</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span><span class="p">),</span> <span class="n">epot</span> <span class="o">+</span> <span class="n">ekin</span><span class="p">))</span>
+    
+<span class="n">dyn</span><span class="o">.</span><span class="n">attach</span><span class="p">(</span><span class="n">printenergy</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+
+<span class="c"># We also want to save the positions of all atoms after every 100th time step.</span>
+<span class="n">traj</span> <span class="o">=</span> <span class="n">Trajectory</span><span class="p">(</span><span class="s">&#39;moldyn3.traj&#39;</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">,</span> <span class="n">atoms</span><span class="p">)</span>
+<span class="n">dyn</span><span class="o">.</span><span class="n">attach</span><span class="p">(</span><span class="n">traj</span><span class="o">.</span><span class="n">write</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+
+<span class="c"># Now run the dynamics</span>
+<span class="n">printenergy</span><span class="p">()</span>
+<span class="n">dyn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="mi">5000</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>After running the simulation, you can study the result with the
+command</p>
+<div class="highlight-python"><div class="highlight"><pre>ase-gui moldyn3.traj
+</pre></div>
+</div>
+<p>Try plotting the kinetic energy.  You will <em>not</em> see a well-defined
+melting point due to finite size effects (including surface melting),
+but you will probably see an almost flat region where the inside of
+the system melts.  The outermost layers melt at a lower temperature.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">The Langevin dynamics will by default keep the position and momentum
+of the center of mass unperturbed. This is another improvement over
+just setting momenta corresponding to a temperature, as we did before.</p>
+</div>
+</div>
+<div class="section" id="isolated-particle-md">
+<h2>Isolated particle MD<a class="headerlink" href="#isolated-particle-md" title="Permalink to this headline">¶</a></h2>
+<p>When simulating isolated particles with MD, it is sometimes preferable
+to set random momenta corresponding to a specific temperature and let the
+system evolve freely. With a relatively high temperature, the is however
+a risk that the collection of atoms will drift out of the simulation box
+because the randomized momenta gave the center of mass a small but
+non-zero velocity too.</p>
+<p>Let us see what happens when we propagate a nanoparticle for a long time:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="sd">&quot;&quot;&quot;Demonstrates molecular dynamics for isolated particles.&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+
+<span class="kn">from</span> <span class="nn">ase.cluster.cubic</span> <span class="kn">import</span> <span class="n">FaceCenteredCubic</span>
+<span class="kn">from</span> <span class="nn">ase.optimize</span> <span class="kn">import</span> <span class="n">QuasiNewton</span>
+<span class="kn">from</span> <span class="nn">ase.md.velocitydistribution</span> <span class="kn">import</span> <span class="p">(</span><span class="n">MaxwellBoltzmannDistribution</span><span class="p">,</span>
+                                         <span class="n">Stationary</span><span class="p">,</span> <span class="n">ZeroRotation</span><span class="p">)</span>
+<span class="kn">from</span> <span class="nn">ase.md.verlet</span> <span class="kn">import</span> <span class="n">VelocityVerlet</span>
+<span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">units</span>
+
+<span class="c"># Use Asap for a huge performance increase if it is installed</span>
+<span class="n">use_asap</span> <span class="o">=</span> <span class="bp">True</span>
+
+<span class="k">if</span> <span class="n">use_asap</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">asap3</span> <span class="kn">import</span> <span class="n">EMT</span>
+    <span class="n">size</span> <span class="o">=</span> <span class="mi">4</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+    <span class="n">size</span> <span class="o">=</span> <span class="mi">2</span>
+
+<span class="c"># Set up a nanoparticle</span>
+<span class="n">atoms</span> <span class="o">=</span> <span class="n">FaceCenteredCubic</span><span class="p">(</span><span class="s">&#39;Cu&#39;</span><span class="p">,</span>
+                          <span class="n">surfaces</span><span class="o">=</span><span class="p">[[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]],</span>
+                          <span class="n">layers</span><span class="o">=</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">size</span><span class="p">),</span>
+                          <span class="n">vacuum</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+
+<span class="c"># Describe the interatomic interactions with the Effective Medium Theory</span>
+<span class="n">atoms</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+
+<span class="c"># Do a quick relaxation of the cluster</span>
+<span class="n">qn</span> <span class="o">=</span> <span class="n">QuasiNewton</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+<span class="n">qn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="mf">0.001</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
+
+<span class="c"># Set the momenta corresponding to T=1200K</span>
+<span class="n">MaxwellBoltzmannDistribution</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="mi">1200</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span><span class="p">)</span>
+<span class="n">Stationary</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>  <span class="c"># zero linear momentum</span>
+<span class="n">ZeroRotation</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>  <span class="c"># zero angular momentum</span>
+
+<span class="c"># We want to run MD using the VelocityVerlet algorithm.</span>
+
+<span class="c"># Save trajectory:</span>
+<span class="n">dyn</span> <span class="o">=</span> <span class="n">VelocityVerlet</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="mi">5</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">fs</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="s">&#39;moldyn4.traj&#39;</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">printenergy</span><span class="p">(</span><span class="n">a</span><span class="o">=</span><span class="n">atoms</span><span class="p">):</span>  <span class="c"># store a reference to atoms in the definition.</span>
+    <span class="sd">&quot;&quot;&quot;Function to print the potential, kinetic and total energy.&quot;&quot;&quot;</span>
+    <span class="n">epot</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+    <span class="n">ekin</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">get_kinetic_energy</span><span class="p">()</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;Energy per atom: Epot = </span><span class="si">%.3f</span><span class="s">eV  Ekin = </span><span class="si">%.3f</span><span class="s">eV (T=</span><span class="si">%3.0f</span><span class="s">K)  &#39;</span>
+          <span class="s">&#39;Etot = </span><span class="si">%.3f</span><span class="s">eV&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">epot</span><span class="p">,</span> <span class="n">ekin</span><span class="p">,</span> <span class="n">ekin</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.5</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span><span class="p">),</span> <span class="n">epot</span> <span class="o">+</span> <span class="n">ekin</span><span class="p">))</span>
+
+<span class="n">dyn</span><span class="o">.</span><span class="n">attach</span><span class="p">(</span><span class="n">printenergy</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+
+<span class="c"># Now run the dynamics</span>
+<span class="n">printenergy</span><span class="p">()</span>
+<span class="n">dyn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="mi">2000</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>After running the simulation, use <a class="reference internal" href="../../ase/gui/gui.html#ase-gui"><em>ase-gui</em></a> to compare the results
+with how it looks if you comment out either the line that says <span class="math">\(Stationary(atoms)\)</span>, <span class="math">\(ZeroRotation(atoms)\)</span> or both.</p>
+<div class="highlight-python"><div class="highlight"><pre>ase-gui moldyn4.traj
+</pre></div>
+</div>
+<p>Try playing the movie with a high frame rate and set frame skipping to a
+low number. Can you spot the subtle difference?</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>This Page</h3>
+            <ul>
+<li><a class="reference internal" href="#">Molecular dynamics</a><ul>
+<li><a class="reference internal" href="#constant-temperature-md">Constant temperature MD</a></li>
+<li><a class="reference internal" href="#isolated-particle-md">Isolated particle MD</a></li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="../spacegroup/spacegroup.html" title="previous chapter">Using the spacegroup subpackage</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="../wannier/wannier.html" title="next chapter">Partly occupied Wannier Functions</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../../_sources/tutorials/md/md.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../tutorials.html" accesskey="U">Tutorials</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

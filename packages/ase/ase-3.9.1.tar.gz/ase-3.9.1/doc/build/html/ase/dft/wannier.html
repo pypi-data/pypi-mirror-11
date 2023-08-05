@@ -1,0 +1,457 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Maximally localized Wannier functions &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="Density Functional Theory" href="dft.html" />
+    <link rel="next" title="Density of states" href="dos.html" />
+    <link rel="prev" title="Brillouin zone sampling" href="kpoints.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+          <li><a href="dft.html" accesskey="U">Density Functional Theory</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <span class="target" id="module-ase.dft.wannier"></span><div class="section" id="maximally-localized-wannier-functions">
+<h1>Maximally localized Wannier functions<a class="headerlink" href="#maximally-localized-wannier-functions" title="Permalink to this headline">¶</a></h1>
+<p>This page describes how to construct the Wannier orbitals using the
+class <a class="reference internal" href="#ase.dft.wannier.Wannier" title="ase.dft.wannier.Wannier"><tt class="xref py py-class docutils literal"><span class="pre">Wannier</span></tt></a>. The page is organized as follows:</p>
+<ul class="simple">
+<li><a class="reference internal" href="#introduction">Introduction</a>: A short summary of the basic theory.</li>
+<li><a class="reference internal" href="#the-wannier-class">The Wannier class</a> : A description of how the Wannier class is
+used, and the methods defined within.</li>
+</ul>
+<div class="section" id="introduction">
+<h2>Introduction<a class="headerlink" href="#introduction" title="Permalink to this headline">¶</a></h2>
+<p>The point of Wannier functions is the transform the extended Bloch
+eigenstates of a DFT calculation, into a smaller set of states
+designed to facilitate the analysis of e.g. chemical bonding. This is
+achieved by designing the Wannier functions to be localized in real
+space instead of energy (which would be the eigen states).</p>
+<p>The standard Wannier transformation is a unitary rotation of the Bloch
+states. This implies that the Wannier functions (WF) span the same
+Hilbert space as the Bloch states, i.e. they have the same eigenvalue
+spectrum, and the original Bloch states can all be exactly reproduced
+from a linear combination of the WF. For maximally localized Wannier
+functions (MLWF), the unitary transformation is chosen such that the
+spread of the resulting WF is minimized.</p>
+<p>The standard choice is to make a unitary transformation of the
+occupied bands only, thus resulting in as many WF as there are
+occupied bands. If you make a rotation using more bands, the
+localization will be improved, but the number of wannier functions
+increase, thus making orbital based analysis harder.</p>
+<p>The class defined here allows for construction of <em>partly</em> occupied
+MLWF. In this scheme the transformation is still a unitary rotation
+for the lowest states (the <em>fixed space</em>), but it uses a dynamically
+optimized linear combination of the remaining orbitals (the <em>active
+space</em>) to improve localization. This implies that e.g. the
+eigenvalues of the Bloch states contained in the fixed space can be
+exactly reproduced by the resulting WF, whereas the largest
+eigenvalues of the WF will not necessarily correspond to any &#8220;real&#8221;
+eigenvalues (this is irrelevant, as the fixed space is usually chosen
+large enough, i.e. high enough above the fermilevel, that the
+remaining DFT eigenvalues are meaningless anyway).</p>
+<p>For the theory behind this method see the paper &#8220;Partly Occupied
+Wannier Functions&#8221; Thygesen, Hansen and Jacobsen, <em>Phys. Rev. Lett</em>,
+Vol. <strong>94</strong>, 26405 (2005).</p>
+</div>
+<div class="section" id="the-wannier-class">
+<h2>The Wannier class<a class="headerlink" href="#the-wannier-class" title="Permalink to this headline">¶</a></h2>
+<p>Usual invocation:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.dft</span> <span class="kn">import</span> <span class="n">Wannier</span>
+<span class="n">wan</span> <span class="o">=</span> <span class="n">Wannier</span><span class="p">(</span><span class="n">nwannier</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">calc</span><span class="o">=</span><span class="n">GPAW</span><span class="p">(</span><span class="s">&#39;save.gpw&#39;</span><span class="p">),</span> <span class="n">fixedstates</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">wan</span><span class="o">.</span><span class="n">localize</span><span class="p">()</span> <span class="c"># Optimize rotation to give maximal localization</span>
+<span class="n">wan</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s">&#39;file.pickle&#39;</span><span class="p">)</span> <span class="c"># Save localization and rotation matrix</span>
+
+<span class="c"># Re-load using saved wannier data</span>
+<span class="n">wan</span> <span class="o">=</span> <span class="n">Wannier</span><span class="p">(</span><span class="n">nwannier</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">calc</span><span class="o">=</span><span class="n">calc</span><span class="p">,</span> <span class="n">fixedstates</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="nb">file</span><span class="o">=</span><span class="s">&#39;file.pickle&#39;</span><span class="p">)</span>
+
+<span class="c"># Write a cube file</span>
+<span class="n">wan</span><span class="o">.</span><span class="n">write_cube</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">fname</span><span class="o">=</span><span class="s">&#39;wannierfunction5.cube&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>For examples of how to use the <strong>Wannier</strong> class, see the
+<a class="reference internal" href="../../tutorials/wannier/wannier.html#wannier-tutorial"><em>Partly occupied Wannier Functions</em></a> tutorial.</p>
+<dl class="class">
+<dt id="ase.dft.wannier.Wannier">
+<em class="property">class </em><tt class="descclassname">ase.dft.wannier.</tt><tt class="descname">Wannier</tt><big>(</big><em>nwannier</em>, <em>calc</em>, <em>file=None</em>, <em>nbands=None</em>, <em>fixedenergy=None</em>, <em>fixedstates=None</em>, <em>spin=0</em>, <em>initialwannier='random'</em>, <em>seed=None</em>, <em>verbose=False</em><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier" title="Permalink to this definition">¶</a></dt>
+<dd><p>Maximally localized Wannier Functions</p>
+<p>Find the set of maximally localized Wannier functions using the
+spread functional of Marzari and Vanderbilt (PRB 56, 1997 page
+12847).</p>
+<p>Required arguments:</p>
+<blockquote>
+<div><dl class="docutils">
+<dt><tt class="docutils literal"><span class="pre">nwannier</span></tt>: The number of Wannier functions you wish to construct.</dt>
+<dd>This must be at least half the number of electrons in the system
+and at most equal to the number of bands in the calculation.</dd>
+<dt><tt class="docutils literal"><span class="pre">calc</span></tt>: A converged DFT calculator class.</dt>
+<dd>If <tt class="docutils literal"><span class="pre">file</span></tt> arg. is not provided, the calculator <em>must</em> provide the
+method <tt class="docutils literal"><span class="pre">get_wannier_localization_matrix</span></tt>, and contain the
+wavefunctions (save files with only the density is not enough).
+If the localization matrix is read from file, this is not needed,
+unless <tt class="docutils literal"><span class="pre">get_function</span></tt> or <tt class="docutils literal"><span class="pre">write_cube</span></tt> is called.</dd>
+</dl>
+</div></blockquote>
+<p>Optional arguments:</p>
+<blockquote>
+<div><dl class="docutils">
+<dt><tt class="docutils literal"><span class="pre">nbands</span></tt>: Bands to include in localization.</dt>
+<dd>The number of bands considered by Wannier can be smaller than the
+number of bands in the calculator. This is useful if the highest
+bands of the DFT calculation are not well converged.</dd>
+<dt><tt class="docutils literal"><span class="pre">spin</span></tt>: The spin channel to be considered.</dt>
+<dd>The Wannier code treats each spin channel independently.</dd>
+<dt><tt class="docutils literal"><span class="pre">fixedenergy</span></tt> / <tt class="docutils literal"><span class="pre">fixedstates</span></tt>: Fixed part of Heilbert space.</dt>
+<dd>Determine the fixed part of Hilbert space by either a maximal
+energy <em>or</em> a number of bands (possibly a list for multiple
+k-points).
+Default is None meaning that the number of fixed states is equated
+to <tt class="docutils literal"><span class="pre">nwannier</span></tt>.</dd>
+</dl>
+<p><tt class="docutils literal"><span class="pre">file</span></tt>: Read localization and rotation matrices from this file.</p>
+<dl class="docutils">
+<dt><tt class="docutils literal"><span class="pre">initialwannier</span></tt>: Initial guess for Wannier rotation matrix.</dt>
+<dd>Can be &#8216;bloch&#8217; to start from the Bloch states, &#8216;random&#8217; to be
+randomized, or a list passed to calc.get_initial_wannier.</dd>
+</dl>
+<p><tt class="docutils literal"><span class="pre">seed</span></tt>: Seed for random <tt class="docutils literal"><span class="pre">initialwannier</span></tt>.</p>
+<p><tt class="docutils literal"><span class="pre">verbose</span></tt>: True / False level of verbosity.</p>
+</div></blockquote>
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.get_centers">
+<tt class="descname">get_centers</tt><big>(</big><em>scaled=False</em><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.get_centers"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.get_centers" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculate the Wannier centers</p>
+<div class="highlight-python"><div class="highlight"><pre>pos =  L / 2pi * phase(diag(Z))
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.get_function">
+<tt class="descname">get_function</tt><big>(</big><em>index</em>, <em>repeat=None</em><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.get_function"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.get_function" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get Wannier function on grid.</p>
+<p>Returns an array with the funcion values of the indicated Wannier
+function on a grid with the size of the <em>repeated</em> unit cell.</p>
+<p>For a calculation using <strong>k</strong>-points the relevant unit cell for
+eg. visualization of the Wannier orbitals is not the original unit
+cell, but rather a larger unit cell defined by repeating the
+original unit cell by the number of <strong>k</strong>-points in each direction.
+Note that for a <span class="math">\(\Gamma\)</span>-point calculation the large unit cell
+coinsides with the original unit cell.
+The large unitcell also defines the periodicity of the Wannier
+orbitals.</p>
+<p><tt class="docutils literal"><span class="pre">index</span></tt> can be either a single WF or a coordinate vector in terms
+of the WFs.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.get_functional_value">
+<tt class="descname">get_functional_value</tt><big>(</big><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.get_functional_value"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.get_functional_value" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculate the value of the spread functional.</p>
+<div class="highlight-python"><div class="highlight"><pre>Tr[|ZI|^2]=sum(I)sum(n) w_i|Z_(i)_nn|^2,
+</pre></div>
+</div>
+<p>where w_i are weights.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.get_hamiltonian">
+<tt class="descname">get_hamiltonian</tt><big>(</big><em>k=0</em><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.get_hamiltonian"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.get_hamiltonian" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get Hamiltonian at existing k-vector of index k</p>
+<div class="highlight-python"><div class="highlight"><pre>        dag
+H(k) = V    diag(eps )  V
+        k           k    k
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.get_hamiltonian_kpoint">
+<tt class="descname">get_hamiltonian_kpoint</tt><big>(</big><em>kpt_c</em><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.get_hamiltonian_kpoint"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.get_hamiltonian_kpoint" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get Hamiltonian at some new arbitrary k-vector</p>
+<div class="highlight-python"><div class="highlight"><pre>        _   ik.R 
+H(k) = &gt;_  e     H(R)
+        R         
+</pre></div>
+</div>
+<p>Warning: This method moves all Wannier functions to cell (0, 0, 0)</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.get_hopping">
+<tt class="descname">get_hopping</tt><big>(</big><em>R</em><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.get_hopping"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.get_hopping" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the matrix H(R)_nm=&lt;0,n|H|R,m&gt;.</p>
+<div class="highlight-python"><div class="highlight"><pre>                      1   _   -ik.R 
+H(R) = &lt;0,n|H|R,m&gt; = --- &gt;_  e      H(k)
+                      Nk  k         
+</pre></div>
+</div>
+<p>where R is the cell-distance (in units of the basis vectors of
+the small cell) and n,m are indices of the Wannier functions.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.get_pdos">
+<tt class="descname">get_pdos</tt><big>(</big><em>w</em>, <em>energies</em>, <em>width</em><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.get_pdos"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.get_pdos" title="Permalink to this definition">¶</a></dt>
+<dd><p>Projected density of states (PDOS).</p>
+<p>Returns the (PDOS) for Wannier function <tt class="docutils literal"><span class="pre">w</span></tt>. The calculation
+is performed over the energy grid specified in energies. The
+PDOS is produced as a sum of Gaussians centered at the points
+of the energy grid and with the specified width.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.get_radii">
+<tt class="descname">get_radii</tt><big>(</big><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.get_radii"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.get_radii" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculate the spread of the Wannier functions.</p>
+<div class="highlight-python"><div class="highlight"><pre>              --  /  L  \ 2       2
+radius**2 = - &gt;   | --- |   ln |Z| 
+              --d \ 2pi /
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.initialize">
+<tt class="descname">initialize</tt><big>(</big><em>file=None</em>, <em>initialwannier='random'</em>, <em>seed=None</em><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.initialize"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.initialize" title="Permalink to this definition">¶</a></dt>
+<dd><p>Re-initialize current rotation matrix.</p>
+<p>Keywords are identical to those of the constructor.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.localize">
+<tt class="descname">localize</tt><big>(</big><em>step=0.25</em>, <em>tolerance=1e-08</em>, <em>updaterot=True</em>, <em>updatecoeff=True</em><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.localize"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.localize" title="Permalink to this definition">¶</a></dt>
+<dd><p>Optimize rotation to give maximal localization</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.max_spread">
+<tt class="descname">max_spread</tt><big>(</big><em>directions=[0, 1, 2]</em><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.max_spread"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.max_spread" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the index of the most delocalized Wannier function
+together with the value of the spread functional</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.save">
+<tt class="descname">save</tt><big>(</big><em>file</em><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.save"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.save" title="Permalink to this definition">¶</a></dt>
+<dd><p>Save information on localization and rotation matrices to file.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.translate">
+<tt class="descname">translate</tt><big>(</big><em>w</em>, <em>R</em><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.translate"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.translate" title="Permalink to this definition">¶</a></dt>
+<dd><p>Translate the w&#8217;th Wannier function</p>
+<p>The distance vector R = [n1, n2, n3], is in units of the basis
+vectors of the small cell.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.translate_all_to_cell">
+<tt class="descname">translate_all_to_cell</tt><big>(</big><em>cell=[0, 0, 0]</em><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.translate_all_to_cell"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.translate_all_to_cell" title="Permalink to this definition">¶</a></dt>
+<dd><p>Translate all Wannier functions to specified cell.</p>
+<p>Move all Wannier orbitals to a specific unit cell.  There
+exists an arbitrariness in the positions of the Wannier
+orbitals relative to the unit cell. This method can move all
+orbitals to the unit cell specified by <tt class="docutils literal"><span class="pre">cell</span></tt>.  For a
+<span class="math">\(\Gamma\)</span>-point calculation, this has no effect. For a
+<strong>k</strong>-point calculation the periodicity of the orbitals are
+given by the large unit cell defined by repeating the original
+unitcell by the number of <strong>k</strong>-points in each direction.  In
+this case it is usefull to move the orbitals away from the
+boundaries of the large cell before plotting them. For a bulk
+calculation with, say 10x10x10 <strong>k</strong> points, one could move
+the orbitals to the cell [2,2,2].  In this way the pbc
+boundary conditions will not be noticed.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.translate_to_cell">
+<tt class="descname">translate_to_cell</tt><big>(</big><em>w</em>, <em>cell</em><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.translate_to_cell"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.translate_to_cell" title="Permalink to this definition">¶</a></dt>
+<dd><p>Translate the w&#8217;th Wannier function to specified cell</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.dft.wannier.Wannier.write_cube">
+<tt class="descname">write_cube</tt><big>(</big><em>index</em>, <em>fname</em>, <em>repeat=None</em>, <em>real=True</em><big>)</big><a class="reference internal" href="../../_modules/ase/dft/wannier.html#Wannier.write_cube"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.dft.wannier.Wannier.write_cube" title="Permalink to this definition">¶</a></dt>
+<dd><p>Dump specified Wannier function to a cube file</p>
+</dd></dl>
+
+</dd></dl>
+
+<p>In Dacapo, the inialwannier keyword can be a list as described below:</p>
+<blockquote>
+<div><p>Setup an initial set of Wannier orbitals.
+<em>initialwannier</em> can set up a starting guess for the Wannier
+functions.  This is important to speed up convergence in
+particular for large systems For transition elements with <strong>d</strong>
+electrons you will always find 5 highly localized <strong>d</strong>-orbitals
+centered at the atom.  Placing 5 <strong>d</strong>-like orbitals with a radius
+of 0.4 Angstroms and center at atom no. 7, and 3 <strong>p</strong>-like
+orbitals with a radius of 0.4 Angstroms and center at atom no. 27
+looks like this:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">initialwannier</span> <span class="o">=</span> <span class="p">[[[</span><span class="mi">7</span><span class="p">],</span><span class="mi">2</span><span class="p">,</span><span class="mf">0.4</span><span class="p">],[[</span><span class="mi">27</span><span class="p">],</span><span class="mi">1</span><span class="p">,</span><span class="mf">0.4</span><span class="p">]]</span>
+</pre></div>
+</div>
+<p>Placing only the l=2, m=-2 and m=-1 orbitals at atom no. 7 looks
+like this:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">initialwannier</span> <span class="o">=</span> <span class="p">[[[</span><span class="mi">7</span><span class="p">],</span><span class="mi">2</span><span class="p">,</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span><span class="mf">0.4</span><span class="p">],[[</span><span class="mi">7</span><span class="p">],</span><span class="mi">2</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mf">0.4</span><span class="p">]]</span>
+</pre></div>
+</div>
+<p>I.e. if you do not specify the m quantum number all allowed values
+are used.  Instead of placing an orbital at an atom, you can place
+it at a specified position. For example the following:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">initialwannier</span> <span class="o">=</span> <span class="p">[[[</span><span class="mf">0.5</span><span class="p">,</span><span class="mf">0.5</span><span class="p">,</span><span class="mf">0.5</span><span class="p">],</span><span class="mi">0</span><span class="p">,</span><span class="mf">0.5</span><span class="p">]]</span>
+</pre></div>
+</div>
+<p>places an <strong>s</strong> orbital with radius 0.5 Angstroms at the position
+(0.5, 0.5, 0.5) in scaled coordinates of the unit cell.</p>
+</div></blockquote>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p>For calculations using <strong>k</strong>-points, make sure that the
+<span class="math">\(\Gamma\)</span>-point is included in the <strong>k</strong>-point grid.
+The Wannier module does not support <strong>k</strong>-point reduction by symmetry, so
+you must use the <tt class="docutils literal"><span class="pre">usesymm=False</span></tt> keyword in the calc, and
+shift all <strong>k</strong>-points by a small amount (but not less than 2e-5
+in) in e.g. the x direction, before performing the calculation.
+If this is not done the symmetry program will still use time-reversal
+symmetry to reduce the number of <strong>k</strong>-points by a factor 2.
+The shift can be performed like this:</p>
+<div class="last highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.dft.kpoints</span> <span class="kn">import</span> <span class="n">monkhorst_pack</span>
+<span class="n">kpts</span> <span class="o">=</span> <span class="n">monkhorst_pack</span><span class="p">((</span><span class="mi">15</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">9</span><span class="p">))</span> <span class="o">+</span> <span class="p">[</span><span class="mf">2e-5</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>This Page</h3>
+            <ul>
+<li><a class="reference internal" href="#">Maximally localized Wannier functions</a><ul>
+<li><a class="reference internal" href="#introduction">Introduction</a></li>
+<li><a class="reference internal" href="#the-wannier-class">The Wannier class</a></li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="kpoints.html" title="previous chapter">Brillouin zone sampling</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="dos.html" title="next chapter">Density of states</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../../_sources/ase/dft/wannier.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+          <li><a href="dft.html" accesskey="U">Density Functional Theory</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

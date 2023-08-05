@@ -1,0 +1,257 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.visualize.mlab &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../../contents.html" />
+    <link rel="index" title="Global index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../../index.html" />
+    <link rel="up" title="ase.visualize" href="../visualize.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../visualize.html" accesskey="U">ase.visualize</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.visualize.mlab</h1><div class="highlight"><pre>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+<span class="kn">import</span> <span class="nn">optparse</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">ase.data</span> <span class="kn">import</span> <span class="n">covalent_radii</span>
+<span class="kn">from</span> <span class="nn">ase.io.cube</span> <span class="kn">import</span> <span class="n">read_cube_data</span>
+<span class="kn">from</span> <span class="nn">ase.data.colors</span> <span class="kn">import</span> <span class="n">cpk_colors</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.calculator</span> <span class="kn">import</span> <span class="n">get_calculator</span>
+
+
+<div class="viewcode-block" id="plot"><a class="viewcode-back" href="../../../ase/visualize/visualize.html#ase.visualize.mlab.plot">[docs]</a><span class="k">def</span> <span class="nf">plot</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">contours</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Plot atoms, unit-cell and iso-surfaces using Mayavi.</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters:</span>
+<span class="sd">        </span>
+<span class="sd">    atoms: Atoms object</span>
+<span class="sd">        Positions, atomiz numbers and unit-cell.</span>
+<span class="sd">    data: 3-d ndarray of float</span>
+<span class="sd">        Data for iso-surfaces.</span>
+<span class="sd">    countours: list of float</span>
+<span class="sd">        Contour values.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="c"># Delay slow imports:</span>
+    <span class="kn">from</span> <span class="nn">mayavi</span> <span class="kn">import</span> <span class="n">mlab</span>
+
+    <span class="n">mlab</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">bgcolor</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>  <span class="c"># make a white figure</span>
+
+    <span class="c"># Plot the atoms as spheres:</span>
+    <span class="k">for</span> <span class="n">pos</span><span class="p">,</span> <span class="n">Z</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">positions</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">numbers</span><span class="p">):</span>
+        <span class="n">mlab</span><span class="o">.</span><span class="n">points3d</span><span class="p">(</span><span class="o">*</span><span class="n">pos</span><span class="p">,</span>
+                      <span class="n">scale_factor</span><span class="o">=</span><span class="n">covalent_radii</span><span class="p">[</span><span class="n">Z</span><span class="p">],</span>
+                      <span class="n">resolution</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+                      <span class="n">color</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">cpk_colors</span><span class="p">[</span><span class="n">Z</span><span class="p">]))</span>
+
+    <span class="c"># Draw the unit cell:</span>
+    <span class="n">A</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">cell</span>
+    <span class="k">for</span> <span class="n">i1</span><span class="p">,</span> <span class="n">a</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">A</span><span class="p">):</span>
+        <span class="n">i2</span> <span class="o">=</span> <span class="p">(</span><span class="n">i1</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="mi">3</span>
+        <span class="n">i3</span> <span class="o">=</span> <span class="p">(</span><span class="n">i1</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)</span> <span class="o">%</span> <span class="mi">3</span>
+        <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span> <span class="n">A</span><span class="p">[</span><span class="n">i2</span><span class="p">]]:</span>
+            <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span> <span class="n">A</span><span class="p">[</span><span class="n">i3</span><span class="p">]]:</span>
+                <span class="n">p1</span> <span class="o">=</span> <span class="n">b</span> <span class="o">+</span> <span class="n">c</span>
+                <span class="n">p2</span> <span class="o">=</span> <span class="n">p1</span> <span class="o">+</span> <span class="n">a</span>
+                <span class="n">mlab</span><span class="o">.</span><span class="n">plot3d</span><span class="p">([</span><span class="n">p1</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">p2</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span>
+                            <span class="p">[</span><span class="n">p1</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">p2</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span>
+                            <span class="p">[</span><span class="n">p1</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">p2</span><span class="p">[</span><span class="mi">2</span><span class="p">]],</span>
+                            <span class="n">tube_radius</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+
+    <span class="n">cp</span> <span class="o">=</span> <span class="n">mlab</span><span class="o">.</span><span class="n">contour3d</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">contours</span><span class="o">=</span><span class="n">contours</span><span class="p">,</span> <span class="n">transparent</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                        <span class="n">opacity</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">colormap</span><span class="o">=</span><span class="s">&#39;hot&#39;</span><span class="p">)</span>
+    <span class="c"># Do some tvtk magic in order to allow for non-orthogonal unit cells:</span>
+    <span class="n">polydata</span> <span class="o">=</span> <span class="n">cp</span><span class="o">.</span><span class="n">actor</span><span class="o">.</span><span class="n">actors</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">mapper</span><span class="o">.</span><span class="n">input</span>
+    <span class="n">pts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">polydata</span><span class="o">.</span><span class="n">points</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="c"># Transform the points to the unit cell:</span>
+    <span class="n">polydata</span><span class="o">.</span><span class="n">points</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">pts</span><span class="p">,</span> <span class="n">A</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">])</span>
+    
+    <span class="c"># Apparently we need this to redraw the figure, maybe it can be done in</span>
+    <span class="c"># another way?</span>
+    <span class="n">mlab</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">azimuth</span><span class="o">=</span><span class="mi">155</span><span class="p">,</span> <span class="n">elevation</span><span class="o">=</span><span class="mi">70</span><span class="p">,</span> <span class="n">distance</span><span class="o">=</span><span class="s">&#39;auto&#39;</span><span class="p">)</span>
+    <span class="c"># Show the 3d plot:</span>
+    <span class="n">mlab</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+</div>
+<span class="n">description</span> <span class="o">=</span> <span class="s">&quot;&quot;&quot;</span><span class="se">\</span>
+<span class="s">Plot iso-surfaces from a cube-file or a wave function or an electron</span>
+<span class="s">density from a calculator-restart file.&quot;&quot;&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">optparse</span><span class="o">.</span><span class="n">OptionParser</span><span class="p">(</span><span class="n">usage</span><span class="o">=</span><span class="s">&#39;%prog [options] filename&#39;</span><span class="p">,</span>
+                                   <span class="n">description</span><span class="o">=</span><span class="n">description</span><span class="p">)</span>
+    <span class="n">add</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_option</span>
+    <span class="n">add</span><span class="p">(</span><span class="s">&#39;-n&#39;</span><span class="p">,</span> <span class="s">&#39;--band-index&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s">&#39;INDEX&#39;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s">&#39;Band index counting from zero.&#39;</span><span class="p">)</span>
+    <span class="n">add</span><span class="p">(</span><span class="s">&#39;-s&#39;</span><span class="p">,</span> <span class="s">&#39;--spin-index&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s">&#39;SPIN&#39;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s">&#39;Spin index: zero or one.&#39;</span><span class="p">)</span>
+    <span class="n">add</span><span class="p">(</span><span class="s">&#39;-c&#39;</span><span class="p">,</span> <span class="s">&#39;--contours&#39;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s">&#39;4&#39;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s">&#39;Use &quot;-c 3&quot; for 3 contours or &quot;-c -0.5,0.5&quot; for specific &#39;</span> <span class="o">+</span>
+        <span class="s">&#39;values.  Default is four contours.&#39;</span><span class="p">)</span>
+    <span class="n">add</span><span class="p">(</span><span class="s">&#39;-r&#39;</span><span class="p">,</span> <span class="s">&#39;--repeat&#39;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s">&#39;Example: &quot;-r 2,2,2&quot;.&#39;</span><span class="p">)</span>
+    <span class="n">add</span><span class="p">(</span><span class="s">&#39;-C&#39;</span><span class="p">,</span> <span class="s">&#39;--calculator-name&#39;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s">&#39;NAME&#39;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s">&#39;Name of calculator.&#39;</span><span class="p">)</span>
+    
+    <span class="n">opts</span><span class="p">,</span> <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s">&#39;Incorrect number of arguments&#39;</span><span class="p">)</span>
+        
+    <span class="n">arg</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">arg</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.cube&#39;</span><span class="p">):</span>
+        <span class="n">data</span><span class="p">,</span> <span class="n">atoms</span> <span class="o">=</span> <span class="n">read_cube_data</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">calc</span> <span class="o">=</span> <span class="n">get_calculator</span><span class="p">(</span><span class="n">opts</span><span class="o">.</span><span class="n">calculator_name</span><span class="p">)(</span><span class="n">arg</span><span class="p">,</span> <span class="n">txt</span><span class="o">=</span><span class="bp">None</span><span class="p">)</span>
+        <span class="n">atoms</span> <span class="o">=</span> <span class="n">calc</span><span class="o">.</span><span class="n">get_atoms</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">opts</span><span class="o">.</span><span class="n">band_index</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">calc</span><span class="o">.</span><span class="n">get_pseudo_density</span><span class="p">(</span><span class="n">opts</span><span class="o">.</span><span class="n">spin_index</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">calc</span><span class="o">.</span><span class="n">get_pseudo_wave_function</span><span class="p">(</span><span class="n">opts</span><span class="o">.</span><span class="n">band_index</span><span class="p">,</span>
+                                                 <span class="n">opts</span><span class="o">.</span><span class="n">spin_index</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">data</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="nb">complex</span><span class="p">:</span>
+                <span class="n">data</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+                
+    <span class="n">mn</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
+    <span class="n">mx</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;Min: </span><span class="si">%16.6f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">mn</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;Max: </span><span class="si">%16.6f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">mx</span><span class="p">)</span>
+    
+    <span class="k">if</span> <span class="n">opts</span><span class="o">.</span><span class="n">contours</span><span class="o">.</span><span class="n">isdigit</span><span class="p">():</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">opts</span><span class="o">.</span><span class="n">contours</span><span class="p">)</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="p">(</span><span class="n">mx</span> <span class="o">-</span> <span class="n">mn</span><span class="p">)</span> <span class="o">/</span> <span class="n">n</span>
+        <span class="n">contours</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">mn</span> <span class="o">+</span> <span class="n">d</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span> <span class="n">mx</span> <span class="o">-</span> <span class="n">d</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">contours</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">opts</span><span class="o">.</span><span class="n">contours</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)]</span>
+        
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">contours</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;1 contour:&#39;</span><span class="p">,</span> <span class="n">contours</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%d</span><span class="s"> contours: </span><span class="si">%.6f</span><span class="s">, ..., </span><span class="si">%.6f</span><span class="s">&#39;</span> <span class="o">%</span>
+              <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">contours</span><span class="p">),</span> <span class="n">contours</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">contours</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>
+
+    <span class="k">if</span> <span class="n">opts</span><span class="o">.</span><span class="n">repeat</span><span class="p">:</span>
+        <span class="n">repeat</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">opts</span><span class="o">.</span><span class="n">repeat</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)]</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">repeat</span><span class="p">)</span>
+        <span class="n">atoms</span> <span class="o">*=</span> <span class="n">repeat</span>
+        
+    <span class="n">plot</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">contours</span><span class="p">)</span>
+    
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../../overview.html">
+              Overview</a></li>
+            <li><a href="../../../download.html">
+              Installation</a></li>
+            <li><a href="../../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../../faq.html">FAQ</a></li>
+            <li><a href="../../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../visualize.html" accesskey="U">ase.visualize</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

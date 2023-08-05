@@ -1,0 +1,432 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.optimize.sciopt &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../../contents.html" />
+    <link rel="index" title="Global index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.optimize.sciopt</h1><div class="highlight"><pre>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">scipy.optimize</span> <span class="kn">as</span> <span class="nn">opt</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="k">pass</span>
+
+<span class="kn">from</span> <span class="nn">ase.optimize.optimize</span> <span class="kn">import</span> <span class="n">Optimizer</span>
+
+
+<span class="k">class</span> <span class="nc">Converged</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+<span class="k">class</span> <span class="nc">OptimizerConvergenceError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+<span class="k">class</span> <span class="nc">SciPyOptimizer</span><span class="p">(</span><span class="n">Optimizer</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;General interface for SciPy optimizers</span>
+
+<span class="sd">    Only the call to the optimizer is still needed</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">logfile</span><span class="o">=</span><span class="s">&#39;-&#39;</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">callback_always</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">70.0</span><span class="p">,</span> <span class="n">master</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Initialize object</span>
+
+<span class="sd">        Parameters:</span>
+
+<span class="sd">        atoms: Atoms object</span>
+<span class="sd">            The Atoms object to relax.</span>
+
+<span class="sd">        trajectory: string</span>
+<span class="sd">            Pickle file used to store trajectory of atomic movement.</span>
+
+<span class="sd">        logfile: file object or str</span>
+<span class="sd">            If *logfile* is a string, a file with that name will be opened.</span>
+<span class="sd">            Use &#39;-&#39; for stdout.</span>
+<span class="sd">        </span>
+<span class="sd">        callback_always: book</span>
+<span class="sd">            Should the callback be run after each force call (also in the</span>
+<span class="sd">            linesearch)</span>
+
+<span class="sd">        alpha: float</span>
+<span class="sd">            Initial guess for the Hessian (curvature of energy surface). A</span>
+<span class="sd">            conservative value of 70.0 is the default, but number of needed</span>
+<span class="sd">            steps to converge might be less if a lower value is used. However,</span>
+<span class="sd">            a lower value also means risk of instability.</span>
+
+<span class="sd">        master: boolean</span>
+<span class="sd">            Defaults to None, which causes only rank 0 to save files.  If</span>
+<span class="sd">            set to true,  this rank will save files.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">restart</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">Optimizer</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">restart</span><span class="p">,</span> <span class="n">logfile</span><span class="p">,</span> <span class="n">trajectory</span><span class="p">,</span> <span class="n">master</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">force_calls</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">callback_always</span> <span class="o">=</span> <span class="n">callback_always</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">H0</span> <span class="o">=</span> <span class="n">alpha</span>
+
+    <span class="k">def</span> <span class="nf">x0</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return x0 in a way SciPy can use</span>
+
+<span class="sd">        This class is mostly usable for subclasses wanting to redefine the</span>
+<span class="sd">        parameters (and the objective function)&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">f</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Objective function for use of the optimizers&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+        <span class="c"># Scale the problem as SciPy uses I as initial Hessian.</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">H0</span>
+
+    <span class="k">def</span> <span class="nf">fprime</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Gradient of the objective function for use of the optimizers&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">force_calls</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">callback_always</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">callback</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+        <span class="c"># Remember that forces are minus the gradient!</span>
+        <span class="c"># Scale the problem as SciPy uses I as initial Hessian.</span>
+        <span class="k">return</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_forces</span><span class="p">()</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">H0</span>
+
+    <span class="k">def</span> <span class="nf">callback</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Callback function to be run after each iteration by SciPy</span>
+
+<span class="sd">        This should also be called once before optimization starts, as SciPy</span>
+<span class="sd">        optimizers only calls it after each iteration, while ase optimizers</span>
+<span class="sd">        call something similar before as well.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_forces</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">call_observers</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">converged</span><span class="p">(</span><span class="n">f</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">Converged</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nsteps</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">steps</span><span class="o">=</span><span class="mi">100000000</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fmax</span> <span class="o">=</span> <span class="n">fmax</span>
+        <span class="c"># As SciPy does not log the zeroth iteration, we do that manually</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">callback</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c"># Scale the problem as SciPy uses I as initial Hessian.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">call_fmin</span><span class="p">(</span><span class="n">fmax</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">H0</span><span class="p">,</span> <span class="n">steps</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">Converged</span><span class="p">:</span>
+            <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">dump</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">call_fmin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fmax</span><span class="p">,</span> <span class="n">steps</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+<div class="viewcode-block" id="SciPyFminCG"><a class="viewcode-back" href="../../../ase/optimize.html#ase.optimize.sciopt.SciPyFminCG">[docs]</a><span class="k">class</span> <span class="nc">SciPyFminCG</span><span class="p">(</span><span class="n">SciPyOptimizer</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Non-linear (Polak-Ribiere) conjugate gradient algorithm&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">call_fmin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fmax</span><span class="p">,</span> <span class="n">steps</span><span class="p">):</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="n">opt</span><span class="o">.</span><span class="n">fmin_cg</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">f</span><span class="p">,</span>
+                             <span class="bp">self</span><span class="o">.</span><span class="n">x0</span><span class="p">(),</span>
+                             <span class="n">fprime</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">fprime</span><span class="p">,</span>
+                             <span class="c">#args=(),</span>
+                             <span class="n">gtol</span><span class="o">=</span><span class="n">fmax</span> <span class="o">*</span> <span class="mf">0.1</span><span class="p">,</span> <span class="c">#Should never be reached</span>
+                             <span class="n">norm</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span>
+                             <span class="c">#epsilon=</span>
+                             <span class="n">maxiter</span><span class="o">=</span><span class="n">steps</span><span class="p">,</span>
+                             <span class="n">full_output</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                             <span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                             <span class="c">#retall=0, </span>
+                             <span class="n">callback</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">callback</span>
+                            <span class="p">)</span>
+        <span class="n">warnflag</span> <span class="o">=</span> <span class="n">output</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">warnflag</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">OptimizerConvergenceError</span><span class="p">(</span><span class="s">&#39;Warning: Desired error not necessarily achieved &#39;</span> \
+                                            <span class="s">&#39;due to precision loss&#39;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="SciPyFminBFGS"><a class="viewcode-back" href="../../../ase/optimize.html#ase.optimize.sciopt.SciPyFminBFGS">[docs]</a><span class="k">class</span> <span class="nc">SciPyFminBFGS</span><span class="p">(</span><span class="n">SciPyOptimizer</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Quasi-Newton method (Broydon-Fletcher-Goldfarb-Shanno)&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">call_fmin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fmax</span><span class="p">,</span> <span class="n">steps</span><span class="p">):</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="n">opt</span><span class="o">.</span><span class="n">fmin_bfgs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">f</span><span class="p">,</span>
+                               <span class="bp">self</span><span class="o">.</span><span class="n">x0</span><span class="p">(),</span>
+                               <span class="n">fprime</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">fprime</span><span class="p">,</span>
+                               <span class="c">#args=(), </span>
+                               <span class="n">gtol</span><span class="o">=</span><span class="n">fmax</span> <span class="o">*</span> <span class="mf">0.1</span><span class="p">,</span> <span class="c">#Should never be reached</span>
+                               <span class="n">norm</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span>
+                               <span class="c">#epsilon=1.4901161193847656e-08, </span>
+                               <span class="n">maxiter</span><span class="o">=</span><span class="n">steps</span><span class="p">,</span>
+                               <span class="n">full_output</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                               <span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                               <span class="c">#retall=0, </span>
+                               <span class="n">callback</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">callback</span>
+                              <span class="p">)</span>
+        <span class="n">warnflag</span> <span class="o">=</span> <span class="n">output</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">warnflag</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">OptimizerConvergenceError</span><span class="p">(</span><span class="s">&#39;Warning: Desired error not necessarily achieved&#39;</span> \
+                                            <span class="s">&#39;due to precision loss&#39;</span><span class="p">)</span>
+</div>
+<span class="k">class</span> <span class="nc">SciPyGradientlessOptimizer</span><span class="p">(</span><span class="n">Optimizer</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;General interface for gradient less SciPy optimizers</span>
+
+<span class="sd">    Only the call to the optimizer is still needed</span>
+
+<span class="sd">    Note: If you redefine x0() and f(), you don&#39;t even need an atoms object.</span>
+<span class="sd">    Redefining these also allows you to specify an arbitrary objective</span>
+<span class="sd">    function.</span>
+
+<span class="sd">    XXX: This is still a work in progress</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">logfile</span><span class="o">=</span><span class="s">&#39;-&#39;</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">callback_always</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">master</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Initialize object</span>
+
+<span class="sd">        Parameters:</span>
+
+<span class="sd">        atoms: Atoms object</span>
+<span class="sd">            The Atoms object to relax.</span>
+
+<span class="sd">        trajectory: string</span>
+<span class="sd">            Pickle file used to store trajectory of atomic movement.</span>
+
+<span class="sd">        logfile: file object or str</span>
+<span class="sd">            If *logfile* is a string, a file with that name will be opened.</span>
+<span class="sd">            Use &#39;-&#39; for stdout.</span>
+
+<span class="sd">        callback_always: book</span>
+<span class="sd">            Should the callback be run after each force call (also in the</span>
+<span class="sd">            linesearch)</span>
+
+<span class="sd">        alpha: float</span>
+<span class="sd">            Initial guess for the Hessian (curvature of energy surface). A</span>
+<span class="sd">            conservative value of 70.0 is the default, but number of needed</span>
+<span class="sd">            steps to converge might be less if a lower value is used. However,</span>
+<span class="sd">            a lower value also means risk of instability.</span>
+
+<span class="sd">        master: boolean</span>
+<span class="sd">            Defaults to None, which causes only rank 0 to save files.  If</span>
+<span class="sd">            set to true,  this rank will save files.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">restart</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">Optimizer</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">restart</span><span class="p">,</span> <span class="n">logfile</span><span class="p">,</span> <span class="n">trajectory</span><span class="p">,</span> <span class="n">master</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">function_calls</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">callback_always</span> <span class="o">=</span> <span class="n">callback_always</span>
+
+    <span class="k">def</span> <span class="nf">x0</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return x0 in a way SciPy can use</span>
+
+<span class="sd">        This class is mostly usable for subclasses wanting to redefine the</span>
+<span class="sd">        parameters (and the objective function)&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">f</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Objective function for use of the optimizers&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">function_calls</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="c"># Scale the problem as SciPy uses I as initial Hessian.</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">callback</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Callback function to be run after each iteration by SciPy</span>
+
+<span class="sd">        This should also be called once before optimization starts, as SciPy</span>
+<span class="sd">        optimizers only calls it after each iteration, while ase optimizers</span>
+<span class="sd">        call something similar before as well.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># We can&#39;t assume that forces are available!</span>
+        <span class="c">#f = self.atoms.get_forces()</span>
+        <span class="c">#self.log(f)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">call_observers</span><span class="p">()</span>
+        <span class="c">#if self.converged(f):</span>
+        <span class="c">#    raise Converged</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nsteps</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ftol</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">xtol</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">steps</span><span class="o">=</span><span class="mi">100000000</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">xtol</span> <span class="o">=</span> <span class="n">xtol</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ftol</span> <span class="o">=</span> <span class="n">ftol</span>
+        <span class="c"># As SciPy does not log the zeroth iteration, we do that manually</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">callback</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c"># Scale the problem as SciPy uses I as initial Hessian.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">call_fmin</span><span class="p">(</span><span class="n">xtol</span><span class="p">,</span> <span class="n">ftol</span><span class="p">,</span> <span class="n">steps</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">Converged</span><span class="p">:</span>
+            <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">dump</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">call_fmin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fmax</span><span class="p">,</span> <span class="n">steps</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+<span class="k">class</span> <span class="nc">SciPyFmin</span><span class="p">(</span><span class="n">SciPyGradientlessOptimizer</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Nelder-Mead Simplex algorithm</span>
+
+<span class="sd">    Uses only function calls.</span>
+
+<span class="sd">    XXX: This is still a work in progress</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">call_fmin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">xtol</span><span class="p">,</span> <span class="n">ftol</span><span class="p">,</span> <span class="n">steps</span><span class="p">):</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="n">opt</span><span class="o">.</span><span class="n">fmin</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">f</span><span class="p">,</span>
+                          <span class="bp">self</span><span class="o">.</span><span class="n">x0</span><span class="p">(),</span>
+                          <span class="c">#args=(),</span>
+                          <span class="n">xtol</span><span class="o">=</span><span class="n">xtol</span><span class="p">,</span>
+                          <span class="n">ftol</span><span class="o">=</span><span class="n">ftol</span><span class="p">,</span>
+                          <span class="n">maxiter</span><span class="o">=</span><span class="n">steps</span><span class="p">,</span>
+                          <span class="c">#maxfun=None,</span>
+                          <span class="c">#full_output=1,</span>
+                          <span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                          <span class="c">#retall=0,</span>
+                          <span class="n">callback</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">callback</span>
+                         <span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">SciPyFminPowell</span><span class="p">(</span><span class="n">SciPyGradientlessOptimizer</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Powell&#39;s (modified) level set method</span>
+
+<span class="sd">    Uses only function calls.</span>
+
+<span class="sd">    XXX: This is still a work in progress</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Parameters:</span>
+
+<span class="sd">        direc: float</span>
+<span class="sd">            How much to change x to initially. Defaults to 0.04.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">direc</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;direc&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+        <span class="n">SciPyGradientlessOptimizer</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">direc</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">direc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">x0</span><span class="p">()),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.04</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">direc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">x0</span><span class="p">()),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span> <span class="o">*</span> <span class="n">direc</span>
+
+    <span class="k">def</span> <span class="nf">call_fmin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">xtol</span><span class="p">,</span> <span class="n">ftol</span><span class="p">,</span> <span class="n">steps</span><span class="p">):</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="n">opt</span><span class="o">.</span><span class="n">fmin_powell</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">f</span><span class="p">,</span>
+                                 <span class="bp">self</span><span class="o">.</span><span class="n">x0</span><span class="p">(),</span>
+                                 <span class="c">#args=(),</span>
+                                 <span class="n">xtol</span><span class="o">=</span><span class="n">xtol</span><span class="p">,</span>
+                                 <span class="n">ftol</span><span class="o">=</span><span class="n">ftol</span><span class="p">,</span>
+                                 <span class="n">maxiter</span><span class="o">=</span><span class="n">steps</span><span class="p">,</span>
+                                 <span class="c">#maxfun=None,</span>
+                                 <span class="c">#full_output=1,</span>
+                                 <span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                                 <span class="c">#retall=0,</span>
+                                 <span class="n">callback</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">callback</span><span class="p">,</span>
+                                 <span class="n">direc</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">direc</span>
+                                <span class="p">)</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../../overview.html">
+              Overview</a></li>
+            <li><a href="../../../download.html">
+              Installation</a></li>
+            <li><a href="../../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../../faq.html">FAQ</a></li>
+            <li><a href="../../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

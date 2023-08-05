@@ -1,0 +1,238 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Phonon calculations &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../contents.html" />
+    <link rel="index" title="Global index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="top" title="ASE  documentation" href="../index.html" />
+    <link rel="up" title="Documentation for modules in ASE" href="ase.html" />
+    <link rel="next" title="Phase diagrams and Pourbaix diagrams" href="phasediagram/phasediagram.html" />
+    <link rel="prev" title="Vibration analysis" href="vibrations.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <span class="target" id="module-ase.phonons"></span><div class="section" id="phonon-calculations">
+<h1>Phonon calculations<a class="headerlink" href="#phonon-calculations" title="Permalink to this headline">¶</a></h1>
+<p>Module for calculating vibrational normal modes for periodic systems using the
+so-called small displacement method (see e.g. <a class="reference internal" href="#alfe" id="id1">[Alfe]</a>). So far, space-group
+symmetries are not exploited to reduce the number of atomic displacements that
+must be calculated and subsequent symmetrization of the force constants.</p>
+<p>For polar materials the dynamical matrix at the zone center acquires a
+non-analytical contribution that accounts for the LO-TO splitting. This
+contribution requires additional functionality to evaluate and is not included
+in the present implementation. Its implementation in conjunction with the small
+displacement method is described in <a class="reference internal" href="#wang" id="id2">[Wang]</a>.</p>
+</div>
+<div class="section" id="example">
+<h1>Example<a class="headerlink" href="#example" title="Permalink to this headline">¶</a></h1>
+<p>Simple example showing how to calculate the phonon dispersion for bulk aluminum
+using a 7x7x7 supercell within effective medium theory:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.structure</span> <span class="kn">import</span> <span class="n">bulk</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="kn">from</span> <span class="nn">ase.dft.kpoints</span> <span class="kn">import</span> <span class="n">ibz_points</span><span class="p">,</span> <span class="n">get_bandpath</span>
+<span class="kn">from</span> <span class="nn">ase.phonons</span> <span class="kn">import</span> <span class="n">Phonons</span>
+
+<span class="c"># Setup crystal and EMT calculator</span>
+<span class="n">atoms</span> <span class="o">=</span> <span class="n">bulk</span><span class="p">(</span><span class="s">&#39;Al&#39;</span><span class="p">,</span> <span class="s">&#39;fcc&#39;</span><span class="p">,</span> <span class="n">a</span><span class="o">=</span><span class="mf">4.05</span><span class="p">)</span>
+<span class="n">calc</span> <span class="o">=</span> <span class="n">EMT</span><span class="p">()</span>
+
+<span class="c"># Phonon calculator</span>
+<span class="n">N</span> <span class="o">=</span> <span class="mi">7</span>
+<span class="n">ph</span> <span class="o">=</span> <span class="n">Phonons</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">calc</span><span class="p">,</span> <span class="n">supercell</span><span class="o">=</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">N</span><span class="p">),</span> <span class="n">delta</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+<span class="n">ph</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+
+<span class="c"># Read forces and assemble the dynamical matrix</span>
+<span class="n">ph</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">acoustic</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+<span class="c"># High-symmetry points in the Brillouin zone</span>
+<span class="n">points</span> <span class="o">=</span> <span class="n">ibz_points</span><span class="p">[</span><span class="s">&#39;fcc&#39;</span><span class="p">]</span>
+<span class="n">G</span> <span class="o">=</span> <span class="n">points</span><span class="p">[</span><span class="s">&#39;Gamma&#39;</span><span class="p">]</span>
+<span class="n">X</span> <span class="o">=</span> <span class="n">points</span><span class="p">[</span><span class="s">&#39;X&#39;</span><span class="p">]</span>
+<span class="n">W</span> <span class="o">=</span> <span class="n">points</span><span class="p">[</span><span class="s">&#39;W&#39;</span><span class="p">]</span>
+<span class="n">K</span> <span class="o">=</span> <span class="n">points</span><span class="p">[</span><span class="s">&#39;K&#39;</span><span class="p">]</span>
+<span class="n">L</span> <span class="o">=</span> <span class="n">points</span><span class="p">[</span><span class="s">&#39;L&#39;</span><span class="p">]</span>
+<span class="n">U</span> <span class="o">=</span> <span class="n">points</span><span class="p">[</span><span class="s">&#39;U&#39;</span><span class="p">]</span>
+
+<span class="n">point_names</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;$\Gamma$&#39;</span><span class="p">,</span> <span class="s">&#39;X&#39;</span><span class="p">,</span> <span class="s">&#39;U&#39;</span><span class="p">,</span> <span class="s">&#39;L&#39;</span><span class="p">,</span> <span class="s">&#39;$\Gamma$&#39;</span><span class="p">,</span> <span class="s">&#39;K&#39;</span><span class="p">]</span>
+<span class="n">path</span> <span class="o">=</span> <span class="p">[</span><span class="n">G</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">U</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">G</span><span class="p">,</span> <span class="n">K</span><span class="p">]</span>
+
+<span class="c"># Band structure in meV</span>
+<span class="n">path_kc</span><span class="p">,</span> <span class="n">q</span><span class="p">,</span> <span class="n">Q</span> <span class="o">=</span> <span class="n">get_bandpath</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">cell</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+<span class="n">omega_kn</span> <span class="o">=</span> <span class="mi">1000</span> <span class="o">*</span> <span class="n">ph</span><span class="o">.</span><span class="n">band_structure</span><span class="p">(</span><span class="n">path_kc</span><span class="p">)</span>
+
+<span class="c"># Calculate phonon DOS</span>
+<span class="n">omega_e</span><span class="p">,</span> <span class="n">dos_e</span> <span class="o">=</span> <span class="n">ph</span><span class="o">.</span><span class="n">dos</span><span class="p">(</span><span class="n">kpts</span><span class="o">=</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">50</span><span class="p">),</span> <span class="n">npts</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span> <span class="n">delta</span><span class="o">=</span><span class="mf">5e-4</span><span class="p">)</span>
+<span class="n">omega_e</span> <span class="o">*=</span> <span class="mi">1000</span>
+
+<span class="c"># Plot the band structure and DOS</span>
+<span class="kn">import</span> <span class="nn">pylab</span> <span class="kn">as</span> <span class="nn">plt</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">6</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">axes</span><span class="p">([</span><span class="o">.</span><span class="mi">1</span><span class="p">,</span> <span class="o">.</span><span class="mo">07</span><span class="p">,</span> <span class="o">.</span><span class="mi">67</span><span class="p">,</span> <span class="o">.</span><span class="mi">85</span><span class="p">])</span>
+<span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">omega_kn</span><span class="p">[</span><span class="mi">0</span><span class="p">])):</span>
+    <span class="n">omega_n</span> <span class="o">=</span> <span class="n">omega_kn</span><span class="p">[:,</span> <span class="n">n</span><span class="p">]</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">q</span><span class="p">,</span> <span class="n">omega_n</span><span class="p">,</span> <span class="s">&#39;k-&#39;</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="n">point_names</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">18</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">yticks</span><span class="p">(</span><span class="n">fontsize</span><span class="o">=</span><span class="mi">18</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlim</span><span class="p">(</span><span class="n">q</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">q</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s">&quot;Frequency ($\mathrm{meV}$)&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">22</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="s">&#39;on&#39;</span><span class="p">)</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">axes</span><span class="p">([</span><span class="o">.</span><span class="mi">8</span><span class="p">,</span> <span class="o">.</span><span class="mo">07</span><span class="p">,</span> <span class="o">.</span><span class="mi">17</span><span class="p">,</span> <span class="o">.</span><span class="mi">85</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">fill_between</span><span class="p">(</span><span class="n">dos_e</span><span class="p">,</span> <span class="n">omega_e</span><span class="p">,</span> <span class="n">y2</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s">&#39;lightgrey&#39;</span><span class="p">,</span> <span class="n">edgecolor</span><span class="o">=</span><span class="s">&#39;k&#39;</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylim</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">35</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">([],</span> <span class="p">[])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">yticks</span><span class="p">([],</span> <span class="p">[])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s">&quot;DOS&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">18</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+<img alt="../_images/Al_phonon.png" src="../_images/Al_phonon.png" />
+<p>Mode inspection using ase-gui:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># Write modes for specific q-vector to trajectory files</span>
+<span class="n">ph</span><span class="o">.</span><span class="n">write_modes</span><span class="p">([</span><span class="n">l</span><span class="o">/</span><span class="mi">2</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">L</span><span class="p">],</span> <span class="n">branches</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">repeat</span><span class="o">=</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">8</span><span class="p">),</span> <span class="n">kT</span><span class="o">=</span><span class="mf">3e-4</span><span class="p">)</span>
+</pre></div>
+</div>
+<img alt="../_images/Al_mode.gif" src="../_images/Al_mode.gif" />
+<table class="docutils citation" frame="void" id="alfe" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[Alfe]</a></td><td>D. Alfe, PHON: A program to calculate phonons using the small
+displacement method, Comput. Phys. Commun. 180, 2622 (2009)</td></tr>
+</tbody>
+</table>
+<table class="docutils citation" frame="void" id="wang" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id2">[Wang]</a></td><td>Y. Wang <em>et al.</em>, A mixed-space approach to first-principles
+calculations of phonon frequencies for polar materials, J. Phys.:
+Cond. Matter 22, 202201 (2010)</td></tr>
+</tbody>
+</table>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../overview.html">
+              Overview</a></li>
+            <li><a href="../download.html">
+              Installation</a></li>
+            <li><a href="../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="ase.html">
+              Documentation</a></li>
+            <li><a href="../faq.html">FAQ</a></li>
+            <li><a href="../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>This Page</h3>
+            <ul>
+<li><a class="reference internal" href="#">Phonon calculations</a></li>
+<li><a class="reference internal" href="#example">Example</a></li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="vibrations.html" title="previous chapter">Vibration analysis</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="phasediagram/phasediagram.html" title="next chapter">Phase diagrams and Pourbaix diagrams</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../_sources/ase/phonons.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

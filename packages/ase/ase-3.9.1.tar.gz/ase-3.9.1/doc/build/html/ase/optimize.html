@@ -1,0 +1,505 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Structure optimization &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../contents.html" />
+    <link rel="index" title="Global index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="top" title="ASE  documentation" href="../index.html" />
+    <link rel="up" title="Documentation for modules in ASE" href="ase.html" />
+    <link rel="next" title="Parallel calculations" href="parallel.html" />
+    <link rel="prev" title="General crystal structures and surfaces" href="lattice.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="module-ase.optimize">
+<span id="structure-optimization"></span><span id="structure-optimizations"></span><h1>Structure optimization<a class="headerlink" href="#module-ase.optimize" title="Permalink to this headline">¶</a></h1>
+<p>The optimization algorithms can be roughly divided into local
+optimization algorithms which find a nearby local minimum and
+global optimization algorithms that try to find the global
+minimum (a much harder task).</p>
+<div class="section" id="local-optimization">
+<h2>Local optimization<a class="headerlink" href="#local-optimization" title="Permalink to this headline">¶</a></h2>
+<p>The local optimization algorithms available in ASE are:
+<tt class="docutils literal"><span class="pre">BFGS</span></tt>, <tt class="docutils literal"><span class="pre">LBFGS</span></tt>, <tt class="docutils literal"><span class="pre">BFGSLineSearch</span></tt>, <tt class="docutils literal"><span class="pre">LBFGSLineSearch</span></tt>,
+<tt class="docutils literal"><span class="pre">MDMin</span></tt>, and <tt class="docutils literal"><span class="pre">FIRE</span></tt>.</p>
+<div class="admonition seealso">
+<p class="first admonition-title">See also</p>
+<p class="last"><a class="reference external" href="https://wiki.fysik.dtu.dk/gpaw/devel/ase_optimize/ase_optimize.html">Performance test</a>
+for all ASE local optimizers.</p>
+</div>
+<p><tt class="docutils literal"><span class="pre">MDMin</span></tt> and <tt class="docutils literal"><span class="pre">FIRE</span></tt> both use Newtonian dynamics with added
+friction, to converge to an energy minimum, whereas the others are of
+the quasi-Newton type, where the forces of consecutive steps are used
+to dynamically update a Hessian describing the curvature of the
+potential energy landscape.  You can use the <tt class="docutils literal"><span class="pre">QuasiNewton</span></tt> synonym
+for <tt class="docutils literal"><span class="pre">BFGSLineSearch</span></tt> because this algorithm is in many cases the optimal
+of the quasi-Newton algorithms.</p>
+<p>All of the local optimizer classes have the following structure:</p>
+<div class="highlight-python"><div class="highlight"><pre>class Optimizer:
+    def __init__(self, atoms, restart=None, logfile=None):
+    def run(self, fmax=0.05, steps=100000000):
+    def get_number_of_steps():
+</pre></div>
+</div>
+<p>The convergence criterion is that the force on all individual atoms
+should be less than <em>fmax</em>:</p>
+<div class="math">
+\[\begin{split}\max_a |\vec{F_a}| &lt; f_\text{max}\end{split}\]</div>
+<div class="section" id="module-ase.optimize.qn">
+<span id="bfgs"></span><h3>BFGS<a class="headerlink" href="#module-ase.optimize.qn" title="Permalink to this headline">¶</a></h3>
+<p>The <tt class="docutils literal"><span class="pre">BFGS</span></tt> object is one of the minimizers in the ASE package. The below
+script uses <tt class="docutils literal"><span class="pre">BFGS</span></tt> to optimize the structure of a water molecule, starting
+with the experimental geometry:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">Atoms</span>
+<span class="kn">from</span> <span class="nn">ase.optimize</span> <span class="kn">import</span> <span class="n">BFGS</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="n">d</span> <span class="o">=</span> <span class="mf">0.9575</span>
+<span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mi">180</span> <span class="o">*</span> <span class="mf">104.51</span>
+<span class="n">water</span> <span class="o">=</span> <span class="n">Atoms</span><span class="p">(</span><span class="s">&#39;H2O&#39;</span><span class="p">,</span>
+              <span class="n">positions</span><span class="o">=</span><span class="p">[(</span><span class="n">d</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+                         <span class="p">(</span><span class="n">d</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">t</span><span class="p">),</span> <span class="n">d</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">t</span><span class="p">),</span> <span class="mi">0</span><span class="p">),</span>
+                         <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)],</span>
+              <span class="n">calculator</span><span class="o">=</span><span class="n">EMT</span><span class="p">())</span>
+<span class="n">dyn</span> <span class="o">=</span> <span class="n">BFGS</span><span class="p">(</span><span class="n">water</span><span class="p">)</span>
+<span class="n">dyn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>which produces the following output. The columns are the solver name, step
+number, clock time, potential energy (eV), and maximum force.:</p>
+<div class="highlight-python"><div class="highlight"><pre>BFGS:   0  19:45:25        2.769633       8.6091
+BFGS:   1  19:45:25        2.154560       4.4644
+BFGS:   2  19:45:25        1.906812       1.3097
+BFGS:   3  19:45:25        1.880255       0.2056
+BFGS:   4  19:45:25        1.879488       0.0205
+</pre></div>
+</div>
+<p>When doing structure optimization, it is useful to write the
+trajectory to a file, so that the progress of the optimization run can
+be followed during or after the run:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">dyn</span> <span class="o">=</span> <span class="n">BFGS</span><span class="p">(</span><span class="n">water</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="s">&#39;H2O.traj&#39;</span><span class="p">)</span>
+<span class="n">dyn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Use the command <tt class="docutils literal"><span class="pre">ase-gui</span> <span class="pre">H2O.traj</span></tt> to see what is going on (more here:
+<a class="reference internal" href="gui/gui.html#module-ase.gui" title="ase.gui: Simple graphical user-interface for ASE."><tt class="xref py py-mod docutils literal"><span class="pre">ase.gui</span></tt></a>).  The trajectory file can also be accessed using the
+module <a class="reference internal" href="trajectory.html#module-ase.io.trajectory" title="ase.io.trajectory: Trajectory input-output module"><tt class="xref py py-mod docutils literal"><span class="pre">ase.io.trajectory</span></tt></a>.</p>
+<p>The <tt class="docutils literal"><span class="pre">attach</span></tt> method takes an optional argument <tt class="docutils literal"><span class="pre">interval=n</span></tt> that can
+be used to tell the structure optimizer object to write the
+configuration to the trajectory file only every <tt class="docutils literal"><span class="pre">n</span></tt> steps.</p>
+<p>During a structure optimization, the BFGS and LBFGS optimizers use two
+quantities to decide where to move the atoms on each step:</p>
+<ul class="simple">
+<li>the forces on each atom, as returned by the associated
+<a class="reference internal" href="../development/calculators.html#ase.calculators.calculator.Calculator" title="ase.calculators.calculator.Calculator"><tt class="xref py py-class docutils literal"><span class="pre">Calculator</span></tt></a> object</li>
+<li>the Hessian matrix, i.e. the matrix of second derivatives
+<span class="math">\(\frac{\partial^2 E}{\partial x_i \partial x_j}\)</span> of the
+total energy with respect to nuclear coordinates.</li>
+</ul>
+<p>If the atoms are close to the minimum, such that the potential energy
+surface is locally quadratic, the Hessian and forces accurately
+determine the required step to reach the optimal structure.  The
+Hessian is very expensive to calculate <em>a priori</em>, so instead the
+algorithm estimates it by means of an initial guess which is adjusted
+along the way depending on the information obtained on each step of
+the structure optimization.</p>
+<p>It is frequently practical to restart or continue a structure
+optimization with a geometry obtained from a previous relaxation.
+Aside from the geometry, the Hessian of the previous run can and
+should be retained for the second run.  Use the <tt class="docutils literal"><span class="pre">restart</span></tt> keyword to
+specify a file in which to save the Hessian:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">dyn</span> <span class="o">=</span> <span class="n">BFGS</span><span class="p">(</span><span class="n">atoms</span><span class="o">=</span><span class="n">system</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="s">&#39;qn.traj&#39;</span><span class="p">,</span> <span class="n">restart</span><span class="o">=</span><span class="s">&#39;qn.pckl&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>This will create an optimizer which saves the Hessian to
+<tt class="file docutils literal"><span class="pre">qn.pckl</span></tt> (using the Python <a class="reference external" href="http://docs.python.org/2.7/library/pickle.html#module-pickle" title="(in Python v2.7)"><tt class="xref py py-mod docutils literal"><span class="pre">pickle</span></tt></a> module) on each
+step.  If the file already exists, the Hessian will also be
+<em>initialized</em> from that file.</p>
+<p>The trajectory file can also be used to restart a structure
+optimization, since it contains the history of all forces and
+positions, and thus whichever information about the Hessian was
+assembled so far:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">dyn</span> <span class="o">=</span> <span class="n">BFGS</span><span class="p">(</span><span class="n">atoms</span><span class="o">=</span><span class="n">system</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="s">&#39;qn.traj&#39;</span><span class="p">)</span>
+<span class="n">dyn</span><span class="o">.</span><span class="n">replay_trajectory</span><span class="p">(</span><span class="s">&#39;history.traj&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>This will read through each iteration stored in <tt class="file docutils literal"><span class="pre">history.traj</span></tt>,
+performing adjustments to the Hessian as appropriate.  Note that these
+steps will not be written to <tt class="file docutils literal"><span class="pre">qn.traj</span></tt>.  If restarting with more than
+one previous trajectory file, use <a class="reference internal" href="gui/gui.html#ase-gui"><em>ase-gui</em></a> to concatenate them
+into a single trajectory file first:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ase-gui part1.traj part2.traj -o history.traj
+</pre></div>
+</div>
+<p>The file <tt class="file docutils literal"><span class="pre">history.traj</span></tt> will then contain all necessary
+information.</p>
+<p>When switching between different types of optimizers, e.g. between
+<tt class="docutils literal"><span class="pre">BFGS</span></tt> and <tt class="docutils literal"><span class="pre">LBFGS</span></tt>, the pickle-files specified by the
+<tt class="docutils literal"><span class="pre">restart</span></tt> keyword are not compatible, but the Hessian can still be
+retained by replaying the trajectory as above.</p>
+</div>
+<div class="section" id="module-ase.optimize.lbfgs">
+<span id="lbfgs"></span><h3>LBFGS<a class="headerlink" href="#module-ase.optimize.lbfgs" title="Permalink to this headline">¶</a></h3>
+<p>LBFGS is the limited memory version of the BFGS algorithm, where
+the inverse of Hessian matrix is updated instead of the Hessian
+itself. Two ways exist for determining the atomic
+step: Standard <tt class="docutils literal"><span class="pre">LBFGS</span></tt> and <tt class="docutils literal"><span class="pre">LBFGSLineSearch</span></tt>. For the
+first one, both the directions and lengths of the atomic steps
+are determined by the approximated Hessian matrix. While for the
+latter one, the approximated Hessian matrix is only used to find
+out the directions of the line searches and atomic steps, the
+step lengths are determined by the forces.</p>
+<p>To start a structure optimization with LBFGS algorithm is similar to
+BFGS. A typical optimization should look like:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">dyn</span> <span class="o">=</span> <span class="n">LBFGS</span><span class="p">(</span><span class="n">atoms</span><span class="o">=</span><span class="n">system</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="s">&#39;lbfgs.traj&#39;</span><span class="p">,</span> <span class="n">restart</span><span class="o">=</span><span class="s">&#39;lbfgs.pckl&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>where the trajectory and the restart save the trajectory of the
+optimization and the vectors needed to generate the Hessian Matrix.</p>
+</div>
+<div class="section" id="module-ase.optimize.fire">
+<span id="fire"></span><h3>FIRE<a class="headerlink" href="#module-ase.optimize.fire" title="Permalink to this headline">¶</a></h3>
+<p>Read about this algorithm here:</p>
+<blockquote>
+<div><div class="line-block">
+<div class="line">Erik Bitzek, Pekka Koskinen, Franz Gähler, Michael Moseler, and Peter Gumbsch</div>
+<div class="line"><a class="reference external" href="http://dx.doi.org/10.1103/PhysRevLett.97.170201">Structural Relaxation Made Simple</a></div>
+<div class="line">Physical Review Letters, Vol. <strong>97</strong>, 170201 (2006)</div>
+</div>
+</div></blockquote>
+</div>
+<div class="section" id="module-ase.optimize.mdmin">
+<span id="mdmin"></span><h3>MDMin<a class="headerlink" href="#module-ase.optimize.mdmin" title="Permalink to this headline">¶</a></h3>
+<p>The MDmin algorithm is a modification of the usual velocity-Verlet
+molecular dynamics algorithm.  Newtons second law is solved
+numerically, but after each time step the dot product between the
+forces and the momenta is checked.  If it is zero, the system has just
+passed through a (local) minimum in the potential energy, the kinetic
+energy is large and about to decrease again.  At this point, the
+momentum is set to zero.  Unlike a &#8220;real&#8221; molecular dynamics, the
+masses of the atoms are not used, instead all masses are set to one.</p>
+<p>The MDmin algorithm exists in two flavors, one where each atom is
+tested and stopped individually, and one where all coordinates are
+treated as one long vector, and all momenta are set to zero if the
+dot product between the momentum vector and force vector (both of
+length 3N) is zero.  This module implements the latter version.</p>
+<p>Although the algorithm is primitive, it performs very well because it
+takes advantage of the physics of the problem.  Once the system is so
+near the minimum that the potential energy surface is approximately
+quadratic it becomes advantageous to switch to a minimization method
+with quadratic convergence, such as <em>Conjugate Gradient</em> or <em>Quasi
+Newton</em>.</p>
+</div>
+<div class="section" id="module-ase.optimize.sciopt">
+<span id="scipy-optimizers"></span><h3>SciPy optimizers<a class="headerlink" href="#module-ase.optimize.sciopt" title="Permalink to this headline">¶</a></h3>
+<p>SciPy provides a number of optimizers. An interface module for a couple of
+these have been written for ASE. Most notable are the optimizers SciPyFminBFGS
+and SciPyFminCG. These are called with the regular syntax and can be imported
+as:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.optimize.sciopt</span> <span class="kn">import</span> <span class="n">SciPyFminBFGS</span><span class="p">,</span> <span class="n">SciPyFminCG</span>
+</pre></div>
+</div>
+<dl class="class">
+<dt id="ase.optimize.sciopt.SciPyFminBFGS">
+<em class="property">class </em><tt class="descclassname">ase.optimize.sciopt.</tt><tt class="descname">SciPyFminBFGS</tt><big>(</big><em>atoms</em>, <em>logfile='-'</em>, <em>trajectory=None</em>, <em>callback_always=False</em>, <em>alpha=70.0</em>, <em>master=None</em><big>)</big><a class="reference internal" href="../_modules/ase/optimize/sciopt.html#SciPyFminBFGS"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.optimize.sciopt.SciPyFminBFGS" title="Permalink to this definition">¶</a></dt>
+<dd><p>Quasi-Newton method (Broydon-Fletcher-Goldfarb-Shanno)</p>
+<p>Initialize object</p>
+<p>Parameters:</p>
+<dl class="docutils">
+<dt>atoms: Atoms object</dt>
+<dd>The Atoms object to relax.</dd>
+<dt>trajectory: string</dt>
+<dd>Pickle file used to store trajectory of atomic movement.</dd>
+<dt>logfile: file object or str</dt>
+<dd>If <em>logfile</em> is a string, a file with that name will be opened.
+Use &#8216;-&#8216; for stdout.</dd>
+<dt>callback_always: book</dt>
+<dd>Should the callback be run after each force call (also in the
+linesearch)</dd>
+<dt>alpha: float</dt>
+<dd>Initial guess for the Hessian (curvature of energy surface). A
+conservative value of 70.0 is the default, but number of needed
+steps to converge might be less if a lower value is used. However,
+a lower value also means risk of instability.</dd>
+<dt>master: boolean</dt>
+<dd>Defaults to None, which causes only rank 0 to save files.  If
+set to true,  this rank will save files.</dd>
+</dl>
+</dd></dl>
+
+<dl class="class">
+<dt id="ase.optimize.sciopt.SciPyFminCG">
+<em class="property">class </em><tt class="descclassname">ase.optimize.sciopt.</tt><tt class="descname">SciPyFminCG</tt><big>(</big><em>atoms</em>, <em>logfile='-'</em>, <em>trajectory=None</em>, <em>callback_always=False</em>, <em>alpha=70.0</em>, <em>master=None</em><big>)</big><a class="reference internal" href="../_modules/ase/optimize/sciopt.html#SciPyFminCG"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.optimize.sciopt.SciPyFminCG" title="Permalink to this definition">¶</a></dt>
+<dd><p>Non-linear (Polak-Ribiere) conjugate gradient algorithm</p>
+<p>Initialize object</p>
+<p>Parameters:</p>
+<dl class="docutils">
+<dt>atoms: Atoms object</dt>
+<dd>The Atoms object to relax.</dd>
+<dt>trajectory: string</dt>
+<dd>Pickle file used to store trajectory of atomic movement.</dd>
+<dt>logfile: file object or str</dt>
+<dd>If <em>logfile</em> is a string, a file with that name will be opened.
+Use &#8216;-&#8216; for stdout.</dd>
+<dt>callback_always: book</dt>
+<dd>Should the callback be run after each force call (also in the
+linesearch)</dd>
+<dt>alpha: float</dt>
+<dd>Initial guess for the Hessian (curvature of energy surface). A
+conservative value of 70.0 is the default, but number of needed
+steps to converge might be less if a lower value is used. However,
+a lower value also means risk of instability.</dd>
+<dt>master: boolean</dt>
+<dd>Defaults to None, which causes only rank 0 to save files.  If
+set to true,  this rank will save files.</dd>
+</dl>
+</dd></dl>
+
+<div class="admonition seealso">
+<p class="first admonition-title">See also</p>
+<p class="last"><a class="reference external" href="http://wiki.fysik.dtu.dk/ase/epydoc/ase.optimize.sciopt.SciPyFminBFGS-module.html">SciPyFminBFGS</a>,
+<a class="reference external" href="http://wiki.fysik.dtu.dk/ase/epydoc/ase.optimize.sciopt.SciPyFminCG-module.html">SciPyFminCG</a></p>
+</div>
+</div>
+<div class="section" id="module-ase.optimize.bfgslinesearch">
+<span id="bfgslinesearch"></span><h3>BFGSLineSearch<a class="headerlink" href="#module-ase.optimize.bfgslinesearch" title="Permalink to this headline">¶</a></h3>
+<p>BFGSLineSearch is the BFGS algorithm with a line search mechanism
+that enforces the step taken fulfills the Wolfe conditions, so that
+the energy and absolute value of the force decrease monotonically. Like
+the LBFGS algorithm the inverse of the Hessian Matrix is updated.</p>
+<p>The usage of BFGSLineSearch algorithm is similar to other BFGS type
+algorithms. A typical optimization should look like:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.optimize.bfgslinesearch</span> <span class="kn">import</span> <span class="n">BFGSLineSearch</span>
+
+<span class="n">dyn</span> <span class="o">=</span> <span class="n">BFGSLineSearch</span><span class="p">(</span><span class="n">atoms</span><span class="o">=</span><span class="n">system</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="s">&#39;bfgs_ls.traj&#39;</span><span class="p">,</span> <span class="n">restart</span><span class="o">=</span><span class="s">&#39;bfgs_ls.pckl&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>where the trajectory and the restart save the trajectory of the
+optimization and the information needed to generate the Hessian Matrix.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">In many of the examples, tests, exercises and tutorials,
+<tt class="docutils literal"><span class="pre">QuasiNewton</span></tt> is used &#8211; it is a synonym for <tt class="docutils literal"><span class="pre">BFGSLineSearch</span></tt>.</p>
+</div>
+<p>The BFGSLineSearch algorithm is not compatible with nudged elastic band
+calculations.</p>
+</div>
+</div>
+<div class="section" id="global-optimization">
+<h2>Global optimization<a class="headerlink" href="#global-optimization" title="Permalink to this headline">¶</a></h2>
+<p>There are currently two global optimisation algorithms available.</p>
+<div class="section" id="module-ase.optimize.basin">
+<span id="basin-hopping"></span><h3>Basin hopping<a class="headerlink" href="#module-ase.optimize.basin" title="Permalink to this headline">¶</a></h3>
+<p>The global optimization algorithm can be used quite similar as a
+local optimization algorithm:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">ase.optimize.basin</span> <span class="kn">import</span> <span class="n">BasinHopping</span>
+
+<span class="n">bh</span> <span class="o">=</span> <span class="n">BasinHopping</span><span class="p">(</span><span class="n">atoms</span><span class="o">=</span><span class="n">system</span><span class="p">,</span>         <span class="c"># the system to optimize</span>
+                  <span class="n">temperature</span><span class="o">=</span><span class="mi">100</span> <span class="o">*</span> <span class="n">kB</span><span class="p">,</span> <span class="c"># &#39;temperature&#39; to overcome barriers</span>
+                  <span class="n">dr</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>               <span class="c"># maximal stepwidth</span>
+                  <span class="n">optimizer</span><span class="o">=</span><span class="n">LBFGS</span><span class="p">,</span>      <span class="c"># optimizer to find local minima</span>
+                  <span class="n">fmax</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>             <span class="c"># maximal force for the optimizer</span>
+                  <span class="p">)</span>
+</pre></div>
+</div>
+<p>Read more about this algorithm here:</p>
+<blockquote>
+<div><div class="line-block">
+<div class="line">David J. Wales and Jonathan P. K. Doye</div>
+<div class="line"><a class="reference external" href="http://pubs.acs.org/doi/abs/10.1021/jp970984n">Global Optimization by Basin-Hopping and the Lowest Energy Structures of Lennard-Jones Clusters Containing up to 110 Atoms</a></div>
+<div class="line">J. Phys. Chem. A, Vol. <strong>101</strong>, 5111-5116 (1997)</div>
+</div>
+</div></blockquote>
+<p>and here:</p>
+<blockquote>
+<div><div class="line-block">
+<div class="line">David J. Wales and Harold A. Scheraga</div>
+<div class="line"><a class="reference external" href="http://www.sciencemag.org/cgi/content/abstract/sci;285/5432/1368">Global Optimization of Clusters, Crystals, and Biomolecules</a></div>
+<div class="line">Science, Vol. <strong>285</strong>, 1368 (1999)</div>
+</div>
+</div></blockquote>
+</div>
+<div class="section" id="minima-hopping">
+<h3>Minima hopping<a class="headerlink" href="#minima-hopping" title="Permalink to this headline">¶</a></h3>
+<p>The minima hopping algorithm was developed and described by Goedecker:</p>
+<blockquote>
+<div><div class="line-block">
+<div class="line">Stefan Goedecker</div>
+<div class="line"><a class="reference external" href="http://dx.doi.org/10.1063/1.1724816">Minima hopping: An efficient search method for the global minimum of the potential energy surface of complex molecular systems</a></div>
+<div class="line">J. Chem. Phys., Vol. <strong>120</strong>, 9911 (2004)</div>
+</div>
+</div></blockquote>
+<p>This algorithm utilizes a series of alternating steps of NVE molecular dynamics and local optimizations, and has two parameters that the code dynamically adjusts in response to the progress of the search. The first parameter is the initial temperature of the NVE simulation. Whenever a step finds a new minimum this temperature is decreased; if the step finds a previously found minimum the temperature is increased. The second dynamically adjusted parameter is <span class="math">\(E_\mathrm{diff}\)</span>, which is an energy threshold for accepting a newly found minimum. If the new minimum is no more than <span class="math">\(E_\mathrm{diff}\)</span> eV higher than the previous minimum, it is acccepted and <span class="math">\(E_\mathrm{diff}\)</span> is decreased; if it is more than <span class="math">\(E_\mathrm{diff}\)</span> eV higher it is rejected and <span class="math">\(E_\mathrm{diff}\)</span> is increased. The method is used as:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.optimize.minimahopping</span> <span class="kn">import</span> <span class="n">MinimaHopping</span>
+<span class="n">opt</span> <span class="o">=</span> <span class="n">MinimaHopping</span><span class="p">(</span><span class="n">atoms</span><span class="o">=</span><span class="n">system</span><span class="p">)</span>
+<span class="n">opt</span><span class="p">(</span><span class="n">totalsteps</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>This will run the algorithm until 10 steps are taken; alternatively, if totalsteps is not specified the algorithm will run indefinitely (or until stopped by a batch system). A number of optional arguments can be fed when initializing the algorithm as keyword pairs. The keywords and default values are:</p>
+<blockquote>
+<div><div class="line-block">
+<div class="line"><tt class="docutils literal"><span class="pre">T0</span></tt>: 1000.,  # K, initial MD &#8216;temperature&#8217;</div>
+<div class="line"><tt class="docutils literal"><span class="pre">beta1</span></tt>: 1.1,  # temperature adjustment parameter</div>
+<div class="line"><tt class="docutils literal"><span class="pre">beta2</span></tt>: 1.1,  # temperature adjustment parameter</div>
+<div class="line"><tt class="docutils literal"><span class="pre">beta3</span></tt>: 1. / 1.1,  # temperature adjustment parameter</div>
+<div class="line"><tt class="docutils literal"><span class="pre">Ediff0</span></tt>: 0.5,  # eV, initial energy acceptance threshold</div>
+<div class="line"><tt class="docutils literal"><span class="pre">alpha1</span></tt> : 0.98,  # energy threshold adjustment parameter</div>
+<div class="line"><tt class="docutils literal"><span class="pre">alpha2</span></tt> : 1. / 0.98,  # energy threshold adjustment parameter</div>
+<div class="line"><tt class="docutils literal"><span class="pre">mdmin</span></tt> : 2,  # criteria to stop MD simulation (no. of minima)</div>
+<div class="line"><tt class="docutils literal"><span class="pre">logfile</span></tt>: &#8216;hop.log&#8217;,  # text log</div>
+<div class="line"><tt class="docutils literal"><span class="pre">minima_threshold</span></tt> : 0.5,  # A, threshold for identical configs</div>
+<div class="line"><tt class="docutils literal"><span class="pre">timestep</span></tt> : 1.0,  # fs, timestep for MD simulations</div>
+<div class="line"><tt class="docutils literal"><span class="pre">optimizer</span></tt> : QuasiNewton,  # local optimizer to use</div>
+<div class="line"><tt class="docutils literal"><span class="pre">minima_traj</span></tt> : &#8216;minima.traj&#8217;,  # storage file for minima list</div>
+</div>
+</div></blockquote>
+<p>Specific definitions of the <tt class="docutils literal"><span class="pre">alpha</span></tt>, <tt class="docutils literal"><span class="pre">beta</span></tt>, and <tt class="docutils literal"><span class="pre">mdmin</span></tt> parameters can be found in the publication by Goedecker. <tt class="docutils literal"><span class="pre">minima_threshold</span></tt> is used to determine if two atomic configurations are identical; if any atom has moved by more than this amount it is considered a new configuration. Note that the code tries to do this in an intelligent manner: atoms are considered to be indistinguishable, and translations are allowed in the directions of the periodic boundary conditions. Therefore, if a CO is adsorbed in an ontop site on a (211) surface it will be considered identical no matter which ontop site it occupies.</p>
+<p>The trajectory file <tt class="docutils literal"><span class="pre">minima_traj</span></tt> will be populated with the accepted minima as they are found. A log of the progress is kept in <tt class="docutils literal"><span class="pre">logfile</span></tt>.</p>
+<p>The code is written such that a stopped simulation (e.g., killed by the batching system when the maximum wall time was exceeded) can usually be restarted without too much effort by the user. In most cases, the script can be resubmitted without any modification &#8211; if the <tt class="docutils literal"><span class="pre">logfile</span></tt> and <tt class="docutils literal"><span class="pre">minima_traj</span></tt> are found, the script will attempt to use these to resume. (Note that you may need to clean up files left in the directory by the calculator, however, such as the .nc file produced by Jacapo.)</p>
+<p>Note that these searches can be quite slow, so it can pay to have multiple searches running at a time. Multiple searches can run in parallel and share one list of minima. (Run each script from a separate directory but specify the location to the same absolute location for <tt class="docutils literal"><span class="pre">minima_traj</span></tt>). Each search will use the global information of the list of minima, but will keep its own local information of the initial temperature and <span class="math">\(E_\mathrm{diff}\)</span>.</p>
+<p>For an example of use, see the <a class="reference internal" href="../tutorials/minimahopping/minimahopping.html#mhtutorial"><em>Constrained minima hopping (global optimization)</em></a> tutorial.</p>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../overview.html">
+              Overview</a></li>
+            <li><a href="../download.html">
+              Installation</a></li>
+            <li><a href="../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="ase.html">
+              Documentation</a></li>
+            <li><a href="../faq.html">FAQ</a></li>
+            <li><a href="../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>This Page</h3>
+            <ul>
+<li><a class="reference internal" href="#">Structure optimization</a><ul>
+<li><a class="reference internal" href="#local-optimization">Local optimization</a><ul>
+<li><a class="reference internal" href="#module-ase.optimize.qn">BFGS</a></li>
+<li><a class="reference internal" href="#module-ase.optimize.lbfgs">LBFGS</a></li>
+<li><a class="reference internal" href="#module-ase.optimize.fire">FIRE</a></li>
+<li><a class="reference internal" href="#module-ase.optimize.mdmin">MDMin</a></li>
+<li><a class="reference internal" href="#module-ase.optimize.sciopt">SciPy optimizers</a></li>
+<li><a class="reference internal" href="#module-ase.optimize.bfgslinesearch">BFGSLineSearch</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#global-optimization">Global optimization</a><ul>
+<li><a class="reference internal" href="#module-ase.optimize.basin">Basin hopping</a></li>
+<li><a class="reference internal" href="#minima-hopping">Minima hopping</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="lattice.html" title="previous chapter">General crystal structures and surfaces</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="parallel.html" title="next chapter">Parallel calculations</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../_sources/ase/optimize.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

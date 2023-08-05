@@ -1,0 +1,669 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.calculators.fleur &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../../contents.html" />
+    <link rel="index" title="Global index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../../index.html" />
+    <link rel="up" title="ase.calculators" href="../calculators.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../calculators.html" accesskey="U">ase.calculators</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.calculators.fleur</h1><div class="highlight"><pre>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+<span class="sd">&quot;&quot;&quot;This module defines an ASE interface to FLAPW code FLEUR.</span>
+
+<span class="sd">http://www.flapw.de</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">os</span>
+
+<span class="kn">from</span> <span class="nn">subprocess</span> <span class="kn">import</span> <span class="n">Popen</span><span class="p">,</span> <span class="n">PIPE</span>
+
+<span class="kn">import</span> <span class="nn">re</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">ase.units</span> <span class="kn">import</span> <span class="n">Hartree</span><span class="p">,</span> <span class="n">Bohr</span>
+
+<span class="k">class</span> <span class="nc">FLEUR</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Class for doing FLEUR calculations.</span>
+
+<span class="sd">    In order to use fleur one has to define the following environment</span>
+<span class="sd">    variables:</span>
+
+<span class="sd">    FLEUR_INPGEN path to the input generator (inpgen.x) of fleur</span>
+
+<span class="sd">    FLEUR path to the fleur executable. Note that fleur uses different</span>
+<span class="sd">    executable for real and complex cases (systems with/without inversion</span>
+<span class="sd">    symmetry), so FLEUR must point to the correct executable.</span>
+
+<span class="sd">    The initialize_density step can be performed in parallel</span>
+<span class="sd">    only if run on one compute node. FLEUR_SERIAL is used for this step.</span>
+
+<span class="sd">    It is probable that user needs to tune manually the input file before</span>
+<span class="sd">    the actual calculation, so in addition to the standard</span>
+<span class="sd">    get_potential_energy function this class defines the following utility</span>
+<span class="sd">    functions:</span>
+
+<span class="sd">    write_inp</span>
+<span class="sd">        generate the input file *inp*</span>
+<span class="sd">    initialize_density</span>
+<span class="sd">        creates the initial density after possible manual edits of *inp*</span>
+<span class="sd">    calculate</span>
+<span class="sd">        convergence the total energy. With fleur, one specifies always</span>
+<span class="sd">        only the number of SCF-iterations so this function launches</span>
+<span class="sd">        the executable several times and monitors the convergence.</span>
+<span class="sd">    relax</span>
+<span class="sd">        Uses fleur&#39;s internal algorithm for structure</span>
+<span class="sd">        optimization. Requires that the proper optimization parameters</span>
+<span class="sd">        (atoms to optimize etc.) are specified by hand in *inp*</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">xc</span><span class="o">=</span><span class="s">&#39;LDA&#39;</span><span class="p">,</span> <span class="n">kpts</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">nbands</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">convergence</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">width</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">kmax</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">mixer</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">maxrelax</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">workdir</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">equivatoms</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">rmt</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">lenergy</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+
+        <span class="sd">&quot;&quot;&quot;Construct FLEUR-calculator object.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ==========</span>
+<span class="sd">        xc: str</span>
+<span class="sd">            Exchange-correlation functional. Must be one of LDA, PBE,</span>
+<span class="sd">            RPBE.</span>
+<span class="sd">        kpts: list of three int</span>
+<span class="sd">            Monkhost-Pack sampling.</span>
+<span class="sd">        nbands: int</span>
+<span class="sd">            Number of bands. (not used at the moment)</span>
+<span class="sd">        convergence: dictionary</span>
+<span class="sd">            Convergence parameters (currently only energy in eV)</span>
+<span class="sd">            {&#39;energy&#39; : float}</span>
+<span class="sd">        width: float</span>
+<span class="sd">            Fermi-distribution width in eV.</span>
+<span class="sd">        kmax: float</span>
+<span class="sd">            Plane wave cutoff in a.u. If kmax is set then:</span>
+<span class="sd">            gmax = 3.0 * kmax</span>
+<span class="sd">            gmaxxc = int(2.5 * kmax * 10)/10. (from set_inp.f)</span>
+<span class="sd">        mixer: dictionary</span>
+<span class="sd">            Mixing parameters imix, alpha, spinf</span>
+<span class="sd">            {&#39;imix&#39; : int, &#39;alpha&#39; : float, &#39;spinf&#39; : float}</span>
+<span class="sd">        maxiter: int</span>
+<span class="sd">            Maximum number of SCF iterations (name in the code: itmax)</span>
+<span class="sd">        maxrelax: int</span>
+<span class="sd">            Maximum number of relaxation steps</span>
+<span class="sd">        workdir: str</span>
+<span class="sd">            Working directory for the calculation</span>
+<span class="sd">        equivatoms: bool</span>
+<span class="sd">            If False: generate inequivalent atoms (default is True).</span>
+<span class="sd">            Setting to False allows one for example to calculate spin-polarized dimers.</span>
+<span class="sd">            See http://www.flapw.de/pm/index.php?n=User-Documentation.InputFileForTheInputGenerator.</span>
+<span class="sd">        rmt: dictionary</span>
+<span class="sd">            rmt values in Angstrom., e.g: {&#39;O&#39;: 1.1 * Bohr, &#39;N&#39;: -0.1}</span>
+<span class="sd">            Negative number with respect to the rmt set by FLEUR.</span>
+<span class="sd">        lenergy: float</span>
+<span class="sd">            Lower energy in eV. Default -1.8 * Hartree.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">xc</span> <span class="o">=</span> <span class="n">xc</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kpts</span> <span class="o">=</span> <span class="n">kpts</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nbands</span> <span class="o">=</span> <span class="n">nbands</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">width</span> <span class="o">=</span> <span class="n">width</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kmax</span> <span class="o">=</span> <span class="n">kmax</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">itmax_step_default</span> <span class="o">=</span> <span class="mi">9</span> <span class="c"># SCF steps per run (default)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">itmax_step</span> <span class="o">=</span> <span class="mi">5</span> <span class="c"># SCF steps per run</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">itmax_step_default</span> <span class="o">&lt;=</span> <span class="mi">9</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">itmax_step</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">itmax_step_default</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">itmax_default</span> <span class="o">=</span> <span class="mi">40</span>
+        <span class="k">if</span> <span class="n">maxiter</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">itmax</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">itmax_default</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">itmax</span> <span class="o">=</span> <span class="n">maxiter</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">maxrelax</span> <span class="o">=</span> <span class="n">maxrelax</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mixer</span> <span class="o">=</span> <span class="n">mixer</span>
+
+        <span class="k">if</span> <span class="n">convergence</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">convergence</span> <span class="o">=</span> <span class="n">convergence</span> 
+            <span class="bp">self</span><span class="o">.</span><span class="n">convergence</span><span class="p">[</span><span class="s">&#39;energy&#39;</span><span class="p">]</span> <span class="o">/=</span> <span class="n">Hartree</span> 
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">convergence</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;energy&#39;</span> <span class="p">:</span> <span class="mf">0.0001</span><span class="p">}</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">start_dir</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">workdir</span> <span class="o">=</span> <span class="n">workdir</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">workdir</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">start_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getcwd</span><span class="p">()</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">workdir</span><span class="p">):</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">workdir</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">workdir</span> <span class="o">=</span> <span class="s">&#39;.&#39;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">start_dir</span> <span class="o">=</span> <span class="s">&#39;.&#39;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">equivatoms</span> <span class="o">=</span> <span class="n">equivatoms</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">rmt</span> <span class="o">=</span> <span class="n">rmt</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lenergy</span> <span class="o">=</span> <span class="n">lenergy</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">converged</span> <span class="o">=</span> <span class="bp">False</span>
+
+    <span class="k">def</span> <span class="nf">run_executable</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s">&#39;fleur&#39;</span><span class="p">,</span> <span class="n">executable</span><span class="o">=</span><span class="s">&#39;FLEUR&#39;</span><span class="p">):</span>
+
+        <span class="k">assert</span> <span class="n">executable</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;FLEUR&#39;</span><span class="p">,</span> <span class="s">&#39;FLEUR_SERIAL&#39;</span><span class="p">]</span>
+
+        <span class="n">executable_use</span> <span class="o">=</span> <span class="n">executable</span>
+        <span class="k">if</span> <span class="n">executable</span> <span class="o">==</span> <span class="s">&#39;FLEUR_SERIAL&#39;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">executable</span><span class="p">,</span> <span class="s">&#39;&#39;</span><span class="p">):</span>
+            <span class="n">executable_use</span> <span class="o">=</span> <span class="s">&#39;FLEUR&#39;</span> <span class="c"># use FLEUR if FLEUR_SERIAL not set</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">code_exe</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="n">executable_use</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&#39;Please set &#39;</span> <span class="o">+</span> <span class="n">executable_use</span><span class="p">)</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="n">Popen</span><span class="p">(</span><span class="n">code_exe</span><span class="p">,</span> <span class="n">shell</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">stdin</span><span class="o">=</span><span class="n">PIPE</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=</span><span class="n">PIPE</span><span class="p">,</span>
+                  <span class="n">stderr</span><span class="o">=</span><span class="n">PIPE</span><span class="p">)</span>
+        <span class="n">stat</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        <span class="n">err</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        <span class="k">print</span><span class="p">(</span><span class="n">mode</span><span class="p">,</span> <span class="s">&#39;: stat= &#39;</span><span class="p">,</span> <span class="n">stat</span><span class="p">,</span> <span class="s">&#39; out= &#39;</span><span class="p">,</span> <span class="n">out</span><span class="p">,</span> <span class="s">&#39; err=&#39;</span><span class="p">,</span> <span class="n">err</span><span class="p">)</span>
+        <span class="c"># special handling of exit status from density generation and regular fleur.x</span>
+        <span class="k">if</span> <span class="n">mode</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;density&#39;</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="s">&#39;!&#39;</span> <span class="ow">in</span> <span class="n">err</span><span class="p">:</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">start_dir</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="n">executable_use</span> <span class="o">+</span> <span class="s">&#39; exited with a code </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">err</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">stat</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">start_dir</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="n">executable_use</span> <span class="o">+</span> <span class="s">&#39; exited with a code </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">stat</span><span class="p">)</span>
+
+
+    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Update a FLEUR calculation.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">converged</span> <span class="ow">or</span>
+            <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">numbers</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span> <span class="ow">or</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">numbers</span> <span class="o">!=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">())</span><span class="o">.</span><span class="n">any</span><span class="p">()):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">initialize</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">calculate</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">positions</span> <span class="o">!=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">())</span><span class="o">.</span><span class="n">any</span><span class="p">()</span> <span class="ow">or</span>
+              <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pbc</span> <span class="o">!=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_pbc</span><span class="p">())</span><span class="o">.</span><span class="n">any</span><span class="p">()</span> <span class="ow">or</span>
+              <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cell</span> <span class="o">!=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_cell</span><span class="p">())</span><span class="o">.</span><span class="n">any</span><span class="p">()):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">converged</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">initialize</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">calculate</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Create an input file inp and generate starting density.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">converged</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialize_inp</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialize_density</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">initialize_inp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Create a inp file&quot;&quot;&quot;</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">workdir</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">numbers</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">()</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">positions</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cell</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pbc</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_pbc</span><span class="p">()</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="c"># create the input</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">write_inp</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+
+        <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">start_dir</span><span class="p">)</span>
+
+<div class="viewcode-block" id="FLEUR.initialize_density"><a class="viewcode-back" href="../../../ase/calculators/fleur.html#ase.calculators.fleur.FLEUR.initialize_density">[docs]</a>    <span class="k">def</span> <span class="nf">initialize_density</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Creates a new starting density.&quot;&quot;&quot;</span>
+
+        <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">workdir</span><span class="p">)</span>
+        <span class="c"># remove possible conflicting files</span>
+        <span class="n">files2remove</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;cdn1&#39;</span><span class="p">,</span> <span class="s">&#39;fl7para&#39;</span><span class="p">,</span> <span class="s">&#39;stars&#39;</span><span class="p">,</span> <span class="s">&#39;wkf2&#39;</span><span class="p">,</span> <span class="s">&#39;enpara&#39;</span><span class="p">,</span>
+                        <span class="s">&#39;kpts&#39;</span><span class="p">,</span> <span class="s">&#39;broyd&#39;</span><span class="p">,</span> <span class="s">&#39;broyd.7&#39;</span><span class="p">,</span> <span class="s">&#39;tmat&#39;</span><span class="p">,</span> <span class="s">&#39;tmas&#39;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c"># avoid STOP bzone3 error by keeping the kpts file</span>
+            <span class="n">files2remove</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s">&#39;kpts&#39;</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">files2remove</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">f</span><span class="p">):</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+
+        <span class="c"># generate the starting density</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s">&quot;sed -i -e &#39;s/strho=./strho=T/&#39; inp&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">run_executable</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s">&#39;density&#39;</span><span class="p">,</span> <span class="n">executable</span><span class="o">=</span><span class="s">&#39;FLEUR_SERIAL&#39;</span><span class="p">)</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s">&quot;sed -i -e &#39;s/strho=./strho=F/&#39; inp&quot;</span><span class="p">)</span>
+
+        <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">start_dir</span><span class="p">)</span>
+        <span class="c"># generate spin-polarized density</span>
+        <span class="c"># http://www.flapw.de/pm/index.php?n=User-Documentation.Magnetism</span>
+        <span class="k">if</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_initial_magnetic_moments</span><span class="p">()</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mf">0.0</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">workdir</span><span class="p">)</span>
+            <span class="c"># generate cdnc file (1 SCF step: swsp=F - non-magnetic)</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s">&quot;sed -i -e &#39;s/itmax=.*,maxiter/itmax= 1,maxiter/&#39; inp&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">run_executable</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s">&#39;cdnc&#39;</span><span class="p">,</span> <span class="n">executable</span><span class="o">=</span><span class="s">&#39;FLEUR&#39;</span><span class="p">)</span>
+            <span class="n">sedline</span> <span class="o">=</span> <span class="s">&quot;&#39;s/itmax=.*,maxiter/itmax= &#39;&quot;</span>
+            <span class="n">sedline</span> <span class="o">+=</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">itmax_step_default</span><span class="p">)</span> <span class="o">+</span> <span class="s">&quot;&#39;,maxiter/&#39;&quot;</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s">&quot;sed -i -e &quot;</span> <span class="o">+</span> <span class="n">sedline</span> <span class="o">+</span> <span class="s">&quot; inp&quot;</span><span class="p">)</span>
+            <span class="c"># generate spin polarized density (swsp=T)</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s">&quot;sed -i -e &#39;s/swsp=./swsp=T/&#39; inp&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">run_executable</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s">&#39;swsp&#39;</span><span class="p">,</span> <span class="n">executable</span><span class="o">=</span><span class="s">&#39;FLEUR_SERIAL&#39;</span><span class="p">)</span>
+            <span class="c"># restore swsp=F</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s">&quot;sed -i -e &#39;s/swsp=./swsp=F/&#39; inp&quot;</span><span class="p">)</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">start_dir</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">get_potential_energy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">force_consistent</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">force_consistent</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">efree</span> <span class="o">*</span> <span class="n">Hartree</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c"># Energy extrapolated to zero Kelvin:</span>
+            <span class="k">return</span>  <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">etotal</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">efree</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">Hartree</span>
+
+    <span class="k">def</span> <span class="nf">get_number_of_iterations</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">niter</span>
+
+    <span class="k">def</span> <span class="nf">get_forces</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+        <span class="c"># electronic structure is converged, so let&#39;s calculate forces:</span>
+        <span class="c"># TODO</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">((</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">get_stress</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+    <span class="k">def</span> <span class="nf">get_dipole_moment</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns total dipole moment of the system.&quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+<div class="viewcode-block" id="FLEUR.calculate"><a class="viewcode-back" href="../../../ase/calculators/fleur.html#ase.calculators.fleur.FLEUR.calculate">[docs]</a>    <span class="k">def</span> <span class="nf">calculate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Converge a FLEUR calculation to self-consistency.</span>
+
+<span class="sd">           Input files should be generated before calling this function</span>
+<span class="sd">           FLEUR performs always fixed number of SCF steps. This function</span>
+<span class="sd">           reduces the number of iterations gradually, however, a minimum</span>
+<span class="sd">           of five SCF steps is always performed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">workdir</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">niter</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+        <span class="n">err</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+        <span class="k">while</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">converged</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">niter</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">itmax</span><span class="p">:</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">start_dir</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&#39;FLEUR failed to convergence in </span><span class="si">%d</span><span class="s"> iterations&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">itmax</span><span class="p">)</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">run_executable</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s">&#39;fleur&#39;</span><span class="p">,</span> <span class="n">executable</span><span class="o">=</span><span class="s">&#39;FLEUR&#39;</span><span class="p">)</span>
+
+            <span class="c"># catenate new output with the old one</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s">&#39;cat out &gt;&gt; out.old&#39;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">check_convergence</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s">&#39;out.old&#39;</span><span class="p">):</span> <span class="n">os</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="s">&#39;out.old&#39;</span><span class="p">,</span> <span class="s">&#39;out&#39;</span><span class="p">)</span>
+        <span class="c"># After convergence clean up broyd* files</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s">&#39;rm -f broyd*&#39;</span><span class="p">)</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">start_dir</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">out</span><span class="p">,</span> <span class="n">err</span>
+</div>
+<div class="viewcode-block" id="FLEUR.relax"><a class="viewcode-back" href="../../../ase/calculators/fleur.html#ase.calculators.fleur.FLEUR.relax">[docs]</a>    <span class="k">def</span> <span class="nf">relax</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Currently, user has to manually define relaxation parameters</span>
+<span class="sd">           (atoms to relax, relaxation directions, etc.) in inp file</span>
+<span class="sd">           before calling this function.&quot;&quot;&quot;</span>
+
+        <span class="n">nrelax</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">relaxed</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">while</span> <span class="ow">not</span> <span class="n">relaxed</span><span class="p">:</span>
+            <span class="c"># Calculate electronic structure</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">calculate</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+            <span class="c"># Calculate the Pulay forces</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s">&quot;sed -i -e &#39;s/l_f=./l_f=T/&#39; inp&quot;</span><span class="p">)</span>
+            <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">converged</span> <span class="o">=</span> <span class="bp">False</span>
+                <span class="n">out</span><span class="p">,</span> <span class="n">err</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calculate</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+                <span class="k">if</span> <span class="s">&#39;GEO new&#39;</span> <span class="ow">in</span> <span class="n">err</span><span class="p">:</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">workdir</span><span class="p">)</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="s">&#39;inp_new&#39;</span><span class="p">,</span> <span class="s">&#39;inp&#39;</span><span class="p">)</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">start_dir</span><span class="p">)</span>
+                    <span class="k">break</span>
+            <span class="k">if</span> <span class="s">&#39;GEO: Des woas&#39;</span> <span class="ow">in</span> <span class="n">err</span><span class="p">:</span>
+                <span class="n">relaxed</span> <span class="o">=</span> <span class="bp">True</span>
+                <span class="k">break</span>
+            <span class="n">nrelax</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="c"># save the out and cdn1 files</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s">&#39;cp out out_</span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">nrelax</span><span class="p">)</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s">&#39;cp cdn1 cdn1_</span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">nrelax</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">nrelax</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">maxrelax</span><span class="p">:</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">start_dir</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&#39;Failed to relax in </span><span class="si">%d</span><span class="s"> iterations&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">maxrelax</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">converged</span> <span class="o">=</span> <span class="bp">False</span>
+
+</div>
+<div class="viewcode-block" id="FLEUR.write_inp"><a class="viewcode-back" href="../../../ase/calculators/fleur.html#ase.calculators.fleur.FLEUR.write_inp">[docs]</a>    <span class="k">def</span> <span class="nf">write_inp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Write the *inp* input file of FLEUR.</span>
+
+<span class="sd">        First, the information from Atoms is written to the simple input</span>
+<span class="sd">        file and the actual input file *inp* is then generated with the</span>
+<span class="sd">        FLEUR input generator. The location of input generator is specified</span>
+<span class="sd">        in the environment variable FLEUR_INPGEN.</span>
+
+<span class="sd">        Finally, the *inp* file is modified according to the arguments of</span>
+<span class="sd">        the FLEUR calculator object.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">fh</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="s">&#39;inp_simple&#39;</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span>
+        <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;FLEUR input generated with ASE</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+        <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">atoms</span><span class="o">.</span><span class="n">pbc</span><span class="p">[</span><span class="mi">2</span><span class="p">]:</span>
+            <span class="n">film</span> <span class="o">=</span> <span class="s">&#39;f&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">film</span> <span class="o">=</span> <span class="s">&#39;t&#39;</span>
+        <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;&amp;input film=</span><span class="si">%s</span><span class="s"> /&#39;</span> <span class="o">%</span> <span class="n">film</span><span class="p">)</span>
+        <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">vec</span> <span class="ow">in</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_cell</span><span class="p">():</span>
+            <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39; &#39;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">el</span> <span class="ow">in</span> <span class="n">vec</span><span class="p">:</span>
+                <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39; </span><span class="si">%21.16f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">el</span><span class="o">/</span><span class="n">Bohr</span><span class="p">))</span>
+            <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+        <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39; </span><span class="si">%21.16f</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="mf">1.0</span><span class="p">)</span>
+        <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39; </span><span class="si">%21.16f</span><span class="s"> </span><span class="si">%21.16f</span><span class="s"> </span><span class="si">%21.16f</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">))</span>
+        <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+
+        <span class="n">natoms</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+        <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39; </span><span class="si">%6d</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">natoms</span><span class="p">)</span>
+        <span class="n">positions</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_scaled_positions</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">atoms</span><span class="o">.</span><span class="n">pbc</span><span class="p">[</span><span class="mi">2</span><span class="p">]:</span>
+            <span class="c"># in film calculations z position has to be in absolute</span>
+            <span class="c"># coordinates and symmetrical</span>
+            <span class="n">cart_pos</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+            <span class="n">cart_pos</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">-=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span><span class="o">/</span><span class="mf">2.0</span>
+            <span class="n">positions</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">cart_pos</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">/</span> <span class="n">Bohr</span>
+        <span class="n">atomic_numbers</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="p">(</span><span class="n">Z</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">atomic_numbers</span><span class="p">,</span> <span class="n">positions</span><span class="p">)):</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">equivatoms</span><span class="p">:</span>
+                <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%3d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">Z</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c"># generate inequivalent atoms, by using non-integer Z</span>
+                <span class="c"># (only the integer part will be used as Z of the atom)</span>
+                <span class="c"># see http://www.flapw.de/pm/index.php?n=User-Documentation.InputFileForTheInputGenerator</span>
+                <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%3d</span><span class="s">.</span><span class="si">%04d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">Z</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span> <span class="c"># MDTMP don&#39;t think one can calculate more that 10**4 atoms</span>
+            <span class="k">for</span> <span class="n">el</span> <span class="ow">in</span> <span class="n">pos</span><span class="p">:</span>
+                <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39; </span><span class="si">%21.16f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">el</span><span class="p">)</span>
+            <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+
+        <span class="c"># avoid &quot;STOP read_record: ERROR reading input&quot;</span>
+        <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;&amp;end /&#39;</span><span class="p">)</span>
+
+        <span class="n">fh</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">inpgen</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s">&#39;FLEUR_INPGEN&#39;</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&#39;Please set FLEUR_INPGEN&#39;</span><span class="p">)</span>
+
+        <span class="c"># rename the previous inp if it exists</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="s">&#39;inp&#39;</span><span class="p">):</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="s">&#39;inp&#39;</span><span class="p">,</span> <span class="s">&#39;inp.bak&#39;</span><span class="p">)</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%s</span><span class="s"> &lt; inp_simple&#39;</span> <span class="o">%</span> <span class="n">inpgen</span><span class="p">)</span>
+
+        <span class="c"># read the whole inp-file for possible modifications</span>
+        <span class="n">fh</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="s">&#39;inp&#39;</span><span class="p">,</span> <span class="s">&#39;r&#39;</span><span class="p">)</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="n">fh</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
+        <span class="n">fh</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+
+        <span class="n">window_ln</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="k">for</span> <span class="n">ln</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">lines</span><span class="p">):</span>
+            <span class="c"># XC potential</span>
+            <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;pbe&#39;</span><span class="p">):</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">xc</span> <span class="o">==</span> <span class="s">&#39;PBE&#39;</span><span class="p">:</span>
+                    <span class="k">pass</span>
+                <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">xc</span> <span class="o">==</span> <span class="s">&#39;RPBE&#39;</span><span class="p">:</span>
+                    <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="p">]</span> <span class="o">=</span> <span class="s">&#39;rpbe   non-relativi</span><span class="se">\n</span><span class="s">&#39;</span>
+                <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">xc</span> <span class="o">==</span> <span class="s">&#39;LDA&#39;</span><span class="p">:</span>
+                    <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="p">]</span> <span class="o">=</span> <span class="s">&#39;mjw    non-relativic</span><span class="se">\n</span><span class="s">&#39;</span>
+                    <span class="k">del</span> <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&#39;XC-functional </span><span class="si">%s</span><span class="s"> is not supported&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">xc</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;Window&#39;</span><span class="p">):</span>
+                <span class="c"># few things are set around this line</span>
+                <span class="n">window_ln</span> <span class="o">=</span> <span class="n">ln</span>
+            <span class="c"># kmax</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">kmax</span> <span class="ow">and</span> <span class="n">ln</span> <span class="o">==</span> <span class="n">window_ln</span><span class="p">:</span>
+                <span class="n">line</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%10.5f</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">kmax</span>
+                <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="o">+</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">line</span>
+            <span class="c"># lower energy</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">lenergy</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">ln</span> <span class="o">==</span> <span class="n">window_ln</span><span class="p">:</span>
+                <span class="n">l0</span> <span class="o">=</span> <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">l</span> <span class="o">=</span> <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">l0</span><span class="p">,</span> <span class="s">&#39;</span><span class="si">%8.5f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lenergy</span> <span class="o">/</span> <span class="n">Hartree</span><span class="p">))</span>
+                <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">l</span>
+            <span class="c"># gmax   cutoff for PW-expansion of potential &amp; density  ( &gt; 2*kmax)</span>
+            <span class="c"># gmaxxc cutoff for PW-expansion of XC-potential ( &gt; 2*kmax, &lt; gmax)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">kmax</span> <span class="ow">and</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;vchk&#39;</span><span class="p">):</span>
+                <span class="n">gmax</span> <span class="o">=</span> <span class="mf">3.</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">kmax</span>
+                <span class="n">line</span> <span class="o">=</span> <span class="s">&#39; </span><span class="si">%10.6f</span><span class="s"> </span><span class="si">%10.6f</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">gmax</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="mf">2.5</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">kmax</span> <span class="o">*</span> <span class="mi">10</span><span class="p">)</span><span class="o">/</span><span class="mf">10.</span><span class="p">)</span>
+                <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">line</span>
+            <span class="c"># Fermi width</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">width</span> <span class="ow">and</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;gauss&#39;</span><span class="p">):</span>
+                <span class="n">line</span> <span class="o">=</span> <span class="s">&#39;gauss=F   </span><span class="si">%7.5f</span><span class="s">tria=F</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">width</span> <span class="o">/</span> <span class="n">Hartree</span><span class="p">)</span>
+                <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="p">]</span> <span class="o">=</span> <span class="n">line</span>
+            <span class="c"># kpts</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">kpts</span> <span class="ow">and</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;nkpt&#39;</span><span class="p">):</span>
+                <span class="n">line</span> <span class="o">=</span> <span class="s">&#39;nkpt=      nx=</span><span class="si">%2d</span><span class="s">,ny=</span><span class="si">%2d</span><span class="s">,nz=</span><span class="si">%2d</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">kpts</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+                                                              <span class="bp">self</span><span class="o">.</span><span class="n">kpts</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+                                                              <span class="bp">self</span><span class="o">.</span><span class="n">kpts</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+                <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="p">]</span> <span class="o">=</span> <span class="n">line</span>
+            <span class="c"># itmax</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">itmax</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">itmax_step_default</span> <span class="ow">and</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;itmax&#39;</span><span class="p">):</span>
+                <span class="c"># decrease number of SCF steps; increasing is done by &#39;while not self.converged:&#39;</span>
+                <span class="n">lsplit</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">lsplit</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;itmax&#39;</span><span class="p">)</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                    <span class="n">lsplit</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="s">&#39;itmax=&#39;</span> <span class="o">+</span> <span class="p">(</span><span class="s">&#39;</span><span class="si">%2d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">itmax</span><span class="p">)</span>
+                    <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="p">]</span> <span class="o">=</span> <span class="s">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lsplit</span><span class="p">)</span>
+            <span class="c"># Mixing</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mixer</span> <span class="ow">and</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;itmax&#39;</span><span class="p">):</span>
+                <span class="n">imix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mixer</span><span class="p">[</span><span class="s">&#39;imix&#39;</span><span class="p">]</span>
+                <span class="n">alpha</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mixer</span><span class="p">[</span><span class="s">&#39;alpha&#39;</span><span class="p">]</span>
+                <span class="n">spinf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mixer</span><span class="p">[</span><span class="s">&#39;spinf&#39;</span><span class="p">]</span>
+                <span class="n">line_end</span> <span class="o">=</span> <span class="s">&#39;imix=</span><span class="si">%2d</span><span class="s">,alpha=</span><span class="si">%6.2f</span><span class="s">,spinf=</span><span class="si">%6.2f</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">imix</span><span class="p">,</span>
+                                                                   <span class="n">alpha</span><span class="p">,</span>
+                                                                   <span class="n">spinf</span><span class="p">)</span>
+                <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="p">[:</span><span class="mi">21</span><span class="p">]</span> <span class="o">+</span> <span class="n">line_end</span>
+                <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="p">]</span> <span class="o">=</span> <span class="n">line</span>
+            <span class="c"># jspins and swsp</span>
+            <span class="k">if</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_initial_magnetic_moments</span><span class="p">()</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mf">0.0</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">equivatoms</span><span class="p">,</span> <span class="s">&#39;equivatoms currently not allowed in magnetic systems&#39;</span>
+                <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">&#39;jspins=1&#39;</span><span class="p">)</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                    <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="p">]</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s">&#39;jspins=1&#39;</span><span class="p">,</span> <span class="s">&#39;jspins=2&#39;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;swsp=F&#39;</span><span class="p">):</span>
+                    <span class="c"># setting initial magnetic moments for all atom types</span>
+                    <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="p">]</span> <span class="o">=</span> <span class="s">&#39;swsp=F&#39;</span>
+                    <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_initial_magnetic_moments</span><span class="p">():</span>
+                        <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="p">]</span> <span class="o">+=</span> <span class="p">(</span><span class="s">&#39; </span><span class="si">%5.2f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">m</span><span class="p">)</span>
+                    <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="p">]</span> <span class="o">+=</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span>
+            <span class="c"># inpgen produces incorrect symbol &#39;J&#39; for Iodine</span>
+            <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39; J  53&#39;</span><span class="p">):</span>
+                <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="p">]</span> <span class="o">=</span> <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s">&#39; J  53&#39;</span><span class="p">,</span> <span class="s">&#39; I  53&#39;</span><span class="p">)</span>
+        <span class="c"># rmt</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">rmt</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">())):</span>  <span class="c"># unique</span>
+                <span class="k">if</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">rmt</span><span class="p">:</span>
+                    <span class="c"># set the requested rmt</span>
+                    <span class="k">for</span> <span class="n">ln</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">lines</span><span class="p">):</span>
+                        <span class="n">ls</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+                        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">ls</span><span class="p">)</span> <span class="o">==</span> <span class="mi">7</span> <span class="ow">and</span> <span class="n">ls</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="o">==</span> <span class="n">s</span><span class="p">:</span>
+                            <span class="n">rorig</span> <span class="o">=</span> <span class="n">ls</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">rmt</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mf">0.0</span><span class="p">:</span>
+                                <span class="n">r</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">rorig</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">rmt</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="o">/</span> <span class="n">Bohr</span>
+                            <span class="k">else</span><span class="p">:</span>
+                                <span class="n">r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rmt</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="o">/</span> <span class="n">Bohr</span>
+                            <span class="k">print</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">rorig</span><span class="p">,</span> <span class="n">r</span><span class="p">)</span>
+                            <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="p">]</span> <span class="o">=</span> <span class="n">lines</span><span class="p">[</span><span class="n">ln</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">rorig</span><span class="p">,</span> <span class="p">(</span><span class="s">&quot;</span><span class="si">%.6f</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">r</span><span class="p">))</span>
+
+        <span class="c"># write everything back to inp</span>
+        <span class="n">fh</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="s">&#39;inp&#39;</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+            <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+        <span class="n">fh</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</div>
+    <span class="k">def</span> <span class="nf">read</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Read results from FLEUR&#39;s text-output file `out`.&quot;&quot;&quot;</span>
+
+        <span class="n">lines</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="s">&#39;out&#39;</span><span class="p">,</span> <span class="s">&#39;r&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
+
+        <span class="c"># total energies</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">total_energies</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">pat</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;(.*total energy=)(\s)*([-0-9.]*)&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="n">pat</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">m</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">total_energies</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">3</span><span class="p">)))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">etotal</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_energies</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="c"># free_energies</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">free_energies</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">pat</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;(.*free energy=)(\s)*([-0-9.]*)&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="n">pat</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">m</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">free_energies</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">3</span><span class="p">)))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">efree</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">free_energies</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="c"># TODO forces, charge density difference...</span>
+
+    <span class="k">def</span> <span class="nf">check_convergence</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Check the convergence of calculation&quot;&quot;&quot;</span>
+        <span class="n">energy_error</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ptp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">total_energies</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">:])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">converged</span> <span class="o">=</span> <span class="n">energy_error</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">convergence</span><span class="p">[</span><span class="s">&#39;energy&#39;</span><span class="p">]</span>
+
+        <span class="c"># TODO check charge convergence</span>
+
+        <span class="c"># reduce the itmax in inp</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="s">&#39;inp&#39;</span><span class="p">,</span> <span class="s">&#39;r&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
+        <span class="n">pat</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;(itmax=)([ 0-9]*)&#39;</span><span class="p">)</span>
+        <span class="n">fh</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="s">&#39;inp&#39;</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="n">pat</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">m</span><span class="p">:</span>
+                <span class="n">itmax</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">niter</span> <span class="o">+=</span> <span class="n">itmax</span>
+                <span class="n">itmax_new</span> <span class="o">=</span> <span class="n">itmax</span> <span class="o">/</span> <span class="mi">2</span>
+                <span class="n">itmax</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">itmax_step</span><span class="p">,</span> <span class="n">itmax_new</span><span class="p">)</span>
+                <span class="n">line</span> <span class="o">=</span> <span class="s">&#39;itmax=</span><span class="si">%2d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">itmax</span> <span class="o">+</span> <span class="n">line</span><span class="p">[</span><span class="mi">8</span><span class="p">:]</span>
+            <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+        <span class="n">fh</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../../overview.html">
+              Overview</a></li>
+            <li><a href="../../../download.html">
+              Installation</a></li>
+            <li><a href="../../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../../faq.html">FAQ</a></li>
+            <li><a href="../../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../calculators.html" accesskey="U">ase.calculators</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,917 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>A database for atoms &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="Documentation for modules in ASE" href="../ase.html" />
+    <link rel="next" title="Genetic Algorithm" href="../ga.html" />
+    <link rel="prev" title="Setting up an OPLS force field calculation" href="../io/opls.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <span class="target" id="module-ase.db"></span><div class="section" id="a-database-for-atoms">
+<h1><a class="toc-backref" href="#id3">A database for atoms</a><a class="headerlink" href="#a-database-for-atoms" title="Permalink to this headline">¶</a></h1>
+<p>ASE has its own database that can be used for storing and retrieving atoms and
+associated data in a compact and convenient way.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">This is work in progress.  Use at your own risk!</p>
+</div>
+<p>There are currently three back-ends:</p>
+<dl class="docutils">
+<dt><a class="reference external" href="http://www.json.org/">JSON</a>:</dt>
+<dd>Simple human-readable text file with a <tt class="docutils literal"><span class="pre">.json</span></tt> extension.</dd>
+<dt><a class="reference external" href="http://www.sqlite.org/">SQLite3</a>:</dt>
+<dd>Self-contained, server-less, zero-configuration database.  Lives in a file
+with a <tt class="docutils literal"><span class="pre">.db</span></tt> extension.</dd>
+<dt><a class="reference external" href="http://www.postgresql.org/">PostgreSQL</a>:</dt>
+<dd>Server based database.</dd>
+</dl>
+<p>The JSON and SQLite3 back-ends work &#8220;out of the box&#8221;, whereas PostgreSQL
+requires a server.</p>
+<p>There is a command-line tool called <a class="reference internal" href="#ase-db"><em>ase-db</em></a> that can be
+used to query and manipulate databases and also a <a class="reference internal" href="#python-interface">Python interface</a>.</p>
+<div class="contents topic" id="contents">
+<p class="topic-title first">Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#a-database-for-atoms" id="id3">A database for atoms</a><ul>
+<li><a class="reference internal" href="#what-s-in-the-database" id="id4">What&#8217;s in the database?</a></li>
+<li><a class="reference internal" href="#ase-db" id="id5">ase-db</a><ul>
+<li><a class="reference internal" href="#querying" id="id6">Querying</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#integration-with-other-parts-of-ase" id="id7">Integration with other parts of ASE</a></li>
+<li><a class="reference internal" href="#browse-database-with-your-web-browser" id="id8">Browse database with your web-browser</a></li>
+<li><a class="reference internal" href="#module-ase.db.core" id="id9">Python Interface</a><ul>
+<li><a class="reference internal" href="#dictionary-representation-of-rows" id="id10">Dictionary representation of rows</a></li>
+<li><a class="reference internal" href="#extracting-atoms-objects-from-the-database" id="id11">Extracting Atoms objects from the database</a></li>
+<li><a class="reference internal" href="#add-additional-data" id="id12">Add additional data</a></li>
+<li><a class="reference internal" href="#row-objects" id="id13">Row objects</a></li>
+<li><a class="reference internal" href="#more-details" id="id14">More details</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="what-s-in-the-database">
+<h2><a class="toc-backref" href="#id4">What&#8217;s in the database?</a><a class="headerlink" href="#what-s-in-the-database" title="Permalink to this headline">¶</a></h2>
+<p>Every row in the database contains:</p>
+<ul class="simple">
+<li>all the information stored in the <a class="reference internal" href="../atoms.html#ase.atoms.Atoms" title="ase.atoms.Atoms"><tt class="xref py py-class docutils literal"><span class="pre">Atoms</span></tt></a> object
+(positions, atomic numbers, ...)</li>
+<li>calculator name and parameters (if a calculator is present)</li>
+<li>already calculated properties such as energy and forces
+(if a calculator is present)</li>
+<li>key-value pairs (for finding the calculation again)</li>
+<li>an integer ID (unique for each database) starting with 1 and always
+increasing for each new row</li>
+<li>a unique ID which is a 128 bit random number which should be globally
+unique (at least in the lifetime of our universe)</li>
+<li>constraints (if present)</li>
+<li>user-name</li>
+<li>creation and modification time</li>
+</ul>
+</div>
+<div class="section" id="ase-db">
+<span id="id1"></span><h2><a class="toc-backref" href="#id5">ase-db</a><a class="headerlink" href="#ase-db" title="Permalink to this headline">¶</a></h2>
+<p>The <a class="reference internal" href="#ase-db"><em>ase-db</em></a> command-line tool can be used to query databases and for
+manipulating key-value pairs.  Try:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ase-db --help
+</pre></div>
+</div>
+<p>Example: Show all rows of SQLite database abc.db:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ase-db abc.out
+id|age|user |formula|calculator|energy| fmax|pbc|volume|charge| mass
+ 1| 0s|jensj|H2     |emt       | 1.419|9.803|FFF| 1.000| 0.000|2.016
+ 2| 0s|jensj|H2     |emt       | 1.071|0.000|FFF| 1.000| 0.000|2.016
+ 3| 0s|jensj|H      |emt       | 3.210|0.000|FFF| 1.000| 0.000|1.008
+Rows: 3
+Keys: relaxed
+</pre></div>
+</div>
+<p>Show all details for a single row:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ase-db abc.out relaxed=1 -l
+name      |unit  |value
+id        |      |2
+age       |      |0.188 seconds
+formula   |      |H2
+user      |      |jensj
+calculator|      |emt
+energy    |eV    |1.07054126233
+fmax      |eV/Ang|9.2526347333e-05
+charge    ||e|   |0.0
+mass      |au    |2.01588
+unique id |      |64dc328835526a1d579aed9378bb9490
+volume    |Ang^3 |1.0
+
+Unit cell in Ang:
+axis|periodic|          x|          y|          z
+   1|      no|      1.000|      0.000|      0.000
+   2|      no|      0.000|      1.000|      0.000
+   3|      no|      0.000|      0.000|      1.000
+
+Key-value pairs:
+relaxed|True
+
+Forces in ev/Ang:
+   0|H |     0.000|    -0.000|    -0.000
+   1|H |    -0.000|     0.000|     0.000
+
+Data: abc
+</pre></div>
+</div>
+<div class="admonition seealso">
+<p class="first admonition-title">See also</p>
+<ul class="last simple">
+<li><a class="reference internal" href="../cmdline.html#cli"><em>Command line tools in ASE</em></a></li>
+</ul>
+</div>
+<div class="section" id="querying">
+<h3><a class="toc-backref" href="#id6">Querying</a><a class="headerlink" href="#querying" title="Permalink to this headline">¶</a></h3>
+<p>Here are some example query strings:</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="25%" />
+<col width="75%" />
+</colgroup>
+<tbody valign="top">
+<tr class="row-odd"><td>Cu</td>
+<td>contains copper</td>
+</tr>
+<tr class="row-even"><td>H&lt;3</td>
+<td>less than 3 hydrogen atoms</td>
+</tr>
+<tr class="row-odd"><td>Cu,H&lt;3</td>
+<td>contains copper and has less than 3 hydrogen atoms</td>
+</tr>
+<tr class="row-even"><td>v3</td>
+<td>has &#8216;v3&#8217; key</td>
+</tr>
+<tr class="row-odd"><td>abc=bla-bla</td>
+<td>has key &#8216;abc&#8217; with value &#8216;bla-bla&#8217;</td>
+</tr>
+<tr class="row-even"><td>v3,abc=bla-bla</td>
+<td>both of the above</td>
+</tr>
+<tr class="row-odd"><td>calculator=nwchem</td>
+<td>calculations done with NWChem</td>
+</tr>
+<tr class="row-even"><td>2.2&lt;bandgap&lt;3.0</td>
+<td>&#8216;bandgap&#8217; key has value between 2.2 and 3.0</td>
+</tr>
+<tr class="row-odd"><td>natoms&gt;=10</td>
+<td>10 or more atoms</td>
+</tr>
+<tr class="row-even"><td>formula=H2O</td>
+<td>Exactly two hydrogens and one oxygen</td>
+</tr>
+<tr class="row-odd"><td>id=2345</td>
+<td>specific id</td>
+</tr>
+<tr class="row-even"><td>age&lt;1h</td>
+<td>not older than 1 hour</td>
+</tr>
+<tr class="row-odd"><td>age&gt;1y</td>
+<td>older than 1 year</td>
+</tr>
+<tr class="row-even"><td>pbc=TTT</td>
+<td>Periodic boundary conditions along all three axes</td>
+</tr>
+<tr class="row-odd"><td>pbc=TTF</td>
+<td>Periodic boundary conditions along the first two axes (F=False, T=True)</td>
+</tr>
+</tbody>
+</table>
+<p>These names are special:</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="25%" />
+<col width="75%" />
+</colgroup>
+<tbody valign="top">
+<tr class="row-odd"><td>id</td>
+<td>integer identifier</td>
+</tr>
+<tr class="row-even"><td>natoms</td>
+<td>number of atoms</td>
+</tr>
+<tr class="row-odd"><td>pbc</td>
+<td>Periodic boundary conditions</td>
+</tr>
+<tr class="row-even"><td>formula</td>
+<td>formula</td>
+</tr>
+<tr class="row-odd"><td>energy</td>
+<td>potential energy</td>
+</tr>
+<tr class="row-even"><td>charge</td>
+<td>total charge</td>
+</tr>
+<tr class="row-odd"><td>magmom</td>
+<td>total magnetic moment</td>
+</tr>
+<tr class="row-even"><td>calculator</td>
+<td>name of calculator</td>
+</tr>
+<tr class="row-odd"><td>user</td>
+<td>who did it</td>
+</tr>
+<tr class="row-even"><td>age</td>
+<td>age of calculation (use s, m, h, d, w, M and y for second, minute,
+hour, day, week, month and year respectively)</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="section" id="integration-with-other-parts-of-ase">
+<h2><a class="toc-backref" href="#id7">Integration with other parts of ASE</a><a class="headerlink" href="#integration-with-other-parts-of-ase" title="Permalink to this headline">¶</a></h2>
+<p>ASE&#8217;s <a class="reference internal" href="../io.html#ase.io.read" title="ase.io.read"><tt class="xref py py-func docutils literal"><span class="pre">ase.io.read()</span></tt></a> function can also read directly from databases:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">ase.io</span> <span class="kn">import</span> <span class="n">read</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">a</span> <span class="o">=</span> <span class="n">read</span><span class="p">(</span><span class="s">&#39;abc.db@42&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">a</span> <span class="o">=</span> <span class="n">read</span><span class="p">(</span><span class="s">&#39;abc.db@id=42&#39;</span><span class="p">)</span>  <span class="c"># same thing</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">b</span> <span class="o">=</span> <span class="n">read</span><span class="p">(</span><span class="s">&#39;abc.db@v3,abc=H&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Also the <a class="reference internal" href="../gui/gui.html#ase-gui"><em>ase-gui</em></a> program can read from databases using the
+same syntax.</p>
+</div>
+<div class="section" id="browse-database-with-your-web-browser">
+<span id="ase-db-web"></span><h2><a class="toc-backref" href="#id8">Browse database with your web-browser</a><a class="headerlink" href="#browse-database-with-your-web-browser" title="Permalink to this headline">¶</a></h2>
+<p>You can use your web-browser to look at and query databases like this:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ ase-db abc.db -w
+$ firefox http://0.0.0.0:5000/
+</pre></div>
+</div>
+<p>Click individual rows to see details.  See the <a class="reference external" href="https://cmrdb.fysik.dtu.dk/">CMR</a> web-page for an example of
+how this works.</p>
+</div>
+<div class="section" id="module-ase.db.core">
+<span id="python-interface"></span><h2><a class="toc-backref" href="#id9">Python Interface</a><a class="headerlink" href="#module-ase.db.core" title="Permalink to this headline">¶</a></h2>
+<p>First, we <a class="reference internal" href="#ase.db.core.connect" title="ase.db.core.connect"><tt class="xref py py-func docutils literal"><span class="pre">connect()</span></tt></a> to the database:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">ase.db</span> <span class="kn">import</span> <span class="n">connect</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">con</span> <span class="o">=</span> <span class="n">connect</span><span class="p">(</span><span class="s">&#39;abc.db&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>or</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">ase.db</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">con</span> <span class="o">=</span> <span class="n">ase</span><span class="o">.</span><span class="n">db</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s">&#39;abc.db&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Let&#8217;s do a calculation for a hydrogen molecule and write some results to a
+database:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">Atoms</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">h2</span> <span class="o">=</span> <span class="n">Atoms</span><span class="p">(</span><span class="s">&#39;H2&#39;</span><span class="p">,</span> <span class="p">[(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">)])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">h2</span><span class="o">.</span><span class="n">calc</span> <span class="o">=</span> <span class="n">EMT</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">h2</span><span class="o">.</span><span class="n">get_forces</span><span class="p">()</span>
+<span class="go">array([[ 0.        ,  0.        , -9.80290573],</span>
+<span class="go">       [ 0.        ,  0.        ,  9.80290573]])</span>
+</pre></div>
+</div>
+<p>Write a row to the database with a key-value pair (<tt class="docutils literal"><span class="pre">'relaxed'</span></tt>, <tt class="docutils literal"><span class="pre">False</span></tt>):</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">con</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">h2</span><span class="p">,</span> <span class="n">relaxed</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+<span class="go">1</span>
+</pre></div>
+</div>
+<p>The <a class="reference internal" href="#ase.db.core.Database.write" title="ase.db.core.Database.write"><tt class="xref py py-meth docutils literal"><span class="pre">write()</span></tt></a> method returns an integer id.</p>
+<p>Do one more calculation and write results:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">ase.optimize</span> <span class="kn">import</span> <span class="n">BFGS</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">BFGS</span><span class="p">(</span><span class="n">h2</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.01</span><span class="p">)</span>
+<span class="go">BFGS:   0  12:49:25        1.419427       9.8029</span>
+<span class="go">BFGS:   1  12:49:25        1.070582       0.0853</span>
+<span class="go">BFGS:   2  12:49:25        1.070544       0.0236</span>
+<span class="go">BFGS:   3  12:49:25        1.070541       0.0001</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">con</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">h2</span><span class="p">,</span> <span class="n">relaxed</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="go">2</span>
+</pre></div>
+</div>
+<p>Loop over selected rows using the <a class="reference internal" href="#ase.db.core.Database.select" title="ase.db.core.Database.select"><tt class="xref py py-meth docutils literal"><span class="pre">select()</span></tt></a> method:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">con</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">relaxed</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="k">print</span> <span class="n">row</span><span class="o">.</span><span class="n">forces</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">row</span><span class="o">.</span><span class="n">relaxed</span>
+<span class="gp">...</span>
+<span class="go">-9.8029057329 False</span>
+<span class="go">-9.2526347333e-05 True</span>
+</pre></div>
+</div>
+<p>The <a class="reference internal" href="#ase.db.core.Database.select" title="ase.db.core.Database.select"><tt class="xref py py-meth docutils literal"><span class="pre">select()</span></tt></a> method will generate <a class="reference internal" href="#row-objects"><em>Row objects</em></a>
+that one can loop over.</p>
+<p>Write the energy of an isolated hydrogen atom to the database:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">h</span> <span class="o">=</span> <span class="n">Atoms</span><span class="p">(</span><span class="s">&#39;H&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">h</span><span class="o">.</span><span class="n">calc</span> <span class="o">=</span> <span class="n">EMT</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">h</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+<span class="go">3.21</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">con</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
+<span class="go">3</span>
+</pre></div>
+</div>
+<p>Select a single row with the <a class="reference internal" href="#ase.db.core.Database.get" title="ase.db.core.Database.get"><tt class="xref py py-meth docutils literal"><span class="pre">get()</span></tt></a> method:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">row</span> <span class="o">=</span> <span class="n">con</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">relaxed</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">calculator</span><span class="o">=</span><span class="s">&#39;emt&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">row</span><span class="p">:</span>
+<span class="gp">... </span>   <span class="k">print</span><span class="p">(</span><span class="s">&#39;{0:22}: {1}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">row</span><span class="p">[</span><span class="n">key</span><span class="p">]))</span>
+<span class="gp">...</span>
+<span class="go">pbc                   : [False False False]</span>
+<span class="go">relaxed               : True</span>
+<span class="go">calculator_parameters : {}</span>
+<span class="go">user                  : jensj</span>
+<span class="go">mtime                 : 15.3439399027</span>
+<span class="go">calculator            : emt</span>
+<span class="go">ctime                 : 15.3439399027</span>
+<span class="go">positions             : [[ ... ]]</span>
+<span class="go">id                    : 2</span>
+<span class="go">cell                  : [[ 1.  0.  0.] [ 0.  1.  0.] [ 0.  0.  1.]]</span>
+<span class="go">forces                : [[ ... ]]</span>
+<span class="go">energy                : 1.07054126233</span>
+<span class="go">unique_id             : bce90ff3ea7661690b54f9794c1d7ef6</span>
+<span class="go">numbers               : [1 1]</span>
+</pre></div>
+</div>
+<p>Calculate the atomization energy and <a class="reference internal" href="#ase.db.core.Database.update" title="ase.db.core.Database.update"><tt class="xref py py-meth docutils literal"><span class="pre">update()</span></tt></a> a row in
+the database:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">e2</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">energy</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">e1</span> <span class="o">=</span> <span class="n">con</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">H</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">energy</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ae</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">e1</span> <span class="o">-</span> <span class="n">e2</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">print</span><span class="p">(</span><span class="n">ae</span><span class="p">)</span>
+<span class="go">5.34945873767</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">id</span> <span class="o">=</span> <span class="n">con</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">relaxed</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">id</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">con</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">id</span><span class="p">,</span> <span class="n">atomization_energy</span><span class="o">=</span><span class="n">ae</span><span class="p">)</span>
+<span class="go">1</span>
+</pre></div>
+</div>
+<p>Delete a single row:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">del</span> <span class="n">con</span><span class="p">[</span><span class="n">con</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">relaxed</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">id</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>or use the <a class="reference internal" href="#ase.db.core.Database.delete" title="ase.db.core.Database.delete"><tt class="xref py py-meth docutils literal"><span class="pre">delete()</span></tt></a> method to delete several rows.</p>
+<div class="section" id="dictionary-representation-of-rows">
+<h3><a class="toc-backref" href="#id10">Dictionary representation of rows</a><a class="headerlink" href="#dictionary-representation-of-rows" title="Permalink to this headline">¶</a></h3>
+<p>The first 9 keys (from &#8220;id&#8221; to &#8220;positions&#8221;) are always present &#8212; the rest
+may be there:</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="29%" />
+<col width="46%" />
+<col width="17%" />
+<col width="8%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">key</th>
+<th class="head">description</th>
+<th class="head">datatype</th>
+<th class="head">shape</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td>id</td>
+<td>Local database id</td>
+<td>int</td>
+<td>&nbsp;</td>
+</tr>
+<tr class="row-odd"><td>unique_id</td>
+<td>Globally unique hexadecimal id</td>
+<td>str</td>
+<td>&nbsp;</td>
+</tr>
+<tr class="row-even"><td>ctime</td>
+<td>Creation time</td>
+<td>float</td>
+<td>&nbsp;</td>
+</tr>
+<tr class="row-odd"><td>mtime</td>
+<td>Modification time</td>
+<td>float</td>
+<td>&nbsp;</td>
+</tr>
+<tr class="row-even"><td>user</td>
+<td>User name</td>
+<td>str</td>
+<td>&nbsp;</td>
+</tr>
+<tr class="row-odd"><td>numbers</td>
+<td>Atomic numbers</td>
+<td>int</td>
+<td>(N,)</td>
+</tr>
+<tr class="row-even"><td>pbc</td>
+<td>Periodic boundary condition flags</td>
+<td>bool</td>
+<td>(3,)</td>
+</tr>
+<tr class="row-odd"><td>cell</td>
+<td>Unit cell</td>
+<td>float</td>
+<td>(3, 3)</td>
+</tr>
+<tr class="row-even"><td>positions</td>
+<td>Atomic positions</td>
+<td>float</td>
+<td>(N, 3)</td>
+</tr>
+<tr class="row-odd"><td>initial_magmoms</td>
+<td>Initial atomic magnetic moments</td>
+<td>float</td>
+<td>(N,)</td>
+</tr>
+<tr class="row-even"><td>initial_charges</td>
+<td>Initial atomic charges</td>
+<td>float</td>
+<td>(N,)</td>
+</tr>
+<tr class="row-odd"><td>masses</td>
+<td>Atomic masses</td>
+<td>float</td>
+<td>(N,)</td>
+</tr>
+<tr class="row-even"><td>tags</td>
+<td>Tags</td>
+<td>int</td>
+<td>(N,)</td>
+</tr>
+<tr class="row-odd"><td>momenta</td>
+<td>Atomic momenta</td>
+<td>float</td>
+<td>(N, 3)</td>
+</tr>
+<tr class="row-even"><td>constraints</td>
+<td>Constraints</td>
+<td>list of dict</td>
+<td>&nbsp;</td>
+</tr>
+<tr class="row-odd"><td>energy</td>
+<td>Total energy</td>
+<td>float</td>
+<td>&nbsp;</td>
+</tr>
+<tr class="row-even"><td>forces</td>
+<td>Atomic forces</td>
+<td>float</td>
+<td>(N, 3)</td>
+</tr>
+<tr class="row-odd"><td>stress</td>
+<td>Stress tensor</td>
+<td>float</td>
+<td>(6,)</td>
+</tr>
+<tr class="row-even"><td>dipole</td>
+<td>Electrical dipole</td>
+<td>float</td>
+<td>(3,)</td>
+</tr>
+<tr class="row-odd"><td>charges</td>
+<td>Atomic charges</td>
+<td>float</td>
+<td>(N,)</td>
+</tr>
+<tr class="row-even"><td>magmom</td>
+<td>Magnetic moment</td>
+<td>float</td>
+<td>&nbsp;</td>
+</tr>
+<tr class="row-odd"><td>magmoms</td>
+<td>Atomic magnetic moments</td>
+<td>float</td>
+<td>(N,)</td>
+</tr>
+<tr class="row-even"><td>calculator</td>
+<td>Calculator name</td>
+<td>str</td>
+<td>&nbsp;</td>
+</tr>
+<tr class="row-odd"><td>calculator_parameters</td>
+<td>Calculator parameters</td>
+<td>dict</td>
+<td>&nbsp;</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="extracting-atoms-objects-from-the-database">
+<h3><a class="toc-backref" href="#id11">Extracting Atoms objects from the database</a><a class="headerlink" href="#extracting-atoms-objects-from-the-database" title="Permalink to this headline">¶</a></h3>
+<p>If you want an Atoms object insted of a dictionary, you should use the
+<a class="reference internal" href="#ase.db.core.Database.get_atoms" title="ase.db.core.Database.get_atoms"><tt class="xref py py-meth docutils literal"><span class="pre">get_atoms()</span></tt></a> method:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">h2</span> <span class="o">=</span> <span class="n">con</span><span class="o">.</span><span class="n">get_atoms</span><span class="p">(</span><span class="n">H</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>or if you want the original EMT calculator attached:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">h2</span> <span class="o">=</span> <span class="n">con</span><span class="o">.</span><span class="n">get_atoms</span><span class="p">(</span><span class="n">H</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">attach_calculator</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="add-additional-data">
+<h3><a class="toc-backref" href="#id12">Add additional data</a><a class="headerlink" href="#add-additional-data" title="Permalink to this headline">¶</a></h3>
+<p>When you write a row to a database using the <a class="reference internal" href="#ase.db.core.Database.write" title="ase.db.core.Database.write"><tt class="xref py py-meth docutils literal"><span class="pre">write()</span></tt></a> method,
+you can add key-value pairs where the values can be
+strings, floating point numbers, integers and booleans:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">con</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">functional</span><span class="o">=</span><span class="s">&#39;LDA&#39;</span><span class="p">,</span> <span class="n">distance</span><span class="o">=</span><span class="mf">7.2</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>More complicated data can be written like this:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">con</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="s">&#39;parents&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">7</span><span class="p">,</span> <span class="mi">34</span><span class="p">,</span> <span class="mi">14</span><span class="p">],</span> <span class="s">&#39;stuff&#39;</span><span class="p">:</span> <span class="o">...</span><span class="p">})</span>
+</pre></div>
+</div>
+<p>and accessed like this:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">row</span> <span class="o">=</span> <span class="n">con</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">row</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">parents</span>
+<span class="go">[7, 34, 14]</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="row-objects">
+<span id="id2"></span><h3><a class="toc-backref" href="#id13">Row objects</a><a class="headerlink" href="#row-objects" title="Permalink to this headline">¶</a></h3>
+<p>There are three ways to get at the columns of a row:</p>
+<ol class="arabic simple">
+<li>as attributes (<tt class="docutils literal"><span class="pre">row.key</span></tt>)</li>
+<li>indexing (<tt class="docutils literal"><span class="pre">row['key']</span></tt>)</li>
+<li>the <a class="reference internal" href="#ase.db.row.AtomsRow.get" title="ase.db.row.AtomsRow.get"><tt class="xref py py-meth docutils literal"><span class="pre">get()</span></tt></a> method (<tt class="docutils literal"><span class="pre">row.get('key')</span></tt>)</li>
+</ol>
+<p>The first two will fail if there is no <tt class="docutils literal"><span class="pre">key</span></tt> column whereas the last will
+just return <tt class="docutils literal"><span class="pre">None</span></tt> in that case.  Use <tt class="docutils literal"><span class="pre">row.get('key',</span> <span class="pre">...)</span></tt> to use
+another default value.</p>
+<dl class="class">
+<dt id="ase.db.row.AtomsRow">
+<em class="property">class </em><tt class="descclassname">ase.db.row.</tt><tt class="descname">AtomsRow</tt><big>(</big><em>dct</em><big>)</big><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="method">
+<dt id="ase.db.row.AtomsRow.get">
+<tt class="descname">get</tt><big>(</big><em>key</em>, <em>default=None</em><big>)</big><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow.get"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow.get" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return value of key if present or default if not.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="ase.db.row.AtomsRow.key_value_pairs">
+<tt class="descname">key_value_pairs</tt><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow.key_value_pairs"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow.key_value_pairs" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return dict of key-value pairs.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.db.row.AtomsRow.count_atoms">
+<tt class="descname">count_atoms</tt><big>(</big><big>)</big><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow.count_atoms"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow.count_atoms" title="Permalink to this definition">¶</a></dt>
+<dd><p>Count atoms.</p>
+<p>Return dict mapping chemical symbol strings to number of atoms.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="ase.db.row.AtomsRow.constraints">
+<tt class="descname">constraints</tt><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow.constraints"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow.constraints" title="Permalink to this definition">¶</a></dt>
+<dd><p>List of constraints.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="ase.db.row.AtomsRow.data">
+<tt class="descname">data</tt><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow.data"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow.data" title="Permalink to this definition">¶</a></dt>
+<dd><p>Data dict.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="ase.db.row.AtomsRow.natoms">
+<tt class="descname">natoms</tt><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow.natoms"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow.natoms" title="Permalink to this definition">¶</a></dt>
+<dd><p>Number of atoms.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="ase.db.row.AtomsRow.formula">
+<tt class="descname">formula</tt><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow.formula"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow.formula" title="Permalink to this definition">¶</a></dt>
+<dd><p>Chemical formula string.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="ase.db.row.AtomsRow.symbols">
+<tt class="descname">symbols</tt><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow.symbols"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow.symbols" title="Permalink to this definition">¶</a></dt>
+<dd><p>List of chemical symbols.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="ase.db.row.AtomsRow.fmax">
+<tt class="descname">fmax</tt><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow.fmax"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow.fmax" title="Permalink to this definition">¶</a></dt>
+<dd><p>Maximum atomic force.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="ase.db.row.AtomsRow.constrained_forces">
+<tt class="descname">constrained_forces</tt><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow.constrained_forces"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow.constrained_forces" title="Permalink to this definition">¶</a></dt>
+<dd><p>Forces after applying constraints.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="ase.db.row.AtomsRow.smax">
+<tt class="descname">smax</tt><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow.smax"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow.smax" title="Permalink to this definition">¶</a></dt>
+<dd><p>Maximum stress tensor component.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="ase.db.row.AtomsRow.mass">
+<tt class="descname">mass</tt><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow.mass"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow.mass" title="Permalink to this definition">¶</a></dt>
+<dd><p>Total mass.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="ase.db.row.AtomsRow.volume">
+<tt class="descname">volume</tt><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow.volume"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow.volume" title="Permalink to this definition">¶</a></dt>
+<dd><p>Volume of unit cell.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="ase.db.row.AtomsRow.charge">
+<tt class="descname">charge</tt><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow.charge"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow.charge" title="Permalink to this definition">¶</a></dt>
+<dd><p>Total charge.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.db.row.AtomsRow.toatoms">
+<tt class="descname">toatoms</tt><big>(</big><em>attach_calculator=False</em>, <em>add_additional_information=False</em><big>)</big><a class="reference internal" href="../../_modules/ase/db/row.html#AtomsRow.toatoms"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.row.AtomsRow.toatoms" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create Atoms object.</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="more-details">
+<h3><a class="toc-backref" href="#id14">More details</a><a class="headerlink" href="#more-details" title="Permalink to this headline">¶</a></h3>
+<dl class="function">
+<dt id="ase.db.core.connect">
+<tt class="descclassname">ase.db.core.</tt><tt class="descname">connect</tt><big>(</big><em>name</em>, <em>type='extract_from_name'</em>, <em>create_indices=True</em>, <em>use_lock_file=True</em>, <em>append=True</em><big>)</big><a class="reference internal" href="../../_modules/ase/db/core.html#connect"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.core.connect" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create connection to database.</p>
+<dl class="docutils">
+<dt>name: str</dt>
+<dd>Filename or address of database.</dd>
+<dt>type: str</dt>
+<dd>One of &#8216;json&#8217;, &#8216;db&#8217;, &#8216;postgresql&#8217;, &#8216;mysql&#8217;
+(JSON, SQLite, PostgreSQL, MySQL/MariaDB).
+Default is &#8216;extract_from_name&#8217;, which will ... guess the type
+from the name.</dd>
+<dt>use_lock_file: bool</dt>
+<dd>You can turn this off if you know what you are doing ...</dd>
+<dt>append: bool</dt>
+<dd>Use append=False to start a new database.</dd>
+</dl>
+</dd></dl>
+
+<dl class="class">
+<dt id="ase.db.core.Database">
+<em class="property">class </em><tt class="descclassname">ase.db.core.</tt><tt class="descname">Database</tt><big>(</big><em>filename=None</em>, <em>create_indices=True</em>, <em>use_lock_file=False</em><big>)</big><a class="reference internal" href="../../_modules/ase/db/core.html#Database"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.core.Database" title="Permalink to this definition">¶</a></dt>
+<dd><p>Base class for all databases.</p>
+<dl class="method">
+<dt id="ase.db.core.Database.write">
+<tt class="descname">write</tt><big>(</big><em>*args</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="../../_modules/ase/db/core.html#Database.write"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.core.Database.write" title="Permalink to this definition">¶</a></dt>
+<dd><p>Write atoms to database with key-value pairs.</p>
+<dl class="docutils">
+<dt>atoms: Atoms object</dt>
+<dd>Write atomic numbers, positions, unit cell and boundary
+conditions.  If a calculator is attached, write also already
+calculated properties such as the energy and forces.</dd>
+<dt>key_value_pairs: dict</dt>
+<dd>Dictionary of key-value pairs.  Values must be strings or numbers.</dd>
+<dt>data: dict</dt>
+<dd>Extra stuff (not for searching).</dd>
+</dl>
+<p>Key-value pairs can also be set using keyword arguments:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">connection</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;ABC&#39;</span><span class="p">,</span> <span class="n">frequency</span><span class="o">=</span><span class="mf">42.0</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Returns integer id of the new row.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.db.core.Database.reserve">
+<tt class="descname">reserve</tt><big>(</big><em>*args</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="../../_modules/ase/db/core.html#Database.reserve"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.core.Database.reserve" title="Permalink to this definition">¶</a></dt>
+<dd><p>Write empty row if not already present.</p>
+<p>Usage:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="nb">id</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">reserve</span><span class="p">(</span><span class="n">key1</span><span class="o">=</span><span class="n">value1</span><span class="p">,</span> <span class="n">key2</span><span class="o">=</span><span class="n">value2</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Write an empty row with the given key-value pairs and
+return the integer id.  If such a row already exists, don&#8217;t write
+anything and return None.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.db.core.Database.get_atoms">
+<tt class="descname">get_atoms</tt><big>(</big><em>selection=None</em>, <em>attach_calculator=False</em>, <em>add_additional_information=False</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="../../_modules/ase/db/core.html#Database.get_atoms"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.core.Database.get_atoms" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get Atoms object.</p>
+<dl class="docutils">
+<dt>selection: int, str or list</dt>
+<dd>See the select() method.</dd>
+<dt>attach_calculator: bool</dt>
+<dd>Attach calculator object to Atoms object (default value is
+False).</dd>
+<dt>add_additional_information: bool</dt>
+<dd>Put key-value pairs and data into Atoms.info dictionary.</dd>
+</dl>
+<p>In addition, one can use keyword arguments to select specific
+key-value pairs.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.db.core.Database.get">
+<tt class="descname">get</tt><big>(</big><em>selection=None</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="../../_modules/ase/db/core.html#Database.get"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.core.Database.get" title="Permalink to this definition">¶</a></dt>
+<dd><p>Select a single row and return it as a dictionary.</p>
+<dl class="docutils">
+<dt>selection: int, str or list</dt>
+<dd>See the select() method.</dd>
+<dt>fancy: bool</dt>
+<dd>return fancy dictionary with keys as attributes (this is the
+default).</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.db.core.Database.select">
+<tt class="descname">select</tt><big>(</big><em>selection=None</em>, <em>filter=None</em>, <em>explain=False</em>, <em>verbosity=1</em>, <em>limit=None</em>, <em>offset=0</em>, <em>sort=None</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="../../_modules/ase/db/core.html#Database.select"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.core.Database.select" title="Permalink to this definition">¶</a></dt>
+<dd><p>Select rows.</p>
+<p>Return AtomsRow iterator with results.  Selection is done
+using key-value pairs and the special keys:</p>
+<blockquote>
+<div>formula, age, user, calculator, natoms, energy, magmom
+and/or charge.</div></blockquote>
+<dl class="docutils">
+<dt>selection: int, str or list</dt>
+<dd><p class="first">Can be:</p>
+<ul class="last simple">
+<li>an integer id</li>
+<li>a string like &#8216;key=value&#8217;, where &#8216;=&#8217; can also be one of
+&#8216;&lt;=&#8217;, &#8216;&lt;&#8217;, &#8216;&gt;&#8217;, &#8216;&gt;=&#8217; or &#8216;!=&#8217;.</li>
+<li>a string like &#8216;key&#8217;</li>
+<li>comma separated strings like &#8216;key1&lt;value1,key2=value2,key&#8217;</li>
+<li>list of strings or tuples: [(&#8216;charge&#8217;, &#8216;=&#8217;, 1)].</li>
+</ul>
+</dd>
+<dt>filter: function</dt>
+<dd>A function that takes as input a row and returns True or False.</dd>
+<dt>explain: bool</dt>
+<dd>Explain query plan.</dd>
+<dt>verbosity: int</dt>
+<dd>Possible values: 0, 1 or 2.</dd>
+<dt>limit: int or None</dt>
+<dd>Limit selection.</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.db.core.Database.update">
+<tt class="descname">update</tt><big>(</big><em>*args</em>, <em>**kwargs</em><big>)</big><a class="reference internal" href="../../_modules/ase/db/core.html#Database.update"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.core.Database.update" title="Permalink to this definition">¶</a></dt>
+<dd><p>Update row(s).</p>
+<dl class="docutils">
+<dt>ids: int or list of int</dt>
+<dd>ID&#8217;s of rows to update.</dd>
+<dt>delete_keys: list of str</dt>
+<dd>Keys to remove.</dd>
+</dl>
+<p>Use keyword argumnts to add new keys-value pairs.</p>
+<p>Returns number of key-value pairs added and removed.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.db.core.Database.delete">
+<tt class="descname">delete</tt><big>(</big><em>ids</em><big>)</big><a class="reference internal" href="../../_modules/ase/db/core.html#Database.delete"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.db.core.Database.delete" title="Permalink to this definition">¶</a></dt>
+<dd><p>Delete rows.</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>This Page</h3>
+            <ul>
+<li><a class="reference internal" href="#">A database for atoms</a><ul>
+<li><a class="reference internal" href="#what-s-in-the-database">What&#8217;s in the database?</a></li>
+<li><a class="reference internal" href="#ase-db">ase-db</a><ul>
+<li><a class="reference internal" href="#querying">Querying</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#integration-with-other-parts-of-ase">Integration with other parts of ASE</a></li>
+<li><a class="reference internal" href="#browse-database-with-your-web-browser">Browse database with your web-browser</a></li>
+<li><a class="reference internal" href="#module-ase.db.core">Python Interface</a><ul>
+<li><a class="reference internal" href="#dictionary-representation-of-rows">Dictionary representation of rows</a></li>
+<li><a class="reference internal" href="#extracting-atoms-objects-from-the-database">Extracting Atoms objects from the database</a></li>
+<li><a class="reference internal" href="#add-additional-data">Add additional data</a></li>
+<li><a class="reference internal" href="#row-objects">Row objects</a></li>
+<li><a class="reference internal" href="#more-details">More details</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="../io/opls.html" title="previous chapter">Setting up an OPLS force field calculation</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="../ga.html" title="next chapter">Genetic Algorithm</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../../_sources/ase/db/db.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

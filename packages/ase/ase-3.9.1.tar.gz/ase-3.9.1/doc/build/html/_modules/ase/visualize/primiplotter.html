@@ -1,0 +1,1059 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.visualize.primiplotter &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../../contents.html" />
+    <link rel="index" title="Global index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../../index.html" />
+    <link rel="up" title="ase.visualize" href="../visualize.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../visualize.html" accesskey="U">ase.visualize</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.visualize.primiplotter</h1><div class="highlight"><pre>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+<span class="sd">&quot;&quot;&quot;An experimental package for making plots during a simulation.</span>
+
+<span class="sd">A PrimiPlotter can plot a list of atoms on one or more output devices.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">numpy</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">ase.visualize.colortable</span> <span class="kn">import</span> <span class="n">color_table</span>
+<span class="kn">import</span> <span class="nn">ase.data</span>
+<span class="kn">import</span> <span class="nn">sys</span><span class="o">,</span> <span class="nn">os</span><span class="o">,</span> <span class="nn">time</span><span class="o">,</span> <span class="nn">weakref</span>
+<span class="kn">import</span> <span class="nn">collections</span>
+
+<span class="k">class</span> <span class="nc">PrimiPlotterBase</span><span class="p">:</span>
+    <span class="s">&quot;Base class for PrimiPlotter and Povrayplotter.&quot;</span>
+    <span class="c">#def set_dimensions(self, dims):</span>
+    <span class="c">#    &quot;Set the size of the canvas (a 2-tuple).&quot;</span>
+    <span class="c">#    self.dims = dims</span>
+        
+    <span class="k">def</span> <span class="nf">set_rotation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rotation</span><span class="p">):</span>
+        <span class="s">&quot;Set the rotation angles (in degrees).&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">angles</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">array</span><span class="p">(</span><span class="n">rotation</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">pi</span><span class="o">/</span><span class="mi">180</span><span class="p">)</span>
+        
+    <span class="k">def</span> <span class="nf">set_radii</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">radii</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set the atomic radii.  Give an array or a single number.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">radius</span> <span class="o">=</span> <span class="n">radii</span>
+
+    <span class="k">def</span> <span class="nf">set_colors</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">colors</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Explicitly set the colors of the atoms.</span>
+<span class="sd">        </span>
+<span class="sd">        The colors can either be a dictionary mapping tags to colors</span>
+<span class="sd">        or an array of colors, one per atom.</span>
+<span class="sd">        </span>
+<span class="sd">        Each color is specified as a greyscale value from 0.0 to 1.0</span>
+<span class="sd">        or as three RGB values from 0.0 to 1.0.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">colors</span> <span class="o">=</span> <span class="n">colors</span>
+
+    <span class="k">def</span> <span class="nf">set_color_function</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">colors</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set a color function, to be used to color the atoms.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">colors</span><span class="p">,</span> <span class="n">collections</span><span class="o">.</span><span class="n">Callable</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">colorfunction</span> <span class="o">=</span> <span class="n">colors</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&quot;The color function is not callable.&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">set_invisible</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inv</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Choose invisible atoms.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">invisible</span> <span class="o">=</span> <span class="n">inv</span>
+
+    <span class="k">def</span> <span class="nf">set_invisibility_function</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">invfunc</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set an invisibility function.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">invfunc</span><span class="p">,</span> <span class="n">collections</span><span class="o">.</span><span class="n">Callable</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">invisibilityfunction</span> <span class="o">=</span> <span class="n">invfunc</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&quot;The invisibility function is not callable.&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">set_cut</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">xmin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">xmax</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">ymin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">ymax</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+               <span class="n">zmin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cut</span> <span class="o">=</span> <span class="p">{</span><span class="s">&quot;xmin&quot;</span><span class="p">:</span><span class="n">xmin</span><span class="p">,</span> <span class="s">&quot;xmax&quot;</span><span class="p">:</span><span class="n">xmax</span><span class="p">,</span> <span class="s">&quot;ymin&quot;</span><span class="p">:</span><span class="n">ymin</span><span class="p">,</span> <span class="s">&quot;ymax&quot;</span><span class="p">:</span><span class="n">ymax</span><span class="p">,</span>
+                    <span class="s">&quot;zmin&quot;</span><span class="p">:</span><span class="n">zmin</span><span class="p">,</span> <span class="s">&quot;zmax&quot;</span><span class="p">:</span><span class="n">zmax</span><span class="p">}</span>
+    
+    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">newatoms</span> <span class="o">=</span> <span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Cause a plot (respecting the interval setting).</span>
+
+<span class="sd">        update causes a plot to be made.  If the interval variable was</span>
+<span class="sd">        specified when the plotter was create, it will only produce a</span>
+<span class="sd">        plot with that interval.  update takes an optional argument,</span>
+<span class="sd">        newatoms, which can be used to replace the list of atoms with</span>
+<span class="sd">        a new one.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">newatoms</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="n">newatoms</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">skipnext</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">skipnext</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">interval</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">skipnext</span> <span class="o">-=</span> <span class="mi">1</span>
+        
+    <span class="k">def</span> <span class="nf">set_log</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">log</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Sets a file for logging.</span>
+
+<span class="sd">        log may be an open file or a filename.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">log</span><span class="p">,</span> <span class="s">&quot;write&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="o">=</span> <span class="n">log</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ownlogfile</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">log</span><span class="p">,</span> <span class="s">&quot;w&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ownlogfile</span> <span class="o">=</span> <span class="bp">True</span>
+
+    <span class="k">def</span> <span class="nf">log</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;logs a message to the file set by set_log.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">message</span><span class="o">+</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_verb</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+        
+    <span class="k">def</span> <span class="nf">_verb</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">txt</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">txt</span><span class="o">+</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">_starttimer</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">starttime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_stoptimer</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">elapsedtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">starttime</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">totaltime</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">totaltime</span> <span class="o">+</span> <span class="n">elapsedtime</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&quot;plotting time </span><span class="si">%s</span><span class="s"> sec (total </span><span class="si">%s</span><span class="s"> sec)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">elapsedtime</span><span class="p">,</span>
+                                                       <span class="bp">self</span><span class="o">.</span><span class="n">totaltime</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">_getpositions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_getradii</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">radius</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">radius</span><span class="p">,</span> <span class="s">&quot;shape&quot;</span><span class="p">):</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">radius</span>   <span class="c"># User has specified an array</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">radius</span> <span class="o">*</span> <span class="n">ones</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">),</span> <span class="nb">float</span><span class="p">)</span>
+        <span class="c"># No radii specified.  Try getting them from the atoms.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_atomic_radii</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">z</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_getatomicnumbers</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">ase</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">covalent_radii</span><span class="p">[</span><span class="n">z</span><span class="p">]</span>
+        <span class="c"># No radius available.  Defaulting to 1.0</span>
+        <span class="k">return</span> <span class="n">ones</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">),</span> <span class="nb">float</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_getatomicnumbers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">()</span>
+    
+    <span class="k">def</span> <span class="nf">_getcolors</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># Try any explicitly given colors</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">colors</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">colors</span><span class="p">,</span> <span class="nb">type</span><span class="p">({})):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Explicit colors dictionary&quot;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">_colorsfromdict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">colors</span><span class="p">,</span>
+                                       <span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_tags</span><span class="p">(),</span><span class="nb">int</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Explicit colors&quot;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">colors</span>
+        <span class="c"># Try the color function, if given</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">colorfunction</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Calling color function.&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">colorfunction</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span>
+        <span class="c"># Maybe the atoms know their own colors</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_colors</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">if</span> <span class="n">c</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="nb">type</span><span class="p">({})):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Color dictionary from atoms.get_colors()&quot;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">_colorsfromdict</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_tags</span><span class="p">(),</span><span class="nb">int</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Colors from atoms.get_colors()&quot;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">c</span>
+        <span class="c"># Default to white atoms</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;No colors: using white&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ones</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">),</span> <span class="nb">float</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_getinvisible</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">invisible</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">inv</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">invisible</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">inv</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">invisibilityfunction</span><span class="p">:</span>
+            <span class="n">inv</span> <span class="o">=</span> <span class="n">logical_or</span><span class="p">(</span><span class="n">inv</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">invisibilityfunction</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">))</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_getpositions</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">inv</span><span class="p">):</span>
+            <span class="c"># This will happen in parallel simulations due to ghost atoms.</span>
+            <span class="c"># They are invisible.  Hmm, this may cause trouble.</span>
+            <span class="n">i2</span> <span class="o">=</span> <span class="n">ones</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">))</span>
+            <span class="n">i2</span><span class="p">[:</span><span class="nb">len</span><span class="p">(</span><span class="n">inv</span><span class="p">)]</span> <span class="o">=</span> <span class="n">inv</span>
+            <span class="n">inv</span> <span class="o">=</span> <span class="n">i2</span>
+            <span class="k">del</span> <span class="n">i2</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cut</span><span class="p">[</span><span class="s">&quot;xmin&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">inv</span> <span class="o">=</span> <span class="n">logical_or</span><span class="p">(</span><span class="n">inv</span><span class="p">,</span> <span class="n">less</span><span class="p">(</span><span class="n">r</span><span class="p">[:,</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">cut</span><span class="p">[</span><span class="s">&quot;xmin&quot;</span><span class="p">]))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cut</span><span class="p">[</span><span class="s">&quot;xmax&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">inv</span> <span class="o">=</span> <span class="n">logical_or</span><span class="p">(</span><span class="n">inv</span><span class="p">,</span> <span class="n">greater</span><span class="p">(</span><span class="n">r</span><span class="p">[:,</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">cut</span><span class="p">[</span><span class="s">&quot;xmax&quot;</span><span class="p">]))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cut</span><span class="p">[</span><span class="s">&quot;ymin&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">inv</span> <span class="o">=</span> <span class="n">logical_or</span><span class="p">(</span><span class="n">inv</span><span class="p">,</span> <span class="n">less</span><span class="p">(</span><span class="n">r</span><span class="p">[:,</span><span class="mi">1</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">cut</span><span class="p">[</span><span class="s">&quot;ymin&quot;</span><span class="p">]))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cut</span><span class="p">[</span><span class="s">&quot;ymax&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">inv</span> <span class="o">=</span> <span class="n">logical_or</span><span class="p">(</span><span class="n">inv</span><span class="p">,</span> <span class="n">greater</span><span class="p">(</span><span class="n">r</span><span class="p">[:,</span><span class="mi">1</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">cut</span><span class="p">[</span><span class="s">&quot;ymax&quot;</span><span class="p">]))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cut</span><span class="p">[</span><span class="s">&quot;zmin&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">inv</span> <span class="o">=</span> <span class="n">logical_or</span><span class="p">(</span><span class="n">inv</span><span class="p">,</span> <span class="n">less</span><span class="p">(</span><span class="n">r</span><span class="p">[:,</span><span class="mi">2</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">cut</span><span class="p">[</span><span class="s">&quot;zmin&quot;</span><span class="p">]))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cut</span><span class="p">[</span><span class="s">&quot;zmax&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">inv</span> <span class="o">=</span> <span class="n">logical_or</span><span class="p">(</span><span class="n">inv</span><span class="p">,</span> <span class="n">greater</span><span class="p">(</span><span class="n">r</span><span class="p">[:,</span><span class="mi">2</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">cut</span><span class="p">[</span><span class="s">&quot;zmax&quot;</span><span class="p">]))</span>
+        <span class="k">return</span> <span class="n">inv</span>        
+
+    <span class="k">def</span> <span class="nf">__del__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ownlogfile</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            
+<div class="viewcode-block" id="PrimiPlotter"><a class="viewcode-back" href="../../../ase/visualize/visualize.html#ase.visualize.primiplotter.PrimiPlotter">[docs]</a><span class="k">class</span> <span class="nc">PrimiPlotter</span><span class="p">(</span><span class="n">PrimiPlotterBase</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Primitive PostScript-based plots during a simulation.</span>
+
+<span class="sd">    The PrimiPlotter plots atoms during simulations, extracting the</span>
+<span class="sd">    relevant information from the list of atoms.  It is created using</span>
+<span class="sd">    the list of atoms as an argument to the constructor.  Then one or</span>
+<span class="sd">    more output devices must be attached using set_output(device).  The</span>
+<span class="sd">    list of supported output devices is at the end.</span>
+
+<span class="sd">    The atoms are plotted as circles.  The system is first rotated</span>
+<span class="sd">    using the angles specified by set_rotation([vx, vy, vz]).  The</span>
+<span class="sd">    rotation is vx degrees around the x axis (positive from the y</span>
+<span class="sd">    toward the z axis), then vy degrees around the y axis (from x</span>
+<span class="sd">    toward z), then vz degrees around the z axis (from x toward y).</span>
+<span class="sd">    The rotation matrix is the same as the one used by RasMol.</span>
+
+<span class="sd">    Per default, the system is scaled so it fits within the canvas</span>
+<span class="sd">    (autoscale mode).  Autoscale mode is enabled and disables using</span>
+<span class="sd">    autoscale(&quot;on&quot;) or autoscale(&quot;off&quot;).  A manual scale factor can be</span>
+<span class="sd">    set with set_scale(scale), this implies autoscale(&quot;off&quot;).  The</span>
+<span class="sd">    scale factor (from the last autoscale event or from set_scale) can</span>
+<span class="sd">    be obtained with get_scale().  Finally, an explicit autoscaling can</span>
+<span class="sd">    be triggered with autoscale(&quot;now&quot;), this is mainly useful before</span>
+<span class="sd">    calling get_scale or before disabling further autoscaling.</span>
+<span class="sd">    Finally, a relative scaling factor can be set with</span>
+<span class="sd">    SetRelativeScaling(), it is multiplied to the usual scale factor</span>
+<span class="sd">    (from autoscale or from set_scale).  This is probably only useful in</span>
+<span class="sd">    connection with autoscaling.</span>
+
+<span class="sd">    The radii of the atoms are obtained from the first of the following</span>
+<span class="sd">    methods which work:</span>
+<span class="sd">    </span>
+<span class="sd">    1.  If the radii are specified using PrimiPlotter.set_radii(r),</span>
+<span class="sd">        they are used.  Must be an array, or a single number.</span>
+
+<span class="sd">    2.  If the atoms has a get_atomic_radii() method, it is used.  This is</span>
+<span class="sd">        unlikely.</span>
+
+<span class="sd">    3.  If the atoms has a get_atomic_numbers() method, the</span>
+<span class="sd">        corresponding covalent radii are extracted from the</span>
+<span class="sd">        ASE.ChemicalElements module.</span>
+
+<span class="sd">    4.  If all else fails, the radius is set to 1.0 Angstrom.</span>
+
+<span class="sd">    The atoms are colored using the first of the following methods</span>
+<span class="sd">    which work.</span>
+
+<span class="sd">    1.  If colors are explicitly set using PrimiPlotter.set_colors(),</span>
+<span class="sd">        they are used.</span>
+
+<span class="sd">    2.  If these colors are specified as a dictionary, the tags</span>
+<span class="sd">        (from atoms.get_tags()) are used as an index into the</span>
+<span class="sd">        dictionary to get the actual colors of the atoms.</span>
+
+<span class="sd">    3.  If a color function has been set using</span>
+<span class="sd">        PrimiPlotter.set_color_function(), it is called with the atoms</span>
+<span class="sd">        as an argument, and is expected to return an array of colors.</span>
+
+<span class="sd">    4.  If the atoms have a get_colors() method, it is used to get the</span>
+<span class="sd">        colors.</span>
+
+<span class="sd">    5.  If these colors are specified as a dictionary, the tags</span>
+<span class="sd">        (from atoms.get_tags()) are used as an index into the</span>
+<span class="sd">        dictionary to get the actual colors of the atoms.</span>
+
+<span class="sd">    6.  If all else fails, the atoms will be white.</span>
+
+<span class="sd">    The colors are specified as an array of colors, one color per</span>
+<span class="sd">    atom.  Each color is either a real number from 0.0 to 1.0,</span>
+<span class="sd">    specifying a grayscale (0.0 = black, 1.0 = white), or an array of</span>
+<span class="sd">    three numbers from 0.0 to 1.0, specifying RGB values.  The colors</span>
+<span class="sd">    of all atoms are thus a Numerical Python N-vector or a 3xN matrix.</span>
+
+<span class="sd">    In cases 1a and 3a above, the keys of the dictionary are integers,</span>
+<span class="sd">    and the values are either numbers (grayscales) or 3-vectors (RGB</span>
+<span class="sd">    values), or strings with X11 color names, which are then</span>
+<span class="sd">    translated to RGB values.  Only in case 1a and 3a are strings</span>
+<span class="sd">    recognized as colors.</span>
+
+<span class="sd">    Some atoms may be invisible, and thus left out of the plot.</span>
+<span class="sd">    Invisible atoms are determined from the following algorithm.</span>
+<span class="sd">    Unlike the radius or the coloring, all points below are tried and</span>
+<span class="sd">    if an atom is invisible by any criterion, it is left out of the plot.</span>
+
+<span class="sd">    1.  All atoms are visible.</span>
+<span class="sd">    </span>
+<span class="sd">    2.  If PrimiPlotter.set_invisible() has be used to specify invisible</span>
+<span class="sd">        atoms, any atoms for which the value is non-zero becomes invisible.</span>
+
+<span class="sd">    3.  If an invisiblility function has been set with</span>
+<span class="sd">        PrimiPlotter.set_invisibility_function(), it is called with the</span>
+<span class="sd">        atoms as argument.  It is expected to return an integer per</span>
+<span class="sd">        atom, any non-zero value makes that atom invisible.</span>
+
+<span class="sd">    4.  If a cut has been specified using set_cut, any atom outside the</span>
+<span class="sd">        cut is made invisible.</span>
+
+<span class="sd">    Note that invisible atoms are still included in the algorithm for</span>
+<span class="sd">    positioning and scaling the plot.</span>
+
+<span class="sd">    </span>
+<span class="sd">    The following output devices are implemented.</span>
+<span class="sd">    </span>
+<span class="sd">    PostScriptFile(prefix):  Create PS files names prefix0000.ps etc.</span>
+
+<span class="sd">    PnmFile(prefix):  Similar, but makes PNM files.</span>
+
+<span class="sd">    GifFile(prefix):  Similar, but makes GIF files.</span>
+
+<span class="sd">    JpegFile(prefix):  Similar, but makes JPEG files.</span>
+
+<span class="sd">    X11Window():  Show the plot in an X11 window using ghostscript.</span>
+
+<span class="sd">    Output devices writing to files take an extra optional argument to</span>
+<span class="sd">    the constructor, compress, specifying if the output file should be</span>
+<span class="sd">    gzipped.  This is not allowed for some (already compressed) file</span>
+<span class="sd">    formats.</span>
+
+<span class="sd">    Instead of a filename prefix, a filename containing a % can be</span>
+<span class="sd">    used.  In that case the filename is expected to expand to a real</span>
+<span class="sd">    filename when used with the Python string formatting operator (%)</span>
+<span class="sd">    with the frame number as argument.  Avoid generating spaces in the</span>
+<span class="sd">    file names: use e.g. %03d instead of %3d.  </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">timing</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">initframe</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">        Parameters to the constructor:</span>
+
+<span class="sd">        atoms: The atoms to be plottet.</span>
+
+<span class="sd">        verbose = 0:  Write progress information to stderr.</span>
+
+<span class="sd">        timing = 0:  Collect timing information.</span>
+
+<span class="sd">        interval = 1: If specified, a plot is only made every</span>
+<span class="sd">        interval&#39;th time update() is called.  Deprecated, normally you</span>
+<span class="sd">        should use the interval argument when attaching the plotter to</span>
+<span class="sd">        e.g. the dynamics.</span>
+
+<span class="sd">        initframe = 0: Initial frame number, i.e. the number of the</span>
+<span class="sd">        first plot.</span>
+<span class="sd">        </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="n">atoms</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">outputdevice</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">angles</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="nb">float</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dims</span> <span class="o">=</span> <span class="p">(</span><span class="mi">512</span><span class="p">,</span> <span class="mi">512</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">timing</span> <span class="o">=</span> <span class="n">timing</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">totaltime</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">radius</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">colors</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">colorfunction</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="n">initframe</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">interval</span> <span class="o">=</span> <span class="n">interval</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">skipnext</span> <span class="o">=</span> <span class="mi">0</span> <span class="c"># Number of calls to update before anything happens.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">a_scale</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">relativescale</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">invisible</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">invisibilityfunction</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_cut</span><span class="p">()</span>   <span class="c"># No cut</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">isparallel</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ownlogfile</span> <span class="o">=</span> <span class="bp">False</span>
+        
+<div class="viewcode-block" id="PrimiPlotter.set_output"><a class="viewcode-back" href="../../../ase/visualize/visualize.html#ase.visualize.primiplotter.PrimiPlotter.set_output">[docs]</a>    <span class="k">def</span> <span class="nf">set_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+        <span class="s">&quot;Attach an output device to the plotter.&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">outputdevice</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">device</span><span class="o">.</span><span class="n">set_dimensions</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span>
+        <span class="n">device</span><span class="o">.</span><span class="n">set_owner</span><span class="p">(</span><span class="n">weakref</span><span class="o">.</span><span class="n">proxy</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="PrimiPlotter.set_dimensions"><a class="viewcode-back" href="../../../ase/visualize/visualize.html#ase.visualize.primiplotter.PrimiPlotter.set_dimensions">[docs]</a>    <span class="k">def</span> <span class="nf">set_dimensions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dims</span><span class="p">):</span>
+        <span class="s">&quot;Set the size of the canvas (a 2-tuple).&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">outputdevice</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&quot;Cannot set dimensions after an output device has been specified.&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dims</span> <span class="o">=</span> <span class="n">dims</span>
+        </div>
+    <span class="k">def</span> <span class="nf">autoscale</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mode</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s">&quot;on&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">a_scale</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s">&quot;off&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">a_scale</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s">&quot;now&quot;</span><span class="p">:</span>
+            <span class="n">coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rotate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">())</span>
+            <span class="n">radii</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_getradii</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_autoscale</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="n">radii</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Unknown autoscale mode: &quot;</span><span class="p">)</span><span class="o">.</span><span class="n">with_traceback</span><span class="p">(</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">mode</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">set_scale</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scale</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">autoscale</span><span class="p">(</span><span class="s">&quot;off&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">=</span> <span class="n">scale</span>
+
+    <span class="k">def</span> <span class="nf">get_scale</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale</span>
+
+    <span class="k">def</span> <span class="nf">set_relative_scale</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rscale</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">relativescale</span> <span class="o">=</span> <span class="n">rscale</span>
+
+<div class="viewcode-block" id="PrimiPlotter.plot"><a class="viewcode-back" href="../../../ase/visualize/visualize.html#ase.visualize.primiplotter.PrimiPlotter.plot">[docs]</a>    <span class="k">def</span> <span class="nf">plot</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Create a plot now.  Does not respect the interval timer.</span>
+
+<span class="sd">        This method makes a plot unconditionally.  It does not look at</span>
+<span class="sd">        the interval variable, nor is this plot taken into account in</span>
+<span class="sd">        the counting done by the update() method if an interval</span>
+<span class="sd">        variable was specified.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">timing</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_starttimer</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;PrimiPlotter: Starting plot at &quot;</span>
+                 <span class="o">+</span> <span class="n">time</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s">&quot;%a, </span><span class="si">%d</span><span class="s"> %b %Y %H:%M:%S&quot;</span><span class="p">))</span>
+        <span class="n">colors</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_getcolors</span><span class="p">()</span>
+        <span class="n">invisible</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_getinvisible</span><span class="p">()</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rotate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_getpositions</span><span class="p">())</span>
+        <span class="n">radii</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_getradii</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">a_scale</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_autoscale</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span><span class="n">radii</span><span class="p">)</span>
+        <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">relativescale</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="n">scale</span> <span class="o">*</span> <span class="n">coords</span>
+        <span class="n">center</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_getcenter</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span>
+        <span class="n">offset</span> <span class="o">=</span> <span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span> <span class="o">+</span> <span class="p">(</span><span class="mf">0.0</span><span class="p">,))</span><span class="o">/</span><span class="mf">2.0</span> <span class="o">-</span> <span class="n">center</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="n">coords</span> <span class="o">+</span> <span class="n">offset</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Scale is </span><span class="si">%f</span><span class="s"> and size is (</span><span class="si">%d</span><span class="s">, </span><span class="si">%d</span><span class="s">)&quot;</span>
+                 <span class="o">%</span> <span class="p">(</span><span class="n">scale</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Physical size of plot is </span><span class="si">%f</span><span class="s"> Angstrom times </span><span class="si">%f</span><span class="s"> Angstrom&quot;</span>
+                 <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="n">scale</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="n">scale</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_verb</span><span class="p">(</span><span class="s">&quot;Sorting.&quot;</span><span class="p">)</span>
+        <span class="n">order</span> <span class="o">=</span> <span class="n">argsort</span><span class="p">(</span><span class="n">coords</span><span class="p">[:,</span><span class="mi">2</span><span class="p">])</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">order</span><span class="p">]</span>  <span class="c">### take(coords, order)</span>
+        <span class="n">radii</span> <span class="o">=</span> <span class="n">radii</span><span class="p">[</span><span class="n">order</span><span class="p">]</span>    <span class="c">### take(radii, order)</span>
+        <span class="n">colors</span> <span class="o">=</span> <span class="n">colors</span><span class="p">[</span><span class="n">order</span><span class="p">]</span>  <span class="c">### take(colors, order)</span>
+        <span class="n">invisible</span> <span class="o">=</span> <span class="n">invisible</span><span class="p">[</span><span class="n">order</span><span class="p">]</span>  <span class="c">### take(invisible, order)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">isparallel</span><span class="p">:</span>
+            <span class="nb">id</span> <span class="o">=</span> <span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">))[</span><span class="n">order</span><span class="p">]</span> <span class="c">### take(arange(len(coords)), order)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">id</span> <span class="o">=</span> <span class="bp">None</span>
+            
+        <span class="n">radii</span> <span class="o">=</span> <span class="n">radii</span> <span class="o">*</span> <span class="n">scale</span>
+        <span class="n">selector</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_computevisibility</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="n">radii</span><span class="p">,</span> <span class="n">invisible</span><span class="p">,</span> <span class="nb">id</span><span class="p">)</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="n">compress</span><span class="p">(</span><span class="n">selector</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">radii</span> <span class="o">=</span> <span class="n">compress</span><span class="p">(</span><span class="n">selector</span><span class="p">,</span> <span class="n">radii</span><span class="p">)</span>
+        <span class="n">colors</span> <span class="o">=</span> <span class="n">compress</span><span class="p">(</span><span class="n">selector</span><span class="p">,</span> <span class="n">colors</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_makeoutput</span><span class="p">(</span><span class="n">scale</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">radii</span><span class="p">,</span> <span class="n">colors</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;PrimiPlotter: Finished plotting at &quot;</span>
+                 <span class="o">+</span> <span class="n">time</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s">&quot;%a, </span><span class="si">%d</span><span class="s"> %b %Y %H:%M:%S&quot;</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">timing</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_stoptimer</span><span class="p">()</span>
+</div>
+    <span class="k">def</span> <span class="nf">_computevisibility</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">rad</span><span class="p">,</span> <span class="n">invisible</span><span class="p">,</span> <span class="nb">id</span><span class="p">,</span> <span class="n">zoom</span> <span class="o">=</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="n">xy</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[:,:</span><span class="mi">2</span><span class="p">]</span>
+        <span class="n">typradius</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">rad</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">rad</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">typradius</span> <span class="o">&lt;</span> <span class="mf">4.0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Refining visibility check.&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">zoom</span> <span class="o">&gt;=</span> <span class="mi">16</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&quot;Cannot check visibility - too deep recursion.&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_computevisibility</span><span class="p">(</span><span class="n">xy</span><span class="o">*</span><span class="mi">2</span><span class="p">,</span> <span class="n">rad</span><span class="o">*</span><span class="mi">2</span><span class="p">,</span> <span class="n">invisible</span><span class="p">,</span> <span class="nb">id</span><span class="p">,</span> <span class="n">zoom</span><span class="o">*</span><span class="mi">2</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Visibility(r_typ = </span><span class="si">%.1f</span><span class="s"> pixels)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">typradius</span><span class="p">,))</span>
+        <span class="n">dims</span> <span class="o">=</span> <span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span> <span class="o">*</span> <span class="n">zoom</span>
+        <span class="n">maxr</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">ceil</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">rad</span><span class="p">)))</span> <span class="o">+</span> <span class="mi">2</span>
+        <span class="n">canvas</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mi">4</span><span class="o">*</span><span class="n">maxr</span><span class="p">,</span> <span class="n">dims</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mi">4</span><span class="o">*</span><span class="n">maxr</span><span class="p">),</span> <span class="n">int8</span><span class="p">)</span>
+        <span class="c"># Atoms are only invisible if they are within the canvas, or closer</span>
+        <span class="c"># to its edge than their radius</span>
+        <span class="n">visible</span> <span class="o">=</span> <span class="p">(</span><span class="n">greater</span><span class="p">(</span><span class="n">xy</span><span class="p">[:,</span><span class="mi">0</span><span class="p">],</span> <span class="o">-</span><span class="n">rad</span><span class="p">)</span> <span class="o">*</span> <span class="n">less</span><span class="p">(</span><span class="n">xy</span><span class="p">[:,</span><span class="mi">0</span><span class="p">],</span> <span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">+</span><span class="n">rad</span><span class="p">)</span>
+                   <span class="o">*</span> <span class="n">greater</span><span class="p">(</span><span class="n">xy</span><span class="p">[:,</span><span class="mi">1</span><span class="p">],</span> <span class="o">-</span><span class="n">rad</span><span class="p">)</span> <span class="o">*</span> <span class="n">less</span><span class="p">(</span><span class="n">xy</span><span class="p">[:,</span><span class="mi">1</span><span class="p">],</span> <span class="n">dims</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">+</span><span class="n">rad</span><span class="p">)</span>
+                   <span class="o">*</span> <span class="n">logical_not</span><span class="p">(</span><span class="n">invisible</span><span class="p">))</span>
+        <span class="c"># Atoms are visible if not hidden behind other atoms</span>
+        <span class="n">xy</span> <span class="o">=</span> <span class="n">floor</span><span class="p">(</span><span class="n">xy</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">maxr</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+        <span class="n">masks</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">rad</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">%</span> <span class="mi">100000</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">i</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_verb</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">visible</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
+                <span class="k">continue</span>
+            <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">xy</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="n">rad</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">mask</span><span class="p">,</span> <span class="n">invmask</span><span class="p">,</span> <span class="n">rn</span> <span class="o">=</span> <span class="n">masks</span><span class="p">[</span><span class="n">r</span><span class="p">]</span>
+            <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+                <span class="n">rn</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">ceil</span><span class="p">(</span><span class="n">r</span><span class="p">))</span>
+                <span class="n">nmask</span> <span class="o">=</span> <span class="mi">2</span><span class="o">*</span><span class="n">rn</span><span class="o">+</span><span class="mi">1</span>
+                <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">arange</span><span class="p">(</span><span class="n">nmask</span><span class="p">)</span> <span class="o">-</span> <span class="n">rn</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span>
+                <span class="n">mask</span> <span class="o">=</span> <span class="n">less</span><span class="p">(</span><span class="n">mask</span><span class="p">[:,</span><span class="n">newaxis</span><span class="p">]</span><span class="o">+</span><span class="n">mask</span><span class="p">[</span><span class="n">newaxis</span><span class="p">,:],</span> <span class="n">r</span><span class="o">*</span><span class="n">r</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">int8</span><span class="p">)</span>
+                <span class="n">invmask</span> <span class="o">=</span> <span class="n">equal</span><span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">int8</span><span class="p">)</span>
+                <span class="n">masks</span><span class="p">[</span><span class="n">r</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">invmask</span><span class="p">,</span> <span class="n">rn</span><span class="p">)</span>
+            <span class="n">window</span> <span class="o">=</span> <span class="n">logical_or</span><span class="p">(</span><span class="n">canvas</span><span class="p">[</span><span class="n">x</span><span class="o">-</span><span class="n">rn</span><span class="p">:</span><span class="n">x</span><span class="o">+</span><span class="n">rn</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">y</span><span class="o">-</span><span class="n">rn</span><span class="p">:</span><span class="n">y</span><span class="o">+</span><span class="n">rn</span><span class="o">+</span><span class="mi">1</span><span class="p">],</span> <span class="n">invmask</span><span class="p">)</span>
+            <span class="n">hidden</span> <span class="o">=</span> <span class="n">alltrue</span><span class="p">(</span><span class="n">window</span><span class="o">.</span><span class="n">flat</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">hidden</span><span class="p">:</span>
+                <span class="n">visible</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">canvas</span><span class="p">[</span><span class="n">x</span><span class="o">-</span><span class="n">rn</span><span class="p">:</span><span class="n">x</span><span class="o">+</span><span class="n">rn</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">y</span><span class="o">-</span><span class="n">rn</span><span class="p">:</span><span class="n">y</span><span class="o">+</span><span class="n">rn</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">logical_or</span><span class="p">(</span><span class="n">canvas</span><span class="p">[</span><span class="n">x</span><span class="o">-</span><span class="n">rn</span><span class="p">:</span><span class="n">x</span><span class="o">+</span><span class="n">rn</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">y</span><span class="o">-</span><span class="n">rn</span><span class="p">:</span><span class="n">y</span><span class="o">+</span><span class="n">rn</span><span class="o">+</span><span class="mi">1</span><span class="p">],</span> <span class="n">mask</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%d</span><span class="s"> visible, </span><span class="si">%d</span><span class="s"> hidden out of </span><span class="si">%d</span><span class="s">&quot;</span> <span class="o">%</span>
+                   <span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">visible</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">visible</span><span class="p">)</span> <span class="o">-</span> <span class="nb">sum</span><span class="p">(</span><span class="n">visible</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">visible</span><span class="p">)))</span>
+        <span class="k">return</span> <span class="n">visible</span>
+        
+    <span class="k">def</span> <span class="nf">_rotate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">positions</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Rotation angles: </span><span class="si">%f</span><span class="s"> </span><span class="si">%f</span><span class="s"> </span><span class="si">%f</span><span class="s">&quot;</span> <span class="o">%</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">angles</span><span class="p">))</span>
+        <span class="n">mat</span> <span class="o">=</span> <span class="n">dot</span><span class="p">(</span><span class="n">dot</span><span class="p">(</span><span class="n">_rot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">angles</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="mi">2</span><span class="p">),</span>
+                      <span class="n">_rot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">angles</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="mi">1</span><span class="p">)),</span>
+                  <span class="n">_rot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">angles</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">+</span><span class="n">pi</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">dot</span><span class="p">(</span><span class="n">positions</span><span class="p">,</span> <span class="n">mat</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_getcenter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coords</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">array</span><span class="p">((</span><span class="nb">max</span><span class="p">(</span><span class="n">coords</span><span class="p">[:,</span><span class="mi">0</span><span class="p">])</span> <span class="o">+</span> <span class="nb">min</span><span class="p">(</span><span class="n">coords</span><span class="p">[:,</span><span class="mi">0</span><span class="p">]),</span>
+                      <span class="nb">max</span><span class="p">(</span><span class="n">coords</span><span class="p">[:,</span><span class="mi">1</span><span class="p">])</span> <span class="o">+</span> <span class="nb">min</span><span class="p">(</span><span class="n">coords</span><span class="p">[:,</span><span class="mi">1</span><span class="p">]),</span> <span class="mf">0.0</span><span class="p">))</span> <span class="o">/</span> <span class="mf">2.0</span>
+
+    <span class="k">def</span> <span class="nf">_autoscale</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">radii</span><span class="p">):</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[:,</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[:,</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">maxradius</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">radii</span><span class="p">)</span>
+        <span class="n">deltax</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">-</span> <span class="nb">min</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">maxradius</span>
+        <span class="n">deltay</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">y</span><span class="p">)</span> <span class="o">-</span> <span class="nb">min</span><span class="p">(</span><span class="n">y</span><span class="p">)</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">maxradius</span>
+        <span class="n">scalex</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="n">deltax</span>
+        <span class="n">scaley</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="n">deltay</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">=</span> <span class="mf">0.95</span> <span class="o">*</span> <span class="nb">min</span><span class="p">(</span><span class="n">scalex</span><span class="p">,</span> <span class="n">scaley</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Autoscale: </span><span class="si">%f</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_makeoutput</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scale</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">radii</span><span class="p">,</span> <span class="n">colors</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">device</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">outputdevice</span><span class="p">:</span>
+            <span class="n">device</span><span class="o">.</span><span class="n">inform_about_scale</span><span class="p">(</span><span class="n">scale</span><span class="p">)</span>
+            <span class="n">device</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">radii</span><span class="p">,</span> <span class="n">colors</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">+</span> <span class="mi">1</span>
+
+</div>
+<span class="k">class</span> <span class="nc">ParallelPrimiPlotter</span><span class="p">(</span><span class="n">PrimiPlotter</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;A version of PrimiPlotter for parallel ASAP simulations.</span>
+
+<span class="sd">    Used like PrimiPlotter, but only the output devices on the master</span>
+<span class="sd">    node are used.  Most of the processing is distributed on the</span>
+<span class="sd">    nodes, but the actual output is only done on the master.  See the</span>
+<span class="sd">    PrimiPlotter docstring for details.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">PrimiPlotter</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">isparallel</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="kn">import</span> <span class="nn">ase.parallel</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mpi</span> <span class="o">=</span> <span class="n">ase</span><span class="o">.</span><span class="n">parallel</span><span class="o">.</span><span class="n">world</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mpi</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&quot;MPI is not available.&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">master</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mpi</span><span class="o">.</span><span class="n">rank</span> <span class="o">==</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mpitag</span> <span class="o">=</span> <span class="mi">42</span>   <span class="c"># Reduce chance of collision with other modules.</span>
+        
+    <span class="k">def</span> <span class="nf">set_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">master</span><span class="p">:</span>
+            <span class="n">PrimiPlotter</span><span class="o">.</span><span class="n">set_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">set_log</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">log</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">master</span><span class="p">:</span>
+            <span class="n">PrimiPlotter</span><span class="o">.</span><span class="n">set_log</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">log</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_getpositions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">realpos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+        <span class="n">ghostpos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_ghost_positions</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">numberofrealatoms</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">realpos</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">numberofghostatoms</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ghostpos</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">concatenate</span><span class="p">((</span><span class="n">realpos</span><span class="p">,</span> <span class="n">ghostpos</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">_getatomicnumbers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">realz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">()</span>
+        <span class="n">ghostz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_ghost_atomic_numbers</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">concatenate</span><span class="p">((</span><span class="n">realz</span><span class="p">,</span> <span class="n">ghostz</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">_getradius</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">PrimiPlotter</span><span class="o">.</span><span class="n">_getradius</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">numberofrealatoms</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">numberofghostatoms</span><span class="p">:</span>
+            <span class="c"># Must have calculated radii from atomic numbers</span>
+            <span class="k">return</span> <span class="n">r</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">numberofrealatoms</span>
+            <span class="c"># Heuristic: use minimum r for the ghosts</span>
+            <span class="n">ghostr</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="o">*</span> <span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">numberofghostatoms</span><span class="p">,</span> <span class="nb">float</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">concatenate</span><span class="p">((</span><span class="n">r</span><span class="p">,</span> <span class="n">ghostr</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">_getcenter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coords</span><span class="p">):</span>
+        <span class="c"># max(x) and min(x) only works for rank-1 arrays in Numeric version 17.</span>
+        <span class="n">maximal</span> <span class="o">=</span> <span class="n">maximum</span><span class="o">.</span><span class="n">reduce</span><span class="p">(</span><span class="n">coords</span><span class="p">[:,</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">])</span>
+        <span class="n">minimal</span> <span class="o">=</span> <span class="n">minimum</span><span class="o">.</span><span class="n">reduce</span><span class="p">(</span><span class="n">coords</span><span class="p">[:,</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mpi</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">maximal</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mpi</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">minimal</span><span class="p">)</span>
+        <span class="n">maxx</span><span class="p">,</span> <span class="n">maxy</span> <span class="o">=</span> <span class="n">maximal</span>
+        <span class="n">minx</span><span class="p">,</span> <span class="n">miny</span> <span class="o">=</span> <span class="n">minimal</span>
+        <span class="k">return</span> <span class="n">array</span><span class="p">([</span><span class="n">maxx</span> <span class="o">+</span> <span class="n">minx</span><span class="p">,</span> <span class="n">maxy</span> <span class="o">+</span> <span class="n">miny</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">])</span> <span class="o">/</span> <span class="mf">2.0</span>
+
+    <span class="k">def</span> <span class="nf">_computevisibility</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">xy</span><span class="p">,</span> <span class="n">rad</span><span class="p">,</span> <span class="n">invisible</span><span class="p">,</span> <span class="nb">id</span><span class="p">,</span> <span class="n">zoom</span> <span class="o">=</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="c"># Find visible atoms, allowing ghost atoms to hide real atoms.</span>
+        <span class="n">v</span> <span class="o">=</span> <span class="n">PrimiPlotter</span><span class="o">.</span><span class="n">_computevisibility</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">xy</span><span class="p">,</span> <span class="n">rad</span><span class="p">,</span> <span class="n">invisible</span><span class="p">,</span> <span class="nb">id</span><span class="p">,</span> <span class="n">zoom</span><span class="p">)</span>
+        <span class="c"># Then remove ghost atoms</span>
+        <span class="k">return</span> <span class="n">v</span> <span class="o">*</span> <span class="n">less</span><span class="p">(</span><span class="nb">id</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">numberofrealatoms</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_autoscale</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">radii</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_verb</span><span class="p">(</span><span class="s">&quot;Autoscale&quot;</span><span class="p">)</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[:</span><span class="n">n</span><span class="p">,</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[:</span><span class="n">n</span><span class="p">,</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span>
+        <span class="n">maximal</span> <span class="o">=</span> <span class="n">array</span><span class="p">([</span><span class="nb">max</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">y</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">radii</span><span class="p">[:</span><span class="n">n</span><span class="p">])])</span>
+        <span class="n">minimal</span> <span class="o">=</span> <span class="n">array</span><span class="p">([</span><span class="nb">min</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="nb">min</span><span class="p">(</span><span class="n">y</span><span class="p">)])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mpi</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">maximal</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mpi</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">minimal</span><span class="p">)</span>
+        <span class="n">maxx</span><span class="p">,</span> <span class="n">maxy</span><span class="p">,</span> <span class="n">maxradius</span> <span class="o">=</span> <span class="n">maximal</span>
+        <span class="n">minx</span><span class="p">,</span> <span class="n">miny</span> <span class="o">=</span> <span class="n">minimal</span>
+        <span class="n">deltax</span> <span class="o">=</span> <span class="n">maxx</span> <span class="o">-</span> <span class="n">minx</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">maxradius</span>
+        <span class="n">deltay</span> <span class="o">=</span> <span class="n">maxy</span> <span class="o">-</span> <span class="n">miny</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">maxradius</span>
+        <span class="n">scalex</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="n">deltax</span>
+        <span class="n">scaley</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="n">deltay</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">=</span> <span class="mf">0.95</span> <span class="o">*</span> <span class="nb">min</span><span class="p">(</span><span class="n">scalex</span><span class="p">,</span> <span class="n">scaley</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Autoscale: </span><span class="si">%f</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_getcolors</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">col</span> <span class="o">=</span> <span class="n">PrimiPlotter</span><span class="o">.</span><span class="n">_getcolors</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="n">nghost</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_ghost_positions</span><span class="p">())</span>
+        <span class="n">newcolshape</span> <span class="o">=</span> <span class="p">(</span><span class="n">nghost</span> <span class="o">+</span> <span class="n">col</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],)</span> <span class="o">+</span> <span class="n">col</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="n">newcol</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">(</span><span class="n">newcolshape</span><span class="p">,</span> <span class="n">col</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="n">newcol</span><span class="p">[:</span><span class="nb">len</span><span class="p">(</span><span class="n">col</span><span class="p">)]</span> <span class="o">=</span> <span class="n">col</span>
+        <span class="k">return</span> <span class="n">newcol</span>
+    
+    <span class="k">def</span> <span class="nf">_makeoutput</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scale</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">radii</span><span class="p">,</span> <span class="n">colors</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">colors</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="c"># Greyscales</span>
+            <span class="n">ncol</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">ncol</span> <span class="o">=</span> <span class="n">colors</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>  <span class="c"># 1 or 3.</span>
+            <span class="k">assert</span> <span class="n">ncol</span> <span class="o">==</span> <span class="mi">3</span>  <span class="c"># RGB values</span>
+        <span class="c"># If one processor says RGB, all must convert</span>
+        <span class="n">ncolmax</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mpi</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">ncol</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">ncolmax</span> <span class="o">&gt;</span> <span class="n">ncol</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">ncol</span> <span class="o">==</span> <span class="mi">1</span>
+            <span class="n">colors</span> <span class="o">=</span> <span class="n">colors</span><span class="p">[:,</span><span class="n">newaxis</span><span class="p">]</span> <span class="o">+</span> <span class="n">zeros</span><span class="p">(</span><span class="n">ncolmax</span><span class="p">)[</span><span class="n">newaxis</span><span class="p">,:]</span>
+            <span class="n">ncol</span> <span class="o">=</span> <span class="n">ncolmax</span>
+            <span class="k">assert</span> <span class="n">colors</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">),</span> <span class="n">ncol</span><span class="p">)</span>
+        <span class="c"># Now send data from slaves to master</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">),</span> <span class="mi">4</span><span class="o">+</span><span class="n">ncol</span><span class="p">),</span> <span class="nb">float</span><span class="p">)</span>
+        <span class="n">data</span><span class="p">[:,:</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="n">coords</span>
+        <span class="n">data</span><span class="p">[:,</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="n">radii</span>
+        <span class="k">if</span> <span class="n">ncol</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">[:,</span><span class="mi">4</span><span class="p">]</span> <span class="o">=</span> <span class="n">colors</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">[:,</span><span class="mi">4</span><span class="p">:]</span> <span class="o">=</span> <span class="n">colors</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">master</span><span class="p">:</span>
+            <span class="n">datashape</span> <span class="o">=</span> <span class="n">array</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="n">datashape</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="p">(</span><span class="mi">2</span><span class="p">,)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mpi</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">datashape</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mpitag</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mpi</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mpitag</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">total</span> <span class="o">=</span> <span class="p">[</span><span class="n">data</span><span class="p">]</span>  
+            <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span>
+            <span class="n">colsmin</span> <span class="o">=</span> <span class="n">colsmax</span> <span class="o">=</span> <span class="mi">4</span><span class="o">+</span><span class="n">ncol</span>
+            <span class="k">for</span> <span class="n">proc</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mpi</span><span class="o">.</span><span class="n">size</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_verb</span><span class="p">(</span><span class="s">&quot;Receiving from processor &quot;</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">proc</span><span class="p">))</span>
+                <span class="n">datashape</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">mpi</span><span class="o">.</span><span class="n">receive</span><span class="p">(</span><span class="n">datashape</span><span class="p">,</span> <span class="n">proc</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mpitag</span><span class="p">)</span>
+                <span class="n">fdat</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">datashape</span><span class="p">))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">mpi</span><span class="o">.</span><span class="n">receive</span><span class="p">(</span><span class="n">fdat</span><span class="p">,</span> <span class="n">proc</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mpitag</span><span class="p">)</span>
+                <span class="n">total</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">fdat</span><span class="p">)</span>
+                <span class="n">n</span> <span class="o">=</span> <span class="n">n</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">fdat</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">fdat</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">colsmin</span><span class="p">:</span>
+                    <span class="n">colsmin</span> <span class="o">=</span> <span class="n">fdat</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">fdat</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">colsmax</span><span class="p">:</span>
+                    <span class="n">colsmax</span> <span class="o">=</span> <span class="n">fdat</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_verb</span><span class="p">(</span><span class="s">&quot;Merging data&quot;</span><span class="p">)</span>
+            <span class="c"># Some processors may have only greyscales whereas others</span>
+            <span class="c"># may have RGB.  That will cause difficulties.</span>
+            <span class="n">trouble</span> <span class="o">=</span> <span class="n">colsmax</span> <span class="o">!=</span> <span class="n">colsmin</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">colsmax</span><span class="p">),</span> <span class="nb">float</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">trouble</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">7</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">7</span> <span class="ow">or</span> <span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">5</span>
+            <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">total</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">trouble</span> <span class="ow">or</span> <span class="n">d</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">7</span><span class="p">:</span>
+                    <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="nb">len</span><span class="p">(</span><span class="n">d</span><span class="p">)]</span> <span class="o">=</span> <span class="n">d</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">assert</span> <span class="n">d</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">5</span>
+                    <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="nb">len</span><span class="p">(</span><span class="n">d</span><span class="p">),</span> <span class="p">:</span><span class="mi">5</span><span class="p">]</span> <span class="o">=</span> <span class="n">d</span>
+                    <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="nb">len</span><span class="p">(</span><span class="n">d</span><span class="p">),</span> <span class="mi">5</span><span class="p">]</span> <span class="o">=</span> <span class="n">d</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span>
+                    <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="nb">len</span><span class="p">(</span><span class="n">d</span><span class="p">),</span> <span class="mi">6</span><span class="p">]</span> <span class="o">=</span> <span class="n">d</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span>
+                <span class="n">i</span> <span class="o">=</span> <span class="n">i</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="n">i</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+            <span class="c"># Now all data is on the master</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_verb</span><span class="p">(</span><span class="s">&quot;Sorting merged data&quot;</span><span class="p">)</span>
+            <span class="n">order</span> <span class="o">=</span> <span class="n">argsort</span><span class="p">(</span><span class="n">data</span><span class="p">[:,</span><span class="mi">2</span><span class="p">])</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="n">order</span><span class="p">]</span>   <span class="c">### take(data, order)</span>
+            <span class="n">coords</span> <span class="o">=</span> <span class="n">data</span><span class="p">[:,:</span><span class="mi">3</span><span class="p">]</span>
+            <span class="n">radii</span> <span class="o">=</span> <span class="n">data</span><span class="p">[:,</span><span class="mi">3</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">5</span><span class="p">:</span>
+                <span class="n">colors</span> <span class="o">=</span> <span class="n">data</span><span class="p">[:,</span><span class="mi">4</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">colors</span> <span class="o">=</span> <span class="n">data</span><span class="p">[:,</span><span class="mi">4</span><span class="p">:]</span>
+            <span class="n">PrimiPlotter</span><span class="o">.</span><span class="n">_makeoutput</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scale</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">radii</span><span class="p">,</span> <span class="n">colors</span><span class="p">)</span>
+    
+<span class="k">class</span> <span class="nc">_PostScriptDevice</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;PostScript based output device.&quot;&quot;&quot;</span>
+    <span class="n">offset</span> <span class="o">=</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">)</span>   <span class="c"># Will be changed by some classes</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">linewidth</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">outline</span> <span class="o">=</span> <span class="mi">1</span>
+        
+    <span class="k">def</span> <span class="nf">set_dimensions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dims</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dims</span> <span class="o">=</span> <span class="n">dims</span>
+
+    <span class="k">def</span> <span class="nf">set_owner</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">owner</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">owner</span> <span class="o">=</span> <span class="n">owner</span>
+        
+    <span class="k">def</span> <span class="nf">inform_about_scale</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scale</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">linewidth</span> <span class="o">=</span> <span class="mf">0.1</span> <span class="o">*</span> <span class="n">scale</span>
+
+    <span class="k">def</span> <span class="nf">set_outline</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">outline</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="k">return</span> <span class="bp">self</span>   <span class="c"># Can chain these calls in set_output()</span>
+        
+    <span class="k">def</span> <span class="nf">plot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Doplot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">PSplot</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kargs</span><span class="p">)</span>
+        
+    <span class="k">def</span> <span class="nf">plotArray</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Doplot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">PSplotArray</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kargs</span><span class="p">)</span>
+        
+    <span class="k">def</span> <span class="nf">PSplot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">file</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">colors</span><span class="p">,</span> <span class="n">noshowpage</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="n">xy</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[:,:</span><span class="mi">2</span><span class="p">]</span>
+        <span class="k">assert</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">xy</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">xy</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">colors</span><span class="p">))</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">colors</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">gray</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">gray</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">assert</span><span class="p">(</span><span class="n">colors</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;%!PS-Adobe-2.0</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%%</span><span class="s">Creator: Primiplot</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%%</span><span class="s">Pages: 1</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>        
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%%%%</span><span class="s">BoundingBox: </span><span class="si">%d</span><span class="s"> </span><span class="si">%d</span><span class="s"> </span><span class="si">%d</span><span class="s"> </span><span class="si">%d</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span>
+                   <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="o">+</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+                                   <span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">1</span><span class="p">])))</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%%</span><span class="s">EndComments</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">% E</span><span class="s">nforce BoundingBox</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%d</span><span class="s"> </span><span class="si">%d</span><span class="s"> moveto </span><span class="si">%d</span><span class="s"> 0 rlineto 0 </span><span class="si">%d</span><span class="s"> rlineto -</span><span class="si">%d</span><span class="s"> 0 rlineto</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span>
+                   <span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span> <span class="o">+</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">],))))</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;closepath clip newpath</span><span class="se">\n\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%f</span><span class="s"> </span><span class="si">%f</span><span class="s"> scale</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="p">(</span><span class="mf">1.0</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">,)))</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%d</span><span class="s"> </span><span class="si">%d</span><span class="s"> translate</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+                                          <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">gray</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">outline</span><span class="p">:</span>
+                <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;/circ { 0 360 arc gsave setgray fill grestore stroke } def</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;/circ { 0 360 arc setgray fill } def</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">outline</span><span class="p">:</span>
+                <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;/circ { 0 360 arc gsave setrgbcolor fill grestore stroke } def</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;/circ { 0 360 arc setrgbcolor fill } def</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%f</span><span class="s"> setlinewidth 0.0 setgray</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span>
+                   <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">linewidth</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">,))</span>
+        
+        <span class="k">if</span> <span class="n">gray</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">xy</span><span class="p">),</span> <span class="mi">4</span><span class="p">),</span> <span class="nb">float</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[:,</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">colors</span>
+            <span class="n">data</span><span class="p">[:,</span><span class="mi">1</span><span class="p">:</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">*</span> <span class="n">xy</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[:,</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">*</span> <span class="n">r</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">point</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+                <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%.3f</span><span class="s"> </span><span class="si">%.2f</span><span class="s"> </span><span class="si">%.2f</span><span class="s"> </span><span class="si">%.2f</span><span class="s"> circ</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">point</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">xy</span><span class="p">),</span> <span class="mi">6</span><span class="p">),</span> <span class="nb">float</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[:,</span><span class="mi">0</span><span class="p">:</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="n">colors</span>
+            <span class="n">data</span><span class="p">[:,</span><span class="mi">3</span><span class="p">:</span><span class="mi">5</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">*</span> <span class="n">xy</span><span class="p">)</span>
+            <span class="n">data</span><span class="p">[:,</span><span class="mi">5</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">*</span> <span class="n">r</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">point</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+                <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%.3f</span><span class="s"> </span><span class="si">%.3f</span><span class="s"> </span><span class="si">%.3f</span><span class="s"> </span><span class="si">%.2f</span><span class="s"> </span><span class="si">%.2f</span><span class="s"> </span><span class="si">%.2f</span><span class="s"> circ</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">point</span><span class="p">))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">noshowpage</span><span class="p">:</span>
+            <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;showpage</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+            
+    <span class="k">def</span> <span class="nf">PSplotArray</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">file</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">noshowpage</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="k">assert</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="k">assert</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">and</span> <span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">clip</span><span class="p">((</span><span class="mi">256</span><span class="o">*</span><span class="n">data</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;%!PS-Adobe-2.0</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%%</span><span class="s">Creator: Fieldplotter</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%%</span><span class="s">Pages: 1</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>        
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%%%%</span><span class="s">BoundingBox: </span><span class="si">%d</span><span class="s"> </span><span class="si">%d</span><span class="s"> </span><span class="si">%d</span><span class="s"> </span><span class="si">%d</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span>
+                   <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="o">+</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+                                   <span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">1</span><span class="p">])))</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%%</span><span class="s">EndComments</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%d</span><span class="s"> </span><span class="si">%d</span><span class="s"> translate</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%f</span><span class="s"> </span><span class="si">%f</span><span class="s"> scale</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;% String holding a single line</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;/pictline </span><span class="si">%d</span><span class="s"> string def</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">*</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">],))</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%d</span><span class="s"> </span><span class="si">%d</span><span class="s"> 8</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;[</span><span class="si">%d</span><span class="s"> 0 0 </span><span class="si">%d</span><span class="s"> 0 0]</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;{currentfile pictline readhexstring pop}</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;false </span><span class="si">%d</span><span class="s"> colorimage</span><span class="se">\n</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">],))</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="s">&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">flat</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">+=</span> <span class="p">(</span><span class="s">&quot;</span><span class="si">%02X</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">d</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">72</span><span class="p">:</span>
+                <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">s</span><span class="o">+</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+                <span class="n">s</span> <span class="o">=</span> <span class="s">&quot;&quot;</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">s</span><span class="o">+</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">noshowpage</span><span class="p">:</span>
+            <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;showpage</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+            
+<span class="k">class</span> <span class="nc">_PostScriptToFile</span><span class="p">(</span><span class="n">_PostScriptDevice</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Output device for PS files.&quot;&quot;&quot;</span>
+    <span class="n">compr_suffix</span> <span class="o">=</span> <span class="bp">None</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">compress</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">compress</span> <span class="o">=</span> <span class="n">compress</span>
+        <span class="k">if</span> <span class="s">&quot;&#39;&quot;</span> <span class="ow">in</span> <span class="n">prefix</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Filename may not contain a quote (&#39;): &quot;</span><span class="o">+</span><span class="n">prefix</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s">&quot;%&quot;</span> <span class="ow">in</span> <span class="n">prefix</span><span class="p">:</span>
+            <span class="c"># Assume the user knows what (s)he is doing</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">filenames</span> <span class="o">=</span> <span class="n">prefix</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">filenames</span> <span class="o">=</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s">&quot;</span><span class="si">%04d</span><span class="s">&quot;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">suffix</span>
+            <span class="k">if</span> <span class="n">compress</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">compr_suffix</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&quot;Compression not supported.&quot;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">filenames</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">filenames</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">compr_suffix</span>
+        <span class="n">_PostScriptDevice</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">PostScriptFile</span><span class="p">(</span><span class="n">_PostScriptToFile</span><span class="p">):</span>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="s">&quot;.ps&quot;</span>
+    <span class="n">compr_suffix</span> <span class="o">=</span> <span class="s">&quot;.gz&quot;</span>
+    <span class="n">offset</span> <span class="o">=</span> <span class="p">(</span><span class="mi">50</span><span class="p">,</span><span class="mi">50</span><span class="p">)</span>
+    <span class="c"># Inherits __init__</span>
+
+    <span class="k">def</span> <span class="nf">Doplot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plotmethod</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kargs</span><span class="p">):</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">filenames</span> <span class="o">%</span> <span class="p">(</span><span class="n">n</span><span class="p">,)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">owner</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Output to PostScript file &quot;</span><span class="o">+</span><span class="n">filename</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">compress</span><span class="p">:</span>
+            <span class="nb">file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">popen</span><span class="p">(</span><span class="s">&quot;gzip &gt; &#39;&quot;</span><span class="o">+</span><span class="n">filename</span><span class="o">+</span><span class="s">&quot;&#39;&quot;</span><span class="p">,</span> <span class="s">&quot;w&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">file</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&quot;w&quot;</span><span class="p">)</span>
+        <span class="n">plotmethod</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="nb">file</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span><span class="o">+</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kargs</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<span class="k">class</span> <span class="nc">_PS_via_PnmFile</span><span class="p">(</span><span class="n">_PostScriptToFile</span><span class="p">):</span>
+    <span class="n">gscmd</span> <span class="o">=</span> <span class="s">&quot;gs -q -sDEVICE=pnmraw -sOutputFile=- -dDEVICEWIDTH=</span><span class="si">%d</span><span class="s"> -dDEVICEHEIGHT=</span><span class="si">%d</span><span class="s"> - &quot;</span>
+    <span class="c"># Inherits __init__</span>
+
+    <span class="k">def</span> <span class="nf">Doplot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plotmethod</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kargs</span><span class="p">):</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">filenames</span> <span class="o">%</span> <span class="p">(</span><span class="n">n</span><span class="p">,)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">owner</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Output to bitmapped file &quot;</span> <span class="o">+</span> <span class="n">filename</span><span class="p">)</span>
+        <span class="n">cmd</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">gscmd</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">converter</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">compress</span><span class="p">:</span>
+            <span class="n">cmd</span> <span class="o">=</span> <span class="n">cmd</span> <span class="o">+</span> <span class="s">&quot;| gzip &quot;</span>
+            
+        <span class="n">cmd</span> <span class="o">=</span> <span class="p">(</span><span class="n">cmd</span><span class="o">+</span><span class="s">&quot; &gt; &#39;</span><span class="si">%s</span><span class="s">&#39;&quot;</span><span class="p">)</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">filename</span><span class="p">)</span>
+        <span class="nb">file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">popen</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="s">&quot;w&quot;</span><span class="p">)</span>
+        <span class="n">plotmethod</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="nb">file</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span><span class="o">+</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kargs</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<span class="k">class</span> <span class="nc">PnmFile</span><span class="p">(</span><span class="n">_PS_via_PnmFile</span><span class="p">):</span>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="s">&quot;.pnm&quot;</span>
+    <span class="n">compr_suffix</span> <span class="o">=</span> <span class="s">&quot;.gz&quot;</span>
+    <span class="n">converter</span> <span class="o">=</span> <span class="s">&quot;&quot;</span>
+
+<span class="k">class</span> <span class="nc">GifFile</span><span class="p">(</span><span class="n">_PS_via_PnmFile</span><span class="p">):</span>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="s">&quot;.gif&quot;</span>
+    <span class="n">converter</span> <span class="o">=</span> <span class="s">&quot;| ppmquant -floyd 256 2&gt;/dev/null | ppmtogif 2&gt;/dev/null&quot;</span>
+
+<span class="k">class</span> <span class="nc">JpegFile</span><span class="p">(</span><span class="n">_PS_via_PnmFile</span><span class="p">):</span>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="s">&quot;.jpeg&quot;</span>
+    <span class="n">converter</span> <span class="o">=</span> <span class="s">&quot;| ppmtojpeg --smooth=5&quot;</span>
+    
+<span class="k">class</span> <span class="nc">X11Window</span><span class="p">(</span><span class="n">_PostScriptDevice</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Shows the plot in an X11 window.&quot;&quot;&quot;</span>
+    <span class="c">#Inherits __init__</span>
+    <span class="n">gscmd</span> <span class="o">=</span> <span class="s">&quot;gs -q -sDEVICE=x11 -dDEVICEWIDTH=</span><span class="si">%d</span><span class="s"> -dDEVICEHEIGHT=</span><span class="si">%d</span><span class="s"> -r72x72 -&quot;</span>
+    <span class="k">def</span> <span class="nf">Doplot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plotmethod</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">owner</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Output to X11 window&quot;</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="nb">file</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pipe</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">pipe</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;showpage</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">filename</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">gscmd</span> <span class="o">%</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span>
+            <span class="nb">file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">popen</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&quot;w&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">pipe</span> <span class="o">=</span> <span class="nb">file</span>
+        <span class="n">kargs</span><span class="p">[</span><span class="s">&quot;noshowpage&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="n">plotmethod</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="nb">file</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span><span class="o">+</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kargs</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;flushpage</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="nb">file</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
+<span class="c"># Helper functions</span>
+<span class="k">def</span> <span class="nf">_rot</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">axis</span><span class="p">):</span>
+    <span class="n">ax1</span><span class="p">,</span> <span class="n">ax2</span> <span class="o">=</span> <span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">))[</span><span class="n">axis</span><span class="p">]</span>
+    <span class="n">c</span><span class="p">,</span> <span class="n">s</span> <span class="o">=</span> <span class="n">cos</span><span class="p">(</span><span class="n">v</span><span class="p">),</span> <span class="n">sin</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="mi">3</span><span class="p">,</span><span class="mi">3</span><span class="p">),</span> <span class="nb">float</span><span class="p">)</span>
+    <span class="n">m</span><span class="p">[</span><span class="n">axis</span><span class="p">,</span><span class="n">axis</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="n">m</span><span class="p">[</span><span class="n">ax1</span><span class="p">,</span><span class="n">ax1</span><span class="p">]</span> <span class="o">=</span> <span class="n">c</span>
+    <span class="n">m</span><span class="p">[</span><span class="n">ax2</span><span class="p">,</span><span class="n">ax2</span><span class="p">]</span> <span class="o">=</span> <span class="n">c</span>
+    <span class="n">m</span><span class="p">[</span><span class="n">ax1</span><span class="p">,</span><span class="n">ax2</span><span class="p">]</span> <span class="o">=</span> <span class="n">s</span>
+    <span class="n">m</span><span class="p">[</span><span class="n">ax2</span><span class="p">,</span><span class="n">ax1</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">s</span>
+    <span class="k">return</span> <span class="n">m</span>
+
+<span class="k">def</span> <span class="nf">_colorsfromdict</span><span class="p">(</span><span class="nb">dict</span><span class="p">,</span> <span class="n">cls</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Extract colors from dictionary using cls as key.&quot;&quot;&quot;</span>
+    <span class="k">assert</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">type</span><span class="p">({})))</span>
+    <span class="c"># Allow local modifications, to replace strings with rgb values.</span>
+    <span class="nb">dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>  
+    <span class="n">isgray</span><span class="p">,</span> <span class="n">isrgb</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">dict</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="n">v</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="s">&quot;string&quot;</span><span class="p">)):</span>
+            <span class="n">v</span> <span class="o">=</span> <span class="n">color_table</span><span class="p">[</span><span class="n">v</span><span class="p">]</span>
+            <span class="nb">dict</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+                <span class="n">isrgb</span> <span class="o">=</span> <span class="mi">1</span> <span class="c"># Assume it is an RGB value</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="s">&quot;shape&quot;</span><span class="p">):</span>
+                    <span class="nb">dict</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">array</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>   <span class="c"># Convert to array</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&quot;Unrecognized color object &quot;</span><span class="o">+</span><span class="nb">repr</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>
+        <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+            <span class="n">isgray</span> <span class="o">=</span> <span class="mi">1</span> <span class="c"># Assume it is a number</span>
+    <span class="k">if</span> <span class="n">isgray</span> <span class="ow">and</span> <span class="n">isrgb</span><span class="p">:</span>
+        <span class="c"># Convert all to RGB</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">dict</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+            <span class="n">v</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="s">&quot;shape&quot;</span><span class="p">):</span>
+                <span class="nb">dict</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span> <span class="o">*</span> <span class="n">ones</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="nb">float</span><span class="p">)</span>
+    <span class="c"># Now the dictionary is ready</span>
+    <span class="k">if</span> <span class="n">isrgb</span><span class="p">:</span>
+        <span class="n">colors</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">cls</span><span class="p">),</span><span class="mi">3</span><span class="p">),</span> <span class="nb">float</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">colors</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">cls</span><span class="p">),),</span> <span class="nb">float</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">cls</span><span class="p">)):</span>
+        <span class="n">colors</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">[</span><span class="n">cls</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+    <span class="k">return</span> <span class="n">colors</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../../overview.html">
+              Overview</a></li>
+            <li><a href="../../../download.html">
+              Installation</a></li>
+            <li><a href="../../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../../faq.html">FAQ</a></li>
+            <li><a href="../../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../visualize.html" accesskey="U">ase.visualize</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

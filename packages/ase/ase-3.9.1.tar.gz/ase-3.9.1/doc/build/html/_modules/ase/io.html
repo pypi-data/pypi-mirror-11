@@ -1,0 +1,965 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.io &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.io</h1><div class="highlight"><pre>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">from</span> <span class="nn">tarfile</span> <span class="kn">import</span> <span class="n">is_tarfile</span>
+<span class="kn">from</span> <span class="nn">zipfile</span> <span class="kn">import</span> <span class="n">is_zipfile</span>
+
+<span class="kn">from</span> <span class="nn">ase.atoms</span> <span class="kn">import</span> <span class="n">Atoms</span>
+<span class="kn">from</span> <span class="nn">ase.units</span> <span class="kn">import</span> <span class="n">Bohr</span><span class="p">,</span> <span class="n">Hartree</span>
+<span class="kn">from</span> <span class="nn">ase.io.trajectory</span> <span class="kn">import</span> <span class="n">Trajectory</span><span class="p">,</span> <span class="n">PickleTrajectory</span>
+<span class="kn">from</span> <span class="nn">ase.io.bundletrajectory</span> <span class="kn">import</span> <span class="n">BundleTrajectory</span>
+<span class="kn">from</span> <span class="nn">ase.io.netcdftrajectory</span> <span class="kn">import</span> <span class="n">NetCDFTrajectory</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.singlepoint</span> <span class="kn">import</span> <span class="n">SinglePointDFTCalculator</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.singlepoint</span> <span class="kn">import</span> <span class="n">SinglePointKPoint</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;read&#39;</span><span class="p">,</span> <span class="s">&#39;write&#39;</span><span class="p">,</span> <span class="s">&#39;Trajectory&#39;</span><span class="p">,</span> <span class="s">&#39;PickleTrajectory&#39;</span><span class="p">,</span>
+           <span class="s">&#39;BundleTrajectory&#39;</span><span class="p">,</span> <span class="s">&#39;NetCDFTrajectory&#39;</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="read"><a class="viewcode-back" href="../../ase/io.html#ase.io.read">[docs]</a><span class="k">def</span> <span class="nf">read</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">format</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Read Atoms object(s) from file.</span>
+
+<span class="sd">    filename: str</span>
+<span class="sd">        Name of the file to read from.</span>
+<span class="sd">    index: int or slice</span>
+<span class="sd">        If the file contains several configurations, the last configuration</span>
+<span class="sd">        will be returned by default.  Use index=n to get configuration</span>
+<span class="sd">        number n (counting from zero).</span>
+<span class="sd">    format: str</span>
+<span class="sd">        Used to specify the file-format.  If not given, the</span>
+<span class="sd">        file-format will be guessed by the *filetype* function.</span>
+
+<span class="sd">    Known formats:</span>
+
+<span class="sd">    =========================  =============</span>
+<span class="sd">    format                     short name</span>
+<span class="sd">    =========================  =============</span>
+<span class="sd">    GPAW restart-file          gpw</span>
+<span class="sd">    Dacapo netCDF output file  dacapo</span>
+<span class="sd">    Old ASE netCDF trajectory  nc</span>
+<span class="sd">    Virtual Nano Lab file      vnl</span>
+<span class="sd">    ASE pickle trajectory      traj</span>
+<span class="sd">    ASE bundle trajectory      bundle</span>
+<span class="sd">    GPAW text output           gpaw-text</span>
+<span class="sd">    CUBE file                  cube</span>
+<span class="sd">    XCrySDen Structure File    xsf</span>
+<span class="sd">    Dacapo text output         dacapo-text</span>
+<span class="sd">    XYZ-file                   xyz</span>
+<span class="sd">    VASP POSCAR/CONTCAR file   vasp</span>
+<span class="sd">    VASP OUTCAR file           vasp_out</span>
+<span class="sd">    VASP XDATCAR file          vasp_xdatcar</span>
+<span class="sd">    VASP vasprun.xml file      vasp_xml</span>
+<span class="sd">    SIESTA STRUCT file         struct_out</span>
+<span class="sd">    ABINIT input file          abinit</span>
+<span class="sd">    V_Sim ascii file           v_sim</span>
+<span class="sd">    Protein Data Bank          pdb</span>
+<span class="sd">    CIF-file                   cif</span>
+<span class="sd">    FHI-aims geometry file     aims</span>
+<span class="sd">    FHI-aims output file       aims_out</span>
+<span class="sd">    VTK XML Image Data         vti</span>
+<span class="sd">    VTK XML Structured Grid    vts</span>
+<span class="sd">    VTK XML Unstructured Grid  vtu</span>
+<span class="sd">    TURBOMOLE coord file       tmol</span>
+<span class="sd">    TURBOMOLE gradient file    tmol-gradient</span>
+<span class="sd">    exciting input             exi</span>
+<span class="sd">    AtomEye configuration      cfg</span>
+<span class="sd">    WIEN2k structure file      struct</span>
+<span class="sd">    DftbPlus input file        dftb</span>
+<span class="sd">    CASTEP geom file           cell</span>
+<span class="sd">    CASTEP output file         castep</span>
+<span class="sd">    CASTEP trajectory file     geom</span>
+<span class="sd">    ETSF format                etsf.nc</span>
+<span class="sd">    DFTBPlus GEN format        gen</span>
+<span class="sd">    CMR db/cmr-file            db</span>
+<span class="sd">    CMR db/cmr-file            cmr</span>
+<span class="sd">    LAMMPS dump file           lammps</span>
+<span class="sd">    EON reactant.con file      eon</span>
+<span class="sd">    Gromacs coordinates        gro</span>
+<span class="sd">    Gaussian com (input) file  gaussian</span>
+<span class="sd">    Gaussian output file       gaussian_out</span>
+<span class="sd">    Quantum espresso in file   esp_in</span>
+<span class="sd">    Quantum espresso out file  esp_out</span>
+<span class="sd">    Extended XYZ file          extxyz</span>
+<span class="sd">    NWChem input file          nw</span>
+<span class="sd">    Materials Studio file      xsd</span>
+<span class="sd">    SHELX format               res    </span>
+<span class="sd">    =========================  =============</span>
+
+<span class="sd">    Many formats allow on open file-like object to be passed instead</span>
+<span class="sd">    of ``filename``. In this case the format cannot be auto-decected,</span>
+<span class="sd">    so the ``format`` argument should be explicitly given.</span>
+<span class="sd">    </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span>
+        <span class="s">&#39;.json@&#39;</span> <span class="ow">in</span> <span class="n">filename</span> <span class="ow">or</span>
+        <span class="s">&#39;.db@&#39;</span> <span class="ow">in</span> <span class="n">filename</span> <span class="ow">or</span>
+        <span class="n">filename</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;pg://&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="s">&#39;@&#39;</span> <span class="ow">in</span> <span class="n">filename</span><span class="p">):</span>
+        <span class="n">filename</span><span class="p">,</span> <span class="n">index</span> <span class="o">=</span> <span class="n">filename</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s">&#39;@&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">index</span><span class="o">.</span><span class="n">isdigit</span><span class="p">():</span>
+            <span class="n">index</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">index</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">p</span> <span class="o">=</span> <span class="n">filename</span><span class="o">.</span><span class="n">rfind</span><span class="p">(</span><span class="s">&#39;@&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">p</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">index</span> <span class="o">=</span> <span class="n">string2index</span><span class="p">(</span><span class="n">filename</span><span class="p">[</span><span class="n">p</span> <span class="o">+</span> <span class="mi">1</span><span class="p">:])</span>
+                <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                    <span class="k">pass</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">filename</span> <span class="o">=</span> <span class="n">filename</span><span class="p">[:</span><span class="n">p</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">index</span> <span class="o">=</span> <span class="n">string2index</span><span class="p">(</span><span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">format</span> <span class="o">=</span> <span class="n">filetype</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;gpw&#39;</span><span class="p">):</span>
+        <span class="kn">import</span> <span class="nn">gpaw</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">gpaw</span><span class="o">.</span><span class="n">io</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;r&#39;</span><span class="p">)</span>
+        <span class="n">positions</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;CartesianPositions&#39;</span><span class="p">)</span> <span class="o">*</span> <span class="n">Bohr</span>
+        <span class="n">numbers</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;AtomicNumbers&#39;</span><span class="p">)</span>
+        <span class="n">cell</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;UnitCell&#39;</span><span class="p">)</span> <span class="o">*</span> <span class="n">Bohr</span>
+        <span class="n">pbc</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;BoundaryConditions&#39;</span><span class="p">)</span>
+        <span class="n">tags</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;Tags&#39;</span><span class="p">)</span>
+        <span class="n">magmoms</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;MagneticMoments&#39;</span><span class="p">)</span>
+        <span class="n">energy</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;PotentialEnergy&#39;</span><span class="p">)</span> <span class="o">*</span> <span class="n">Hartree</span>
+
+        <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">has_array</span><span class="p">(</span><span class="s">&#39;CartesianForces&#39;</span><span class="p">):</span>
+            <span class="n">forces</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;CartesianForces&#39;</span><span class="p">)</span> <span class="o">*</span> <span class="n">Hartree</span> <span class="o">/</span> <span class="n">Bohr</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">forces</span> <span class="o">=</span> <span class="bp">None</span>
+
+        <span class="n">atoms</span> <span class="o">=</span> <span class="n">Atoms</span><span class="p">(</span><span class="n">positions</span><span class="o">=</span><span class="n">positions</span><span class="p">,</span>
+                      <span class="n">numbers</span><span class="o">=</span><span class="n">numbers</span><span class="p">,</span>
+                      <span class="n">cell</span><span class="o">=</span><span class="n">cell</span><span class="p">,</span>
+                      <span class="n">pbc</span><span class="o">=</span><span class="n">pbc</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">tags</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="n">atoms</span><span class="o">.</span><span class="n">set_tags</span><span class="p">(</span><span class="n">tags</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">magmoms</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="n">atoms</span><span class="o">.</span><span class="n">set_initial_magnetic_moments</span><span class="p">(</span><span class="n">magmoms</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">magmoms</span> <span class="o">=</span> <span class="bp">None</span>
+
+        <span class="n">atoms</span><span class="o">.</span><span class="n">calc</span> <span class="o">=</span> <span class="n">SinglePointDFTCalculator</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">energy</span><span class="o">=</span><span class="n">energy</span><span class="p">,</span>
+                                              <span class="n">forces</span><span class="o">=</span><span class="n">forces</span><span class="p">,</span> <span class="n">magmoms</span><span class="o">=</span><span class="n">magmoms</span><span class="p">)</span>
+        <span class="n">kpts</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">has_array</span><span class="p">(</span><span class="s">&#39;IBZKPoints&#39;</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">w</span><span class="p">,</span> <span class="n">kpt</span><span class="p">,</span> <span class="n">eps_n</span><span class="p">,</span> <span class="n">f_n</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;IBZKPointWeights&#39;</span><span class="p">),</span>
+                                          <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;IBZKPoints&#39;</span><span class="p">),</span>
+                                          <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;Eigenvalues&#39;</span><span class="p">),</span>
+                                          <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;OccupationNumbers&#39;</span><span class="p">)):</span>
+                <span class="n">kpts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">SinglePointKPoint</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">kpt</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">kpt</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+                                              <span class="n">eps_n</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">f_n</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+        <span class="n">atoms</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">kpts</span> <span class="o">=</span> <span class="n">kpts</span>
+
+        <span class="k">return</span> <span class="n">atoms</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;json&#39;</span><span class="p">,</span> <span class="s">&#39;db&#39;</span><span class="p">,</span> <span class="s">&#39;postgresql&#39;</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">index</span> <span class="o">==</span> <span class="nb">slice</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="bp">None</span><span class="p">):</span>
+            <span class="n">index</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="kn">from</span> <span class="nn">ase.db.core</span> <span class="kn">import</span> <span class="n">connect</span>
+        <span class="n">images</span> <span class="o">=</span> <span class="p">[</span><span class="n">row</span><span class="o">.</span><span class="n">toatoms</span><span class="p">()</span>
+                  <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">connect</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">format</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">index</span><span class="p">)]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">images</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">images</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">images</span>
+
+    <span class="k">if</span> <span class="n">index</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+        
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;castep&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.castep</span> <span class="kn">import</span> <span class="n">read_castep</span>
+        <span class="k">return</span> <span class="n">read_castep</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;castep_cell&#39;</span><span class="p">:</span>
+        <span class="kn">import</span> <span class="nn">ase.io.castep</span>
+        <span class="k">return</span> <span class="n">ase</span><span class="o">.</span><span class="n">io</span><span class="o">.</span><span class="n">castep</span><span class="o">.</span><span class="n">read_cell</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;castep_geom&#39;</span><span class="p">:</span>
+        <span class="kn">import</span> <span class="nn">ase.io.castep</span>
+        <span class="k">return</span> <span class="n">ase</span><span class="o">.</span><span class="n">io</span><span class="o">.</span><span class="n">castep</span><span class="o">.</span><span class="n">read_geom</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;exi&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.exciting</span> <span class="kn">import</span> <span class="n">read_exciting</span>
+        <span class="k">return</span> <span class="n">read_exciting</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;xyz&#39;</span><span class="p">,</span> <span class="s">&#39;extxyz&#39;</span><span class="p">]:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.extxyz</span> <span class="kn">import</span> <span class="n">read_xyz</span>
+        <span class="k">return</span> <span class="n">read_xyz</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;traj&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.trajectory</span> <span class="kn">import</span> <span class="n">read_trajectory</span>
+        <span class="k">return</span> <span class="n">read_trajectory</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;trj&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.pickletrajectory</span> <span class="kn">import</span> <span class="n">read_trajectory</span>
+        <span class="k">return</span> <span class="n">read_trajectory</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;bundle&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.bundletrajectory</span> <span class="kn">import</span> <span class="n">read_bundletrajectory</span>
+        <span class="k">return</span> <span class="n">read_bundletrajectory</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;cube&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.cube</span> <span class="kn">import</span> <span class="n">read_cube</span>
+        <span class="k">return</span> <span class="n">read_cube</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;nc&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.netcdf</span> <span class="kn">import</span> <span class="n">read_netcdf</span>
+        <span class="k">return</span> <span class="n">read_netcdf</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;gpaw-text&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.gpawtext</span> <span class="kn">import</span> <span class="n">read_gpaw_text</span>
+        <span class="k">return</span> <span class="n">read_gpaw_text</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;dacapo-text&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.dacapo</span> <span class="kn">import</span> <span class="n">read_dacapo_text</span>
+        <span class="k">return</span> <span class="n">read_dacapo_text</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;dacapo&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.dacapo</span> <span class="kn">import</span> <span class="n">read_dacapo</span>
+        <span class="k">return</span> <span class="n">read_dacapo</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;xsf&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.xsf</span> <span class="kn">import</span> <span class="n">read_xsf</span>
+        <span class="k">return</span> <span class="n">read_xsf</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;vasp&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.vasp</span> <span class="kn">import</span> <span class="n">read_vasp</span>
+        <span class="k">return</span> <span class="n">read_vasp</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;vasp_out&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.vasp</span> <span class="kn">import</span> <span class="n">read_vasp_out</span>
+        <span class="k">return</span> <span class="n">read_vasp_out</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;vasp_xdatcar&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.vasp</span> <span class="kn">import</span> <span class="n">read_vasp_xdatcar</span>
+        <span class="k">return</span> <span class="n">read_vasp_xdatcar</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;vasp_xml&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.vasp</span> <span class="kn">import</span> <span class="n">read_vasp_xml</span>
+        <span class="k">return</span> <span class="n">read_vasp_xml</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;abinit&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.abinit</span> <span class="kn">import</span> <span class="n">read_abinit</span>
+        <span class="k">return</span> <span class="n">read_abinit</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;v_sim&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.v_sim</span> <span class="kn">import</span> <span class="n">read_v_sim</span>
+        <span class="k">return</span> <span class="n">read_v_sim</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;mol&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.mol</span> <span class="kn">import</span> <span class="n">read_mol</span>
+        <span class="k">return</span> <span class="n">read_mol</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;pdb&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.pdb</span> <span class="kn">import</span> <span class="n">read_pdb</span>
+        <span class="k">return</span> <span class="n">read_pdb</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;cif&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.cif</span> <span class="kn">import</span> <span class="n">read_cif</span>
+        <span class="k">return</span> <span class="n">read_cif</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;struct&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.wien2k</span> <span class="kn">import</span> <span class="n">read_struct</span>
+        <span class="k">return</span> <span class="n">read_struct</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;struct_out&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.siesta</span> <span class="kn">import</span> <span class="n">read_struct</span>
+        <span class="k">return</span> <span class="n">read_struct</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;vti&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.vtkxml</span> <span class="kn">import</span> <span class="n">read_vti</span>
+        <span class="k">return</span> <span class="n">read_vti</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;vts&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.vtkxml</span> <span class="kn">import</span> <span class="n">read_vts</span>
+        <span class="k">return</span> <span class="n">read_vts</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;vtu&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.vtkxml</span> <span class="kn">import</span> <span class="n">read_vtu</span>
+        <span class="k">return</span> <span class="n">read_vtu</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;aims&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.aims</span> <span class="kn">import</span> <span class="n">read_aims</span>
+        <span class="k">return</span> <span class="n">read_aims</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;aims_out&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.aims</span> <span class="kn">import</span> <span class="n">read_aims_output</span>
+        <span class="k">return</span> <span class="n">read_aims_output</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;iwm&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.iwm</span> <span class="kn">import</span> <span class="n">read_iwm</span>
+        <span class="k">return</span> <span class="n">read_iwm</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;Cmdft&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.cmdft</span> <span class="kn">import</span> <span class="n">read_I_info</span>
+        <span class="k">return</span> <span class="n">read_I_info</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;tmol&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.turbomole</span> <span class="kn">import</span> <span class="n">read_turbomole</span>
+        <span class="k">return</span> <span class="n">read_turbomole</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;tmol-gradient&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.turbomole</span> <span class="kn">import</span> <span class="n">read_turbomole_gradient</span>
+        <span class="k">return</span> <span class="n">read_turbomole_gradient</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;cfg&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.cfg</span> <span class="kn">import</span> <span class="n">read_cfg</span>
+        <span class="k">return</span> <span class="n">read_cfg</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;dftb&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.dftb</span> <span class="kn">import</span> <span class="n">read_dftb</span>
+        <span class="k">return</span> <span class="n">read_dftb</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;sdf&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.sdf</span> <span class="kn">import</span> <span class="n">read_sdf</span>
+        <span class="k">return</span> <span class="n">read_sdf</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;etsf&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.etsf</span> <span class="kn">import</span> <span class="n">ETSFReader</span>
+        <span class="k">return</span> <span class="n">ETSFReader</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span><span class="o">.</span><span class="n">read_atoms</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;gen&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.gen</span> <span class="kn">import</span> <span class="n">read_gen</span>
+        <span class="k">return</span> <span class="n">read_gen</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;cmr&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.cmr_io</span> <span class="kn">import</span> <span class="n">read_db</span>
+        <span class="k">return</span> <span class="n">read_db</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;lammps&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.lammpsrun</span> <span class="kn">import</span> <span class="n">read_lammps_dump</span>
+        <span class="k">return</span> <span class="n">read_lammps_dump</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;eon&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.eon</span> <span class="kn">import</span> <span class="n">read_reactant_con</span>
+        <span class="k">return</span> <span class="n">read_reactant_con</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;gromacs&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.gromacs</span> <span class="kn">import</span> <span class="n">read_gromacs</span>
+        <span class="k">return</span> <span class="n">read_gromacs</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;gaussian&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.gaussian</span> <span class="kn">import</span> <span class="n">read_gaussian</span>
+        <span class="k">return</span> <span class="n">read_gaussian</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;gaussian_out&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.gaussian</span> <span class="kn">import</span> <span class="n">read_gaussian_out</span>
+        <span class="k">return</span> <span class="n">read_gaussian_out</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;esp_in&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.espresso</span> <span class="kn">import</span> <span class="n">read_espresso_in</span>
+        <span class="k">return</span> <span class="n">read_espresso_in</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;esp_out&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.espresso</span> <span class="kn">import</span> <span class="n">read_espresso_out</span>
+        <span class="k">return</span> <span class="n">read_espresso_out</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;nw&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.nwchem</span> <span class="kn">import</span> <span class="n">read_nwchem_input</span>
+        <span class="k">return</span> <span class="n">read_nwchem_input</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;xsd&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.xsd</span> <span class="kn">import</span> <span class="n">read_xsd</span>
+        <span class="k">return</span> <span class="n">read_xsd</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;shelx&#39;</span><span class="p">,</span> <span class="s">&#39;res&#39;</span><span class="p">]:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.res</span> <span class="kn">import</span> <span class="n">read_res</span>
+        <span class="k">return</span> <span class="n">read_res</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+
+    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&#39;File format descriptor &#39;</span> <span class="o">+</span> <span class="n">format</span> <span class="o">+</span> <span class="s">&#39; not recognized!&#39;</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="write"><a class="viewcode-back" href="../../ase/io.html#ase.io.write">[docs]</a><span class="k">def</span> <span class="nf">write</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">,</span> <span class="n">format</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Write Atoms object(s) to file.</span>
+
+<span class="sd">    filename: str</span>
+<span class="sd">        Name of the file to write to.</span>
+<span class="sd">    images: Atoms object or list of Atoms objects</span>
+<span class="sd">        A single Atoms object or a list of Atoms objects.</span>
+<span class="sd">    format: str</span>
+<span class="sd">        Used to specify the file-format.  If not given, the</span>
+<span class="sd">        file-format will be taken from suffix of the filename.</span>
+
+<span class="sd">    The accepted output formats:</span>
+
+<span class="sd">    =========================  ===========</span>
+<span class="sd">    format                     short name</span>
+<span class="sd">    =========================  ===========</span>
+<span class="sd">    ASE pickle trajectory      traj</span>
+<span class="sd">    ASE bundle trajectory      bundle</span>
+<span class="sd">    CUBE file                  cube</span>
+<span class="sd">    XYZ-file                   xyz</span>
+<span class="sd">    VASP POSCAR/CONTCAR file   vasp</span>
+<span class="sd">    ABINIT input file          abinit</span>
+<span class="sd">    Protein Data Bank          pdb</span>
+<span class="sd">    CIF-file                   cif</span>
+<span class="sd">    XCrySDen Structure File    xsf</span>
+<span class="sd">    FHI-aims geometry file     aims</span>
+<span class="sd">    gOpenMol .plt file         plt</span>
+<span class="sd">    Python script              py</span>
+<span class="sd">    Encapsulated Postscript    eps</span>
+<span class="sd">    Portable Network Graphics  png</span>
+<span class="sd">    Persistance of Vision      pov</span>
+<span class="sd">    VTK XML Image Data         vti</span>
+<span class="sd">    VTK XML Structured Grid    vts</span>
+<span class="sd">    VTK XML Unstructured Grid  vtu</span>
+<span class="sd">    TURBOMOLE coord file       tmol</span>
+<span class="sd">    exciting                   exi</span>
+<span class="sd">    AtomEye configuration      cfg</span>
+<span class="sd">    WIEN2k structure file      struct</span>
+<span class="sd">    CASTEP cell file           cell</span>
+<span class="sd">    DftbPlus input file        dftb</span>
+<span class="sd">    ETSF                       etsf.nc</span>
+<span class="sd">    DFTBPlus GEN format        gen</span>
+<span class="sd">    CMR db/cmr-file            db</span>
+<span class="sd">    CMR db/cmr-file            cmr</span>
+<span class="sd">    EON reactant.con file      eon</span>
+<span class="sd">    Gromacs coordinates        gro</span>
+<span class="sd">    GROMOS96 (only positions)  g96</span>
+<span class="sd">    X3D                        x3d</span>
+<span class="sd">    X3DOM HTML                 html</span>
+<span class="sd">    Extended XYZ file          extxyz</span>
+<span class="sd">    SHELX format               res</span>
+<span class="sd">    =========================  ===========</span>
+
+<span class="sd">    Many formats allow on open file-like object to be passed instead</span>
+<span class="sd">    of ``filename``. In this case the format cannot be auto-decected,</span>
+<span class="sd">    so the ``format`` argument should be explicitly given.</span>
+
+<span class="sd">    The use of additional keywords is format specific.</span>
+
+<span class="sd">    The ``cube`` and ``plt`` formats accept (plt requires it) a ``data``</span>
+<span class="sd">    keyword, which can be used to write a 3D array to the file along</span>
+<span class="sd">    with the nuclei coordinates.</span>
+
+<span class="sd">    The ``vti``, ``vts`` and ``vtu`` formats are all specifically directed</span>
+<span class="sd">    for use with MayaVi, and the latter is designated for visualization of</span>
+<span class="sd">    the atoms whereas the two others are intended for volume data. Further,</span>
+<span class="sd">    it should be noted that the ``vti`` format is intended for orthogonal</span>
+<span class="sd">    unit cells as only the grid-spacing is stored, whereas the ``vts`` format</span>
+<span class="sd">    additionally stores the coordinates of each grid point, thus making it</span>
+<span class="sd">    useful for volume date in more general unit cells.</span>
+
+<span class="sd">    The ``eps``, ``png``, and ``pov`` formats are all graphics formats,</span>
+<span class="sd">    and accept the additional keywords:</span>
+
+<span class="sd">    rotation: str (default &#39;&#39;)</span>
+<span class="sd">      The rotation angles, e.g. &#39;45x,70y,90z&#39;.</span>
+
+<span class="sd">    show_unit_cell: int (default 0)</span>
+<span class="sd">      Can be 0, 1, 2 to either not show, show, or show all of the unit cell.</span>
+
+<span class="sd">    radii: array or float (default 1.0)</span>
+<span class="sd">      An array of same length as the list of atoms indicating the sphere radii.</span>
+<span class="sd">      A single float specifies a uniform scaling of the default covalent radii.</span>
+
+<span class="sd">    bbox: 4 floats (default None)</span>
+<span class="sd">      Set the bounding box to (xll, yll, xur, yur) (lower left, upper right).</span>
+
+<span class="sd">    colors: array (default None)</span>
+<span class="sd">      An array of same length as the list of atoms, indicating the rgb color</span>
+<span class="sd">      code for each atom. Default is the jmol_colors of ase/data/colors.</span>
+
+<span class="sd">    scale: int (default 20)</span>
+<span class="sd">      Number of pixels per Angstrom.</span>
+
+<span class="sd">    For the ``pov`` graphics format, ``scale`` should not be specified.</span>
+<span class="sd">    The elements of the color array can additionally be strings, or 4</span>
+<span class="sd">    and 5 vectors for named colors, rgb + filter, and rgb + filter + transmit</span>
+<span class="sd">    specification. This format accepts the additional keywords:</span>
+
+<span class="sd">    ``run_povray``, ``display``, ``pause``, ``transparent``,</span>
+<span class="sd">    ``canvas_width``, ``canvas_height``, ``camera_dist``,</span>
+<span class="sd">    ``image_plane``, ``camera_type``, ``point_lights``,</span>
+<span class="sd">    ``area_light``, ``background``, ``textures``, ``celllinewidth``,</span>
+<span class="sd">    ``bondlinewidth``, ``bondatoms``</span>
+
+<span class="sd">    The ``xyz`` format accepts a comment string using the ``comment`` keyword:</span>
+
+<span class="sd">    comment: str (default &#39;&#39;)</span>
+<span class="sd">      Optional comment written on the second line of the file.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">filename</span> <span class="o">==</span> <span class="s">&#39;-&#39;</span><span class="p">:</span>
+            <span class="n">format</span> <span class="o">=</span> <span class="s">&#39;xyz&#39;</span>
+            <span class="n">filename</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span>
+        <span class="k">elif</span> <span class="s">&#39;POSCAR&#39;</span> <span class="ow">in</span> <span class="n">filename</span> <span class="ow">or</span> <span class="s">&#39;CONTCAR&#39;</span> <span class="ow">in</span> <span class="n">filename</span><span class="p">:</span>
+            <span class="n">format</span> <span class="o">=</span> <span class="s">&#39;vasp&#39;</span>
+        <span class="k">elif</span> <span class="s">&#39;OUTCAR&#39;</span> <span class="ow">in</span> <span class="n">filename</span><span class="p">:</span>
+            <span class="n">format</span> <span class="o">=</span> <span class="s">&#39;vasp_out&#39;</span>
+        <span class="k">elif</span> <span class="s">&#39;vasp&#39;</span> <span class="ow">in</span> <span class="n">filename</span> <span class="ow">and</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.xml&#39;</span><span class="p">):</span>
+            <span class="n">format</span> <span class="o">=</span> <span class="s">&#39;vasp_xml&#39;</span>
+        <span class="k">elif</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;etsf.nc&#39;</span><span class="p">):</span>
+            <span class="n">format</span> <span class="o">=</span> <span class="s">&#39;etsf&#39;</span>
+        <span class="k">elif</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.con&#39;</span><span class="p">):</span>
+            <span class="n">format</span> <span class="o">=</span> <span class="s">&#39;eon&#39;</span>
+        <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#39;coord&#39;</span><span class="p">:</span>
+            <span class="n">format</span> <span class="o">=</span> <span class="s">&#39;tmol&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">suffix</span> <span class="o">=</span> <span class="n">filename</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;.&#39;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">format</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;cell&#39;</span><span class="p">:</span> <span class="s">&#39;castep_cell&#39;</span><span class="p">,</span>
+                      <span class="p">}</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">suffix</span><span class="p">,</span> <span class="n">suffix</span><span class="p">)</span>  <span class="c"># XXX this does not make sense</span>
+            <span class="c"># Maybe like this:</span>
+<span class="c">##             format = {&#39;traj&#39;: &#39;trajectory&#39;,</span>
+<span class="c">##                       &#39;nc&#39;: &#39;netcdf&#39;,</span>
+<span class="c">##                       &#39;exi&#39;: &#39;exciting&#39;,</span>
+<span class="c">##                       &#39;in&#39;: &#39;aims&#39;,</span>
+<span class="c">##                       &#39;tmol&#39;: &#39;turbomole&#39;,</span>
+<span class="c">##                       }.get(suffix, suffix)</span>
+            
+    <span class="k">if</span> <span class="n">format</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;json&#39;</span><span class="p">,</span> <span class="s">&#39;db&#39;</span><span class="p">]:</span>
+        <span class="kn">from</span> <span class="nn">ase.db</span> <span class="kn">import</span> <span class="n">connect</span>
+        <span class="n">connect</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">format</span><span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">images</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;castep_cell&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.castep</span> <span class="kn">import</span> <span class="n">write_cell</span>
+        <span class="n">write_cell</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;exi&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.exciting</span> <span class="kn">import</span> <span class="n">write_exciting</span>
+        <span class="n">write_exciting</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;cif&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.cif</span> <span class="kn">import</span> <span class="n">write_cif</span>
+        <span class="n">write_cif</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;xyz&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.extxyz</span> <span class="kn">import</span> <span class="n">write_xyz</span>
+        <span class="n">write_xyz</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;symbols&#39;</span><span class="p">,</span> <span class="s">&#39;positions&#39;</span><span class="p">],</span>
+                  <span class="n">write_info</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">write_results</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;extxyz&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.extxyz</span> <span class="kn">import</span> <span class="n">write_xyz</span>
+        <span class="n">write_xyz</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">if</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;gen&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.gen</span> <span class="kn">import</span> <span class="n">write_gen</span>
+        <span class="n">write_gen</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;in&#39;</span><span class="p">:</span>
+        <span class="n">format</span> <span class="o">=</span> <span class="s">&#39;aims&#39;</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;tmol&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.turbomole</span> <span class="kn">import</span> <span class="n">write_turbomole</span>
+        <span class="n">write_turbomole</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;dftb&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.dftb</span> <span class="kn">import</span> <span class="n">write_dftb</span>
+        <span class="n">write_dftb</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;struct&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.wien2k</span> <span class="kn">import</span> <span class="n">write_struct</span>
+        <span class="n">write_struct</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;findsym&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.findsym</span> <span class="kn">import</span> <span class="n">write_findsym</span>
+        <span class="n">write_findsym</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;etsf&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.etsf</span> <span class="kn">import</span> <span class="n">ETSFWriter</span>
+        <span class="n">writer</span> <span class="o">=</span> <span class="n">ETSFWriter</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">images</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="n">images</span> <span class="o">=</span> <span class="p">[</span><span class="n">images</span><span class="p">]</span>
+        <span class="n">writer</span><span class="o">.</span><span class="n">write_atoms</span><span class="p">(</span><span class="n">images</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">writer</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">return</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;cmr&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.cmr_io</span> <span class="kn">import</span> <span class="n">write_db</span>
+        <span class="k">return</span> <span class="n">write_db</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;eon&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.eon</span> <span class="kn">import</span> <span class="n">write_reactant_con</span>
+        <span class="n">write_reactant_con</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;gro&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.gromacs</span> <span class="kn">import</span> <span class="n">write_gromacs</span>
+        <span class="n">write_gromacs</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;g96&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.gromos</span> <span class="kn">import</span> <span class="n">write_gromos</span>
+        <span class="n">write_gromos</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;html&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.x3d</span> <span class="kn">import</span> <span class="n">write_html</span>
+        <span class="n">write_html</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;shelx&#39;</span><span class="p">,</span> <span class="s">&#39;res&#39;</span><span class="p">]:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.res</span> <span class="kn">import</span> <span class="n">write_res</span>
+        <span class="n">write_res</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">)</span>
+        <span class="k">return</span>    
+
+    <span class="n">format</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;traj&#39;</span><span class="p">:</span> <span class="s">&#39;trajectory&#39;</span><span class="p">,</span>
+              <span class="s">&#39;nc&#39;</span><span class="p">:</span> <span class="s">&#39;netcdf&#39;</span><span class="p">,</span>
+              <span class="s">&#39;bundle&#39;</span><span class="p">:</span> <span class="s">&#39;bundletrajectory&#39;</span>
+              <span class="p">}</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">format</span><span class="p">,</span> <span class="n">format</span><span class="p">)</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="s">&#39;write_&#39;</span> <span class="o">+</span> <span class="n">format</span>
+
+    <span class="k">if</span> <span class="n">format</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;vti&#39;</span><span class="p">,</span> <span class="s">&#39;vts&#39;</span><span class="p">,</span> <span class="s">&#39;vtu&#39;</span><span class="p">]:</span>
+        <span class="n">format</span> <span class="o">=</span> <span class="s">&#39;vtkxml&#39;</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="o">==</span> <span class="s">&#39;trj&#39;</span><span class="p">:</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="s">&#39;write_trajectory&#39;</span>
+        <span class="n">format</span> <span class="o">=</span> <span class="s">&#39;pickletrajectory&#39;</span>
+    <span class="k">elif</span> <span class="n">format</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">format</span> <span class="o">=</span> <span class="n">filetype</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">write</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="nb">__import__</span><span class="p">(</span><span class="s">&#39;ase.io.</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">format</span><span class="p">,</span> <span class="p">{},</span> <span class="p">{},</span> <span class="p">[</span><span class="n">name</span><span class="p">]),</span> <span class="n">name</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&#39;Unknown format: &quot;</span><span class="si">%s</span><span class="s">&quot;.&#39;</span> <span class="o">%</span> <span class="n">format</span><span class="p">)</span>
+
+    <span class="n">write</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+</div>
+<span class="k">def</span> <span class="nf">string2index</span><span class="p">(</span><span class="n">string</span><span class="p">):</span>
+    <span class="k">if</span> <span class="s">&#39;:&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">string</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">string</span><span class="p">)</span>
+    <span class="n">i</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">string</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;:&#39;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">s</span> <span class="o">==</span> <span class="s">&#39;&#39;</span><span class="p">:</span>
+            <span class="n">i</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">i</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">s</span><span class="p">))</span>
+    <span class="n">i</span> <span class="o">+=</span> <span class="p">(</span><span class="mi">3</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">i</span><span class="p">))</span> <span class="o">*</span> <span class="p">[</span><span class="bp">None</span><span class="p">]</span>
+    <span class="k">return</span> <span class="nb">slice</span><span class="p">(</span><span class="o">*</span><span class="n">i</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">filetype</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Try to guess the type of the file.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+        <span class="c"># Potentially a BundleTrajectory</span>
+        <span class="k">if</span> <span class="n">BundleTrajectory</span><span class="o">.</span><span class="n">is_bundle</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s">&#39;bundle&#39;</span>
+        <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#39;states&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;eon&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s">&#39;Directory: &#39;</span> <span class="o">+</span> <span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;pg://&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;postgresql&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.res&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;res&#39;</span>    
+
+    <span class="n">fileobj</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;rb&#39;</span><span class="p">)</span>
+    <span class="n">s3</span> <span class="o">=</span> <span class="n">fileobj</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">s3</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s">&#39;Empty file: &#39;</span> <span class="o">+</span> <span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">s3</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">b</span><span class="s">&#39;{&quot;&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;json&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.db&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;db&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.cmr&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;cmr&#39;</span>
+
+    <span class="k">if</span> <span class="n">is_tarfile</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;gpw&#39;</span>
+
+    <span class="k">if</span> <span class="n">s3</span> <span class="o">==</span> <span class="n">b</span><span class="s">&#39;CDF&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.io.pupynere</span> <span class="kn">import</span> <span class="n">NetCDFFile</span>
+        <span class="n">nc</span> <span class="o">=</span> <span class="n">NetCDFFile</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s">&#39;number_of_dynamic_atoms&#39;</span> <span class="ow">in</span> <span class="n">nc</span><span class="o">.</span><span class="n">dimensions</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;dacapo&#39;</span>
+
+        <span class="n">history</span> <span class="o">=</span> <span class="n">nc</span><span class="o">.</span><span class="n">history</span>
+        <span class="k">if</span> <span class="n">history</span> <span class="o">==</span> <span class="s">&#39;GPAW restart file&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;gpw-nc&#39;</span>
+        <span class="k">if</span> <span class="n">history</span> <span class="o">==</span> <span class="s">&#39;ASE trajectory&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;nc&#39;</span>
+        <span class="k">if</span> <span class="n">history</span> <span class="o">==</span> <span class="s">&#39;Dacapo&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;dacapo&#39;</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">nc</span><span class="p">,</span> <span class="s">&#39;file_format&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">nc</span><span class="o">.</span><span class="n">file_format</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;ETSF&#39;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s">&#39;etsf&#39;</span>
+        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s">&#39;Unknown netCDF file!&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">is_zipfile</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;vnl&#39;</span>
+
+    <span class="n">fileobj</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">lines</span> <span class="o">=</span> <span class="n">fileobj</span><span class="o">.</span><span class="n">readlines</span><span class="p">(</span><span class="mi">1000</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">b</span><span class="s">&#39;AFFormatASE-Trajectory&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;traj&#39;</span>
+    <span class="k">if</span> <span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">b</span><span class="s">&#39;PickleTrajectory&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;trj&#39;</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">lines</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">b</span><span class="s">&#39;OUTER LOOP:&#39;</span><span class="p">)</span> <span class="ow">or</span>
+        <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.cube&#39;</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="s">&#39;cube&#39;</span>
+
+    <span class="k">if</span> <span class="n">b</span><span class="s">&#39;  ___ ___ ___ _ _ _  </span><span class="se">\n</span><span class="s">&#39;</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#39;gpaw-text&#39;</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">b</span><span class="s">&#39; &amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;&amp;</span><span class="se">\n</span><span class="s">&#39;</span>
+        <span class="ow">in</span> <span class="n">lines</span><span class="p">[:</span><span class="mi">90</span><span class="p">]):</span>
+        <span class="k">return</span> <span class="s">&#39;dacapo-text&#39;</span>
+
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">line</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">b</span><span class="s">&#39;#&#39;</span><span class="p">:</span>
+            <span class="n">word</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">word</span> <span class="ow">in</span> <span class="p">[</span><span class="n">b</span><span class="s">&#39;ANIMSTEPS&#39;</span><span class="p">,</span> <span class="n">b</span><span class="s">&#39;CRYSTAL&#39;</span><span class="p">,</span> <span class="n">b</span><span class="s">&#39;SLAB&#39;</span><span class="p">,</span> <span class="n">b</span><span class="s">&#39;POLYMER&#39;</span><span class="p">,</span>
+                        <span class="n">b</span><span class="s">&#39;MOLECULE&#39;</span><span class="p">,</span> <span class="n">b</span><span class="s">&#39;ATOMS&#39;</span><span class="p">]:</span>
+                <span class="k">return</span> <span class="s">&#39;xsf&#39;</span>
+
+    <span class="n">filename_v</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+    <span class="k">if</span> <span class="s">&#39;POSCAR&#39;</span> <span class="ow">in</span> <span class="n">filename_v</span> <span class="ow">or</span> <span class="s">&#39;CONTCAR&#39;</span> <span class="ow">in</span> <span class="n">filename_v</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#39;vasp&#39;</span>
+
+    <span class="k">if</span> <span class="s">&#39;OUTCAR&#39;</span> <span class="ow">in</span> <span class="n">filename_v</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#39;vasp_out&#39;</span>
+
+    <span class="k">if</span> <span class="s">&#39;XDATCAR&#39;</span> <span class="ow">in</span> <span class="n">filename_v</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#39;vasp_xdatcar&#39;</span>
+
+    <span class="k">if</span> <span class="s">&#39;vasp&#39;</span> <span class="ow">in</span> <span class="n">filename_v</span> <span class="ow">and</span> <span class="n">filename_v</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.xml&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;vasp_xml&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.exi&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;exi&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.mol&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;mol&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.pdb&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;pdb&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.cif&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;cif&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.struct&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;struct&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.struct_out&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;struct_out&#39;</span>
+
+    <span class="n">fileobj</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">fileobj</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">line</span><span class="p">:</span>
+            <span class="k">break</span>
+        <span class="k">if</span> <span class="n">b</span><span class="s">&#39;Invoking FHI-aims ...&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;aims_out&#39;</span>
+        <span class="k">if</span> <span class="n">b</span><span class="s">&#39;atom&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">Atoms</span><span class="p">(</span><span class="n">symbols</span><span class="o">=</span><span class="p">[</span><span class="n">data</span><span class="p">[</span><span class="mi">4</span><span class="p">]],</span>
+                      <span class="n">positions</span><span class="o">=</span><span class="p">[[</span><span class="nb">float</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span>
+                                  <span class="nb">float</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="mi">2</span><span class="p">]),</span>
+                                  <span class="nb">float</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="mi">3</span><span class="p">])]])</span>
+                <span class="k">return</span> <span class="s">&#39;aims&#39;</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="k">pass</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.in&#39;</span><span class="p">):</span>
+        <span class="n">fileobj</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+            <span class="n">line</span> <span class="o">=</span> <span class="n">fileobj</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">line</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="k">if</span> <span class="p">(</span><span class="s">&#39;&amp;system&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="s">&#39;&amp;SYSTEM&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">):</span>
+                <span class="k">return</span> <span class="s">&#39;esp_in&#39;</span>
+        <span class="k">return</span> <span class="s">&#39;aims&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.cfg&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;cfg&#39;</span>
+
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">filename</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;atoms.dat&#39;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#39;iwm&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;I_info&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;Cmdft&#39;</span>
+
+    <span class="k">if</span> <span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">b</span><span class="s">&#39;$coord&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#39;coord&#39;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#39;tmol&#39;</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">b</span><span class="s">&#39;$grad&#39;</span><span class="p">)</span> <span class="ow">or</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#39;gradient&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;tmol-gradient&#39;</span>
+
+    <span class="k">if</span> <span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">b</span><span class="s">&#39;Geometry&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;dftb&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.geom&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;castep_geom&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.castep&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;castep&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.cell&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;castep_cell&#39;</span>
+    <span class="k">if</span> <span class="n">s3</span> <span class="o">==</span> <span class="n">b</span><span class="s">&#39;&lt;?x&#39;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;xsd&#39;</span><span class="p">):</span>
+        <span class="kn">from</span> <span class="nn">ase.io.vtkxml</span> <span class="kn">import</span> <span class="n">probe_vtkxml</span>
+        <span class="n">xmltype</span> <span class="o">=</span> <span class="n">probe_vtkxml</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">xmltype</span> <span class="o">==</span> <span class="s">&#39;ImageData&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;vti&#39;</span>
+        <span class="k">elif</span> <span class="n">xmltype</span> <span class="o">==</span> <span class="s">&#39;StructuredGrid&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;vts&#39;</span>
+        <span class="k">elif</span> <span class="n">xmltype</span> <span class="o">==</span> <span class="s">&#39;UnstructuredGrid&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;vtu&#39;</span>
+        <span class="k">elif</span> <span class="n">xmltype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s">&#39;Unknown VTK XML file!&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.sdf&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;sdf&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.gen&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;gen&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.con&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;eon&#39;</span>
+
+    <span class="k">if</span> <span class="n">b</span><span class="s">&#39;ITEM: TIMESTEP</span><span class="se">\n</span><span class="s">&#39;</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#39;lammps&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.gro&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;gromacs&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.log&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;gaussian_out&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.com&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;gaussian&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.g96&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;gromos&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.out&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;esp_out&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.nw&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;nw&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;xsd&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;xsd&#39;</span>
+
+    <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s">&#39;.extxyz&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;extxyz&#39;</span>
+
+    <span class="k">return</span> <span class="s">&#39;xyz&#39;</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

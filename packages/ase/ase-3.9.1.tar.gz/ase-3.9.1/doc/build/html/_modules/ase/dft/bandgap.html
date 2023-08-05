@@ -1,0 +1,231 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.dft.bandgap &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../../contents.html" />
+    <link rel="index" title="Global index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../../index.html" />
+    <link rel="up" title="ase.dft" href="../dft.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../dft.html" accesskey="U">ase.dft</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.dft.bandgap</h1><div class="highlight"><pre>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">functools</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+
+<div class="viewcode-block" id="get_band_gap"><a class="viewcode-back" href="../../../ase/dft/bandgap.html#ase.dft.bandgap.get_band_gap">[docs]</a><span class="k">def</span> <span class="nf">get_band_gap</span><span class="p">(</span><span class="n">calc</span><span class="p">,</span> <span class="n">direct</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">spin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Calculates the band-gap.</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters:</span>
+<span class="sd">        </span>
+<span class="sd">    calc: Calculator object</span>
+<span class="sd">        Electronic structure calculator object.</span>
+<span class="sd">    direct: bool</span>
+<span class="sd">        Calculate direct band-gap.</span>
+<span class="sd">    spin: int or None</span>
+<span class="sd">        For spin-polarized systems, you can use spin=0 or spin=1 to look only</span>
+<span class="sd">        at a single spin-channel.</span>
+<span class="sd">    output: file descriptor</span>
+<span class="sd">        Use output=None for no text output.</span>
+
+<span class="sd">    Rerurns a (gap, k1, k2) tuple where k1 and k2 are the indices of the</span>
+<span class="sd">    valence and conduction k-points.  For the spin-polarized case, a</span>
+<span class="sd">    (gap, (s1, k1), (s2, k2)) tuple is returned.</span>
+<span class="sd">    </span>
+<span class="sd">    Example:</span>
+<span class="sd">        </span>
+<span class="sd">    &gt;&gt;&gt; gap, k1, k2 = get_band_gap(silicon.calc)</span>
+<span class="sd">    Gap: 1.2 eV</span>
+<span class="sd">    Transition (v -&gt; c):</span>
+<span class="sd">        [0.000, 0.000, 0.000] -&gt; [0.500, 0.500, 0.000]</span>
+<span class="sd">    &gt;&gt;&gt; print(gap, k1, k2)</span>
+<span class="sd">    1.2 0 5</span>
+<span class="sd">    &gt;&gt;&gt; gap, k1, k2 = get_band_gap(atoms.calc, direct=True)</span>
+<span class="sd">    Direct gap: 3.4 eV</span>
+<span class="sd">    Transition at: [0.000, 0.000, 0.000]</span>
+<span class="sd">    &gt;&gt;&gt; print(gap, k1, k2)</span>
+<span class="sd">    3.4 0 0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="n">kpts_kc</span> <span class="o">=</span> <span class="n">calc</span><span class="o">.</span><span class="n">get_ibz_k_points</span><span class="p">()</span>
+    <span class="n">nk</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">kpts_kc</span><span class="p">)</span>
+    <span class="n">ns</span> <span class="o">=</span> <span class="n">calc</span><span class="o">.</span><span class="n">get_number_of_spins</span><span class="p">()</span>
+    <span class="n">e_skn</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">calc</span><span class="o">.</span><span class="n">get_eigenvalues</span><span class="p">(</span><span class="n">kpt</span><span class="o">=</span><span class="n">k</span><span class="p">,</span> <span class="n">spin</span><span class="o">=</span><span class="n">s</span><span class="p">)</span>
+                       <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nk</span><span class="p">)]</span>
+                      <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ns</span><span class="p">)])</span>
+    <span class="n">e_skn</span> <span class="o">-=</span> <span class="n">calc</span><span class="o">.</span><span class="n">get_fermi_level</span><span class="p">()</span>
+    <span class="n">N_sk</span> <span class="o">=</span> <span class="p">(</span><span class="n">e_skn</span> <span class="o">&lt;</span> <span class="mf">0.0</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>  <span class="c"># number of occupied bands</span>
+    <span class="n">e_skn</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">e_skn</span><span class="p">[</span><span class="n">s</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">N_sk</span><span class="p">[</span><span class="n">s</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span><span class="n">N_sk</span><span class="p">[</span><span class="n">s</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+                       <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nk</span><span class="p">)]</span>
+                      <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ns</span><span class="p">)])</span>
+    <span class="n">ev_sk</span> <span class="o">=</span> <span class="n">e_skn</span><span class="p">[:,</span> <span class="p">:,</span> <span class="mi">0</span><span class="p">]</span>  <span class="c"># valence band</span>
+    <span class="n">ec_sk</span> <span class="o">=</span> <span class="n">e_skn</span><span class="p">[:,</span> <span class="p">:,</span> <span class="mi">1</span><span class="p">]</span>  <span class="c"># conduction band</span>
+    
+    <span class="k">if</span> <span class="n">ns</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">gap</span><span class="p">,</span> <span class="n">k1</span><span class="p">,</span> <span class="n">k2</span> <span class="o">=</span> <span class="n">find_gap</span><span class="p">(</span><span class="n">N_sk</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">ev_sk</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">ec_sk</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">direct</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">spin</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">gap</span><span class="p">,</span> <span class="n">k1</span><span class="p">,</span> <span class="n">k2</span> <span class="o">=</span> <span class="n">find_gap</span><span class="p">(</span><span class="n">N_sk</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">ev_sk</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">ec_sk</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span>
+                               <span class="n">direct</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">gap</span> <span class="o">&gt;</span> <span class="mf">0.0</span><span class="p">:</span>
+            <span class="n">k1</span> <span class="o">=</span> <span class="nb">divmod</span><span class="p">(</span><span class="n">k1</span><span class="p">,</span> <span class="n">nk</span><span class="p">)</span>
+            <span class="n">k2</span> <span class="o">=</span> <span class="nb">divmod</span><span class="p">(</span><span class="n">k2</span><span class="p">,</span> <span class="n">nk</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">k1</span> <span class="o">=</span> <span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+            <span class="n">k2</span> <span class="o">=</span> <span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">gap</span><span class="p">,</span> <span class="n">k1</span><span class="p">,</span> <span class="n">k2</span> <span class="o">=</span> <span class="n">find_gap</span><span class="p">(</span><span class="n">N_sk</span><span class="p">[</span><span class="n">spin</span><span class="p">],</span> <span class="n">ev_sk</span><span class="p">[</span><span class="n">spin</span><span class="p">],</span> <span class="n">ec_sk</span><span class="p">[</span><span class="n">spin</span><span class="p">],</span> <span class="n">direct</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">output</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">def</span> <span class="nf">sk</span><span class="p">(</span><span class="n">k</span><span class="p">):</span>
+            <span class="sd">&quot;&quot;&quot;Convert k or (s, k) to string.&quot;&quot;&quot;</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+                <span class="n">s</span><span class="p">,</span> <span class="n">k</span> <span class="o">=</span> <span class="n">k</span>
+                <span class="k">return</span> <span class="s">&#39;(spin={0}, {1})&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">sk</span><span class="p">(</span><span class="n">k</span><span class="p">))</span>
+            <span class="k">return</span> <span class="s">&#39;[{0:.3f}, {1:.3f}, {2:.3f}]&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="o">*</span><span class="n">kpts_kc</span><span class="p">[</span><span class="n">k</span><span class="p">])</span>
+            
+        <span class="n">p</span> <span class="o">=</span> <span class="n">functools</span><span class="o">.</span><span class="n">partial</span><span class="p">(</span><span class="k">print</span><span class="p">,</span> <span class="nb">file</span><span class="o">=</span><span class="n">output</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">spin</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">p</span><span class="p">(</span><span class="s">&#39;spin={0}: &#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">spin</span><span class="p">),</span> <span class="n">end</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">gap</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">:</span>
+            <span class="n">p</span><span class="p">(</span><span class="s">&#39;No gap!&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">direct</span><span class="p">:</span>
+            <span class="n">p</span><span class="p">(</span><span class="s">&#39;Direct gap: {0:.3f} eV&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">gap</span><span class="p">))</span>
+            <span class="n">p</span><span class="p">(</span><span class="s">&#39;Transition at:&#39;</span><span class="p">,</span> <span class="n">sk</span><span class="p">(</span><span class="n">k1</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">p</span><span class="p">(</span><span class="s">&#39;Gap: {0:.3f} eV&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">gap</span><span class="p">))</span>
+            <span class="n">p</span><span class="p">(</span><span class="s">&#39;Transition (v -&gt; c):&#39;</span><span class="p">)</span>
+            <span class="n">p</span><span class="p">(</span><span class="s">&#39;   &#39;</span><span class="p">,</span> <span class="n">sk</span><span class="p">(</span><span class="n">k1</span><span class="p">),</span> <span class="s">&#39;-&gt;&#39;</span><span class="p">,</span> <span class="n">sk</span><span class="p">(</span><span class="n">k2</span><span class="p">))</span>
+    
+    <span class="k">return</span> <span class="n">gap</span><span class="p">,</span> <span class="n">k1</span><span class="p">,</span> <span class="n">k2</span>
+
+    </div>
+<span class="k">def</span> <span class="nf">find_gap</span><span class="p">(</span><span class="n">N_k</span><span class="p">,</span> <span class="n">ev_k</span><span class="p">,</span> <span class="n">ec_k</span><span class="p">,</span> <span class="n">direct</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Helper function.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">N_k</span><span class="o">.</span><span class="n">ptp</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mf">0.0</span><span class="p">,</span> <span class="bp">None</span><span class="p">,</span> <span class="bp">None</span>
+    <span class="k">if</span> <span class="n">direct</span><span class="p">:</span>
+        <span class="n">gap_k</span> <span class="o">=</span> <span class="n">ec_k</span> <span class="o">-</span> <span class="n">ev_k</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="n">gap_k</span><span class="o">.</span><span class="n">argmin</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">gap_k</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">k</span><span class="p">,</span> <span class="n">k</span>
+    <span class="n">kv</span> <span class="o">=</span> <span class="n">ev_k</span><span class="o">.</span><span class="n">argmax</span><span class="p">()</span>
+    <span class="n">kc</span> <span class="o">=</span> <span class="n">ec_k</span><span class="o">.</span><span class="n">argmin</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">ec_k</span><span class="p">[</span><span class="n">kc</span><span class="p">]</span> <span class="o">-</span> <span class="n">ev_k</span><span class="p">[</span><span class="n">kv</span><span class="p">],</span> <span class="n">kv</span><span class="p">,</span> <span class="n">kc</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../../overview.html">
+              Overview</a></li>
+            <li><a href="../../../download.html">
+              Installation</a></li>
+            <li><a href="../../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../../faq.html">FAQ</a></li>
+            <li><a href="../../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../dft.html" accesskey="U">ase.dft</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

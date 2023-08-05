@@ -1,0 +1,470 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase_qmmm_manyqm &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="Calculators" href="calculators.html" />
+    <link rel="next" title="Constraints" href="../constraints.html" />
+    <link rel="prev" title="VASP" href="vasp.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+          <li><a href="calculators.html" accesskey="U">Calculators</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <span class="target" id="module-ase.calculators.ase_qmmm_manyqm"></span><div class="section" id="ase-qmmm-manyqm">
+<h1>ase_qmmm_manyqm<a class="headerlink" href="#ase-qmmm-manyqm" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="introduction">
+<h2>Introduction<a class="headerlink" href="#introduction" title="Permalink to this headline">¶</a></h2>
+<p>This an general interface to run QM/MM calculations with a ase-QM and ase-MM calculator. Currently QM can be FHI-aims and MM can be Gromacs.</p>
+<p>QM and MM region can be covalently bonded. In principle you can cut wherever you like, but other cutting schemes are probably better than others. The standard recommendation is to cut only the C-C bonds.</p>
+<p>There can be many QM regions embedded in the MM system.</p>
+</div>
+<div class="section" id="ase-qmmm-manyqm-calculator">
+<h2>Ase_qmmm_manyqm Calculator<a class="headerlink" href="#ase-qmmm-manyqm-calculator" title="Permalink to this headline">¶</a></h2>
+<p>QM/MM interface with QM=FHI-aims, MM=gromacs</p>
+<p>QM could be any QM calculator, but you need to read in QM-atom charges
+from the QM program (in method &#8216;get_qm_charges&#8217;).</p>
+<p>One can have many QM regions, each with a different calculator.
+There can be only one MM calculator, which is calculating the whole
+system.</p>
+<div class="section" id="non-bonded-interactions">
+<h3>Non-bonded interactions:<a class="headerlink" href="#non-bonded-interactions" title="Permalink to this headline">¶</a></h3>
+<dl class="docutils">
+<dt>Generally energies and forces are treated by:</dt>
+<dd><ul class="first last simple">
+<li>Within the same QM-QM: by QM calculator</li>
+<li>MM-MM: by MM calculator</li>
+<li>QM-MM: by MM using MM vdw parameters and QM charges.</li>
+<li>Different QM-different QM: by MM using QM and MM charges and MM-vdw parameters</li>
+</ul>
+</dd>
+</dl>
+<p>The Hirschfeld charges (or other atomic charges)
+on QM atoms are calculated by QM in a H terminated cluster in vacuum.
+The charge of QM atom next to MM atom (edge-QM-atom)
+and its H neighbors are set as in the classical force field.</p>
+<dl class="docutils">
+<dt>The extra(missing) charge results from:</dt>
+<dd><ul class="first last simple">
+<li>linkH atoms</li>
+<li>The edge-QM atoms, and their singly bonded neighbors (typically -H or =O). These have their original MM charges.</li>
+<li>From the fact that the charge of the QM fraction is not usually an integer when using the original MM charges.</li>
+<li>The extra/missing charge is added equally to all QM atoms (not being linkH and not being edge-QM-atom or its singly bonded neighbor) so that the total charge of the MM-fragment involving QM atoms will be the same as in the original MM-description.</li>
+</ul>
+</dd>
+</dl>
+<p>Vdw interactions are calculated by MM-gromacs for MM and MM-QM interactions.
+The QM-QM vdw interaction s could be done by the FHI-aims if desired
+(by modifying the input for QM-FHI-aims input accordingly.</p>
+</div>
+<div class="section" id="bonded-interactions">
+<h3>Bonded interactions:<a class="headerlink" href="#bonded-interactions" title="Permalink to this headline">¶</a></h3>
+<dl class="docutils">
+<dt>E = E_qm(QM-H) + E_mm(ALL ATOMS), where</dt>
+<dd><ul class="first last simple">
+<li>E_qm(QM-H): qm energy of H terminated QM cluster(s)</li>
+<li>E_mm(ALL ATOMS): MM energy of all atoms, except for terms in which all MM-interacting atoms are in the same QM region.</li>
+</ul>
+</dd>
+</dl>
+<p>Forces do not act on link atoms but they are positioned by scaling.
+Forces on link atoms are given to their QM and MM neighbors by chain rule.
+(see Top Curr Chem (2007) 268: 173–290, especially pages 192-194).
+At the beginning of a run, the optimal edge-qm-atom-linkH bond length(s)
+is (are) calculated by QM in &#8216;get_eq_qm_atom_link_h_distances&#8217;
+or they are read from a file (this is determined by the argument &#8216;link_info&#8217;).</p>
+<p>The covalent bonds between QM and MM are found automatically based on
+ase-covalent radii in neighbor search. Link atoms are positioned
+automatically (according to .</p>
+<p>Questions &amp; Comments <a class="reference external" href="mailto:markus&#46;kaukonen&#37;&#52;&#48;iki&#46;fi">markus<span>&#46;</span>kaukonen<span>&#64;</span>iki<span>&#46;</span>fi</a></p>
+<p>Interesting applications could be cases when we need two or more
+QM regions. For instance two redox centers in a protein,
+cathode and anode of a fuel cell ... you name it!</p>
+</div>
+</div>
+<div class="section" id="arguments">
+<h2>Arguments<a class="headerlink" href="#arguments" title="Permalink to this headline">¶</a></h2>
+<table border="1" class="docutils">
+<colgroup>
+<col width="26%" />
+<col width="13%" />
+<col width="20%" />
+<col width="41%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">keyword</th>
+<th class="head">type</th>
+<th class="head">default value</th>
+<th class="head">description</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td><tt class="docutils literal"><span class="pre">nqm_regions</span></tt></td>
+<td><tt class="docutils literal"><span class="pre">int</span></tt></td>
+<td>&nbsp;</td>
+<td>The number of QM regions</td>
+</tr>
+<tr class="row-odd"><td><tt class="docutils literal"><span class="pre">qm_calculators</span></tt></td>
+<td><tt class="docutils literal"><span class="pre">list</span></tt></td>
+<td>&nbsp;</td>
+<td>List of members of a Class
+defining a ase-QM calculator
+for each QM region</td>
+</tr>
+<tr class="row-even"><td><tt class="docutils literal"><span class="pre">mm_calculator</span></tt></td>
+<td><tt class="docutils literal"><span class="pre">Calc</span></tt></td>
+<td>&nbsp;</td>
+<td>A member of a Class
+defining a ase-MM calculator</td>
+</tr>
+<tr class="row-odd"><td><tt class="docutils literal"><span class="pre">link_info</span></tt></td>
+<td><tt class="docutils literal"><span class="pre">str</span></tt></td>
+<td><tt class="docutils literal"><span class="pre">'byQM'</span></tt></td>
+<td>Can be either
+&#8216;byQM&#8217;: the
+edge_qm_atom-link_h_atom
+distances are calculated
+by QM
+or
+&#8216;byFile&#8217;:the
+edge_qm_atom-link_h_atom
+distances are read from
+a file</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="example">
+<h2>Example<a class="headerlink" href="#example" title="Permalink to this headline">¶</a></h2>
+<ol class="arabic simple">
+<li>Prepare classical input with Gromacs</li>
+</ol>
+<blockquote>
+<div><ul>
+<li><p class="first">Get THE INDEPENDENT STRUCTURE OF THE ANTITRYPTIC REACTIVE SITE LOOP OF BOWMAN-BIRK INHIBITOR AND SUNFLOWER TRYPSIN INHIBITOR-1 (pdb code 1GM2) from pdb data bank <a class="reference external" href="http://www.rcsb.org/pdb/home/home.do">http://www.rcsb.org/pdb/home/home.do</a>, name it to 1GM2.pdb</p>
+</li>
+<li><p class="first">In file 1GM2.pdb take only MODEL1
+replace &#8216;CYS &#8216; by &#8216;CYS2&#8217;
+in order to get deprotonated CYS-CYS  bridge.</p>
+</li>
+<li><p class="first">Generate gromacs coordinates and topology</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">pdb2gmx</span> <span class="o">-</span><span class="n">ff</span> <span class="n">oplsaa</span> <span class="o">-</span><span class="n">f</span> <span class="mi">1</span><span class="n">GM2</span><span class="o">.</span><span class="n">pdb</span> <span class="o">-</span><span class="n">o</span> <span class="mi">1</span><span class="n">GM2</span><span class="o">.</span><span class="n">gro</span> <span class="o">-</span><span class="n">p</span> <span class="mi">1</span><span class="n">GM2</span><span class="o">.</span><span class="n">top</span> <span class="o">-</span><span class="n">water</span> <span class="n">tip3p</span> <span class="o">-</span><span class="n">ignh</span>
+</pre></div>
+</div>
+</li>
+<li><p class="first">Generate the simulation box (cubic is not the most efficient one...)</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">editconf</span> <span class="o">-</span><span class="n">bt</span> <span class="n">cubic</span> <span class="o">-</span><span class="n">f</span> <span class="mi">1</span><span class="n">GM2</span><span class="o">.</span><span class="n">gro</span> <span class="o">-</span><span class="n">o</span> <span class="mi">1</span><span class="n">GM2_box</span><span class="o">.</span><span class="n">gro</span> <span class="o">-</span><span class="n">c</span> <span class="o">-</span><span class="n">d</span> <span class="mf">0.2</span>
+</pre></div>
+</div>
+</li>
+<li><p class="first">Solvate the protein in water box</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">genbox</span> <span class="o">-</span><span class="n">cp</span> <span class="mi">1</span><span class="n">GM2_box</span><span class="o">.</span><span class="n">gro</span> <span class="o">-</span><span class="n">cs</span> <span class="n">spc216</span><span class="o">.</span><span class="n">gro</span> <span class="o">-</span><span class="n">o</span> <span class="mi">1</span><span class="n">GM2_sol</span><span class="o">.</span><span class="n">gro</span> <span class="o">-</span><span class="n">p</span> <span class="mi">1</span><span class="n">GM2</span><span class="o">.</span><span class="n">top</span>
+</pre></div>
+</div>
+</li>
+<li><p class="first">Generate index file (needed later also for defining QM atoms)</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">make_ndx</span> <span class="o">-</span><span class="n">f</span> <span class="mi">1</span><span class="n">GM2_sol</span><span class="o">.</span><span class="n">gro</span> <span class="o">-</span><span class="n">o</span> <span class="n">index</span><span class="o">.</span><span class="n">ndx</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">select</span> <span class="s">&#39;q&#39;</span> <span class="o">&lt;</span><span class="n">ENTER</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+</li>
+<li><p class="first">add to first lines to index.ndx (we define here 3 QM regions, indexing from 1):</p>
+<div class="highlight-python"><div class="highlight"><pre>[qm_ss]
+18 19 20 21 139 140 141 142
+
+[qm_thr]
+28 29 30 31 32 33 34 35
+
+[qm_ser]
+64 65 66 67 68
+</pre></div>
+</div>
+</li>
+</ul>
+</div></blockquote>
+<ol class="arabic simple" start="2">
+<li>Relax MM system by fixing QM atoms in their (crystallographic?) positions (see documentation for Gromacs MM calculator).</li>
+</ol>
+<div class="highlight-python"><div class="highlight"><pre><span class="sd">&quot;&quot;&quot; </span>
+<span class="sd">    An example for using gromacs calculator in ase.</span>
+<span class="sd">    Atom positions are relaxed.</span>
+<span class="sd">    If qm atoms are found in index file, they are kept fixed in the relaxation.</span>
+<span class="sd">    QM atoms are defined in index file (numbering from 1)</span>
+<span class="sd">    in sets containing QM or Qm or qm in their name.</span>
+
+<span class="sd">    A sample call:</span>
+
+<span class="sd">   ./gromacs_example_mm_relax.py 1GM2_sol.gro</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">ase.calculators.gromacs</span> <span class="kn">import</span> <span class="n">Gromacs</span>
+
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">from</span> <span class="nn">ase.io</span> <span class="kn">import</span> <span class="n">read</span>
+
+<span class="n">infile_name</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+<span class="n">CALC_MM_RELAX</span> <span class="o">=</span> <span class="n">Gromacs</span><span class="p">(</span>
+    <span class="n">init_structure_file</span><span class="o">=</span><span class="n">infile_name</span><span class="p">,</span>
+    <span class="n">structure_file</span> <span class="o">=</span> <span class="s">&#39;gromacs_mm-relax.g96&#39;</span><span class="p">,</span>
+    <span class="n">force_field</span><span class="o">=</span><span class="s">&#39;oplsaa&#39;</span><span class="p">,</span> 
+    <span class="n">water_model</span><span class="o">=</span><span class="s">&#39;tip3p&#39;</span><span class="p">,</span>    
+    <span class="n">base_filename</span> <span class="o">=</span> <span class="s">&#39;gromacs_mm-relax&#39;</span><span class="p">,</span>
+    <span class="n">doing_qmmm</span> <span class="o">=</span> <span class="bp">False</span><span class="p">,</span> <span class="n">freeze_qm</span> <span class="o">=</span> <span class="bp">True</span><span class="p">,</span>
+    <span class="n">index_filename</span> <span class="o">=</span> <span class="s">&#39;index.ndx&#39;</span><span class="p">,</span>
+    <span class="n">extra_mdrun_parameters</span> <span class="o">=</span> <span class="s">&#39; -nt 1 &#39;</span><span class="p">,</span>
+    <span class="n">define</span> <span class="o">=</span> <span class="s">&#39;-DFLEXIBLE&#39;</span><span class="p">,</span>
+    <span class="n">integrator</span> <span class="o">=</span> <span class="s">&#39;cg&#39;</span><span class="p">,</span>
+    <span class="n">nsteps</span> <span class="o">=</span> <span class="s">&#39;10000&#39;</span><span class="p">,</span>
+    <span class="n">nstfout</span> <span class="o">=</span> <span class="s">&#39;10&#39;</span><span class="p">,</span>
+    <span class="n">nstlog</span> <span class="o">=</span> <span class="s">&#39;10&#39;</span><span class="p">,</span>
+    <span class="n">nstenergy</span> <span class="o">=</span> <span class="s">&#39;10&#39;</span><span class="p">,</span>
+    <span class="n">nstlist</span> <span class="o">=</span> <span class="s">&#39;10&#39;</span><span class="p">,</span>
+    <span class="n">ns_type</span> <span class="o">=</span> <span class="s">&#39;grid&#39;</span><span class="p">,</span>
+    <span class="n">pbc</span> <span class="o">=</span> <span class="s">&#39;xyz&#39;</span><span class="p">,</span>
+    <span class="n">rlist</span> <span class="o">=</span> <span class="s">&#39;1.15&#39;</span><span class="p">,</span>
+    <span class="n">coulombtype</span> <span class="o">=</span> <span class="s">&#39;PME-Switch&#39;</span><span class="p">,</span>
+    <span class="n">rcoulomb</span> <span class="o">=</span> <span class="s">&#39;0.8&#39;</span><span class="p">,</span>
+    <span class="n">vdwtype</span> <span class="o">=</span> <span class="s">&#39;shift&#39;</span><span class="p">,</span>
+    <span class="n">rvdw</span> <span class="o">=</span> <span class="s">&#39;0.8&#39;</span><span class="p">,</span>
+    <span class="n">rvdw_switch</span> <span class="o">=</span> <span class="s">&#39;0.75&#39;</span><span class="p">,</span>
+    <span class="n">DispCorr</span> <span class="o">=</span> <span class="s">&#39;Ener&#39;</span><span class="p">)</span>
+<span class="n">CALC_MM_RELAX</span><span class="o">.</span><span class="n">generate_topology_and_g96file</span><span class="p">()</span>
+<span class="n">CALC_MM_RELAX</span><span class="o">.</span><span class="n">generate_gromacs_run_file</span><span class="p">()</span>
+<span class="n">CALC_MM_RELAX</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+</pre></div>
+</div>
+<ol class="arabic simple" start="3">
+<li>QM/MM relaxation (all atoms are free)</li>
+</ol>
+<div class="highlight-python"><div class="highlight"><pre><span class="sd">&quot;&quot;&quot; demo run for ase_qmmm_manyqm calculator &quot;&quot;&quot;</span>
+
+<span class="c">#  ./test_ase_qmmm_manyqm.py gromacs_mm-relax.g96</span>
+
+<span class="kn">from</span> <span class="nn">ase.calculators.gromacs</span> <span class="kn">import</span> <span class="n">Gromacs</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.aims</span> <span class="kn">import</span> <span class="n">Aims</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.ase_qmmm_manyqm</span> <span class="kn">import</span> <span class="n">AseQmmmManyqm</span>
+<span class="kn">from</span> <span class="nn">ase.optimize</span> <span class="kn">import</span> <span class="n">BFGS</span>
+
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">from</span> <span class="nn">ase.io.gromos</span> <span class="kn">import</span> <span class="n">read_gromos</span>
+
+<span class="n">RUN_COMMAND</span> <span class="o">=</span> <span class="s">&#39;/home/mka/bin/aims.071711_6.serial.x&#39;</span>
+<span class="n">SPECIES_DIR</span> <span class="o">=</span> <span class="s">&#39;/home/mka/Programs/fhi-aims.071711_6/species_defaults/light/&#39;</span>
+
+<span class="n">LOG_FILE</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="s">&quot;ase-qm-mm-output.log&quot;</span><span class="p">,</span><span class="s">&quot;w&quot;</span><span class="p">)</span>
+<span class="n">sys</span><span class="o">.</span><span class="n">stdout</span> <span class="o">=</span> <span class="n">LOG_FILE</span>
+
+<span class="n">infile_name</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+<span class="n">CALC_QM1</span> <span class="o">=</span> <span class="n">Aims</span><span class="p">(</span><span class="n">charge</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+                <span class="n">xc</span> <span class="o">=</span> <span class="s">&#39;pbe&#39;</span><span class="p">,</span>
+                <span class="n">sc_accuracy_etot</span> <span class="o">=</span> <span class="mf">1e-5</span><span class="p">,</span>
+                <span class="n">sc_accuracy_eev</span> <span class="o">=</span> <span class="mf">1e-2</span><span class="p">,</span>
+                <span class="n">sc_accuracy_rho</span> <span class="o">=</span> <span class="mf">1e-5</span><span class="p">,</span>
+                <span class="n">sc_accuracy_forces</span> <span class="o">=</span> <span class="mf">1e-3</span><span class="p">,</span>
+                <span class="n">species_dir</span> <span class="o">=</span> <span class="n">SPECIES_DIR</span><span class="p">,</span>
+                <span class="n">run_command</span> <span class="o">=</span> <span class="n">RUN_COMMAND</span><span class="p">)</span>
+<span class="n">CALC_QM1</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">output</span> <span class="o">=</span> <span class="s">&#39;hirshfeld&#39;</span><span class="p">)</span>
+
+<span class="n">CALC_QM2</span> <span class="o">=</span> <span class="n">Aims</span><span class="p">(</span><span class="n">charge</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+                <span class="n">xc</span> <span class="o">=</span> <span class="s">&#39;pbe&#39;</span><span class="p">,</span>
+                <span class="n">sc_accuracy_etot</span> <span class="o">=</span> <span class="mf">1e-5</span><span class="p">,</span>
+                <span class="n">sc_accuracy_eev</span> <span class="o">=</span> <span class="mf">1e-2</span><span class="p">,</span>
+                <span class="n">sc_accuracy_rho</span> <span class="o">=</span> <span class="mf">1e-5</span><span class="p">,</span>
+                <span class="n">sc_accuracy_forces</span> <span class="o">=</span> <span class="mf">1e-3</span><span class="p">,</span>
+                <span class="n">species_dir</span> <span class="o">=</span> <span class="n">SPECIES_DIR</span><span class="p">,</span>
+                <span class="n">run_command</span> <span class="o">=</span> <span class="n">RUN_COMMAND</span><span class="p">)</span>
+<span class="n">CALC_QM2</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">output</span> <span class="o">=</span> <span class="s">&#39;hirshfeld&#39;</span><span class="p">)</span>
+
+<span class="n">CALC_QM3</span> <span class="o">=</span> <span class="n">Aims</span><span class="p">(</span><span class="n">charge</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+                <span class="n">xc</span> <span class="o">=</span> <span class="s">&#39;pbe&#39;</span><span class="p">,</span>
+                <span class="n">sc_accuracy_etot</span> <span class="o">=</span> <span class="mf">1e-5</span><span class="p">,</span>
+                <span class="n">sc_accuracy_eev</span> <span class="o">=</span> <span class="mf">1e-2</span><span class="p">,</span>
+                <span class="n">sc_accuracy_rho</span> <span class="o">=</span> <span class="mf">1e-5</span><span class="p">,</span>
+                <span class="n">sc_accuracy_forces</span> <span class="o">=</span> <span class="mf">1e-3</span><span class="p">,</span>
+                <span class="n">species_dir</span> <span class="o">=</span> <span class="n">SPECIES_DIR</span><span class="p">,</span>
+                <span class="n">run_command</span> <span class="o">=</span> <span class="n">RUN_COMMAND</span><span class="p">)</span>
+<span class="n">CALC_QM3</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">output</span> <span class="o">=</span> <span class="s">&#39;hirshfeld&#39;</span><span class="p">)</span>
+
+<span class="n">CALC_MM</span> <span class="o">=</span> <span class="n">Gromacs</span><span class="p">(</span>
+    <span class="n">init_structure_file</span> <span class="o">=</span> <span class="n">infile_name</span><span class="p">,</span>
+    <span class="n">structure_file</span> <span class="o">=</span> <span class="s">&#39;gromacs_qm.g96&#39;</span><span class="p">,</span> \
+    <span class="n">force_field</span> <span class="o">=</span> <span class="s">&#39;oplsaa&#39;</span><span class="p">,</span> 
+    <span class="n">water_model</span> <span class="o">=</span> <span class="s">&#39;tip3p&#39;</span><span class="p">,</span>
+    <span class="n">base_filename</span> <span class="o">=</span> <span class="s">&#39;gromacs_qm&#39;</span><span class="p">,</span>
+    <span class="n">doing_qmmm</span> <span class="o">=</span> <span class="bp">True</span><span class="p">,</span> <span class="n">freeze_qm</span> <span class="o">=</span> <span class="bp">False</span><span class="p">,</span>
+    <span class="n">index_filename</span> <span class="o">=</span> <span class="s">&#39;index.ndx&#39;</span><span class="p">,</span>
+    <span class="n">define</span> <span class="o">=</span> <span class="s">&#39;-DFLEXIBLE&#39;</span><span class="p">,</span>
+    <span class="n">integrator</span> <span class="o">=</span> <span class="s">&#39;md&#39;</span><span class="p">,</span>
+    <span class="n">nsteps</span> <span class="o">=</span> <span class="s">&#39;0&#39;</span><span class="p">,</span>
+    <span class="n">nstfout</span> <span class="o">=</span> <span class="s">&#39;1&#39;</span><span class="p">,</span>
+    <span class="n">nstlog</span> <span class="o">=</span> <span class="s">&#39;1&#39;</span><span class="p">,</span>
+    <span class="n">nstenergy</span> <span class="o">=</span> <span class="s">&#39;1&#39;</span><span class="p">,</span>
+    <span class="n">nstlist</span> <span class="o">=</span> <span class="s">&#39;1&#39;</span><span class="p">,</span>
+    <span class="n">ns_type</span> <span class="o">=</span> <span class="s">&#39;grid&#39;</span><span class="p">,</span>
+    <span class="n">pbc</span> <span class="o">=</span> <span class="s">&#39;xyz&#39;</span><span class="p">,</span>
+    <span class="n">rlist</span> <span class="o">=</span> <span class="s">&#39;1.15&#39;</span><span class="p">,</span>
+    <span class="n">coulombtype</span> <span class="o">=</span> <span class="s">&#39;PME-Switch&#39;</span><span class="p">,</span>
+    <span class="n">rcoulomb</span> <span class="o">=</span> <span class="s">&#39;0.8&#39;</span><span class="p">,</span>
+    <span class="n">vdwtype</span> <span class="o">=</span> <span class="s">&#39;shift&#39;</span><span class="p">,</span>
+    <span class="n">rvdw</span> <span class="o">=</span> <span class="s">&#39;0.8&#39;</span><span class="p">,</span>
+    <span class="n">rvdw_switch</span> <span class="o">=</span> <span class="s">&#39;0.75&#39;</span><span class="p">,</span>
+    <span class="n">DispCorr</span> <span class="o">=</span> <span class="s">&#39;Ener&#39;</span><span class="p">)</span>
+<span class="n">CALC_MM</span><span class="o">.</span><span class="n">generate_topology_and_g96file</span><span class="p">()</span>
+<span class="n">CALC_MM</span><span class="o">.</span><span class="n">generate_gromacs_run_file</span><span class="p">()</span>
+
+<span class="n">CALC_QMMM</span> <span class="o">=</span> <span class="n">AseQmmmManyqm</span><span class="p">(</span><span class="n">nqm_regions</span> <span class="o">=</span> <span class="mi">3</span><span class="p">,</span> 
+                          <span class="n">qm_calculators</span> <span class="o">=</span> <span class="p">[</span><span class="n">CALC_QM1</span><span class="p">,</span> <span class="n">CALC_QM2</span><span class="p">,</span> <span class="n">CALC_QM3</span><span class="p">],</span> 
+                          <span class="n">mm_calculator</span> <span class="o">=</span> <span class="n">CALC_MM</span><span class="p">,</span>
+                          <span class="n">link_info</span> <span class="o">=</span> <span class="s">&#39;byQM&#39;</span><span class="p">)</span>
+<span class="c">#                         link_info = &#39;byFILE&#39;) </span>
+
+<span class="n">SYSTEM</span> <span class="o">=</span> <span class="n">read_gromos</span><span class="p">(</span><span class="s">&#39;gromacs_qm.g96&#39;</span><span class="p">)</span>
+<span class="n">SYSTEM</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">CALC_QMMM</span><span class="p">)</span>
+<span class="n">DYN</span> <span class="o">=</span> <span class="n">BFGS</span><span class="p">(</span><span class="n">SYSTEM</span><span class="p">)</span>
+<span class="n">DYN</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">&#39;exiting fine&#39;</span><span class="p">)</span>
+<span class="n">LOG_FILE</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>This Page</h3>
+            <ul>
+<li><a class="reference internal" href="#">ase_qmmm_manyqm</a><ul>
+<li><a class="reference internal" href="#introduction">Introduction</a></li>
+<li><a class="reference internal" href="#ase-qmmm-manyqm-calculator">Ase_qmmm_manyqm Calculator</a><ul>
+<li><a class="reference internal" href="#non-bonded-interactions">Non-bonded interactions:</a></li>
+<li><a class="reference internal" href="#bonded-interactions">Bonded interactions:</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#arguments">Arguments</a></li>
+<li><a class="reference internal" href="#example">Example</a></li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="vasp.html" title="previous chapter">VASP</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="../constraints.html" title="next chapter">Constraints</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../../_sources/ase/calculators/ase_qmmm_manyqm.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+          <li><a href="calculators.html" accesskey="U">Calculators</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

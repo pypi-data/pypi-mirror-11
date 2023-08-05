@@ -1,0 +1,926 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.dft.wannier &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../../contents.html" />
+    <link rel="index" title="Global index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../../index.html" />
+    <link rel="up" title="ase.dft" href="../dft.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../dft.html" accesskey="U">ase.dft</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.dft.wannier</h1><div class="highlight"><pre>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+<span class="sd">&quot;&quot;&quot; Maximally localized Wannier Functions</span>
+
+<span class="sd">    Find the set of maximally localized Wannier functions</span>
+<span class="sd">    using the spread functional of Marzari and Vanderbilt</span>
+<span class="sd">    (PRB 56, 1997 page 12847). </span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">time</span> <span class="kn">import</span> <span class="n">time</span>
+<span class="kn">from</span> <span class="nn">math</span> <span class="kn">import</span> <span class="n">sqrt</span><span class="p">,</span> <span class="n">pi</span>
+<span class="kn">from</span> <span class="nn">pickle</span> <span class="kn">import</span> <span class="n">dump</span><span class="p">,</span> <span class="n">load</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">ase.parallel</span> <span class="kn">import</span> <span class="n">paropen</span>
+<span class="kn">from</span> <span class="nn">ase.dft.kpoints</span> <span class="kn">import</span> <span class="n">get_monkhorst_pack_size_and_offset</span>
+<span class="kn">from</span> <span class="nn">ase.transport.tools</span> <span class="kn">import</span> <span class="n">dagger</span><span class="p">,</span> <span class="n">normalize</span>
+
+<span class="n">dag</span> <span class="o">=</span> <span class="n">dagger</span>
+
+
+<span class="k">def</span> <span class="nf">gram_schmidt</span><span class="p">(</span><span class="n">U</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Orthonormalize columns of U according to the Gram-Schmidt procedure.&quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">col</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">U</span><span class="o">.</span><span class="n">T</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">col2</span> <span class="ow">in</span> <span class="n">U</span><span class="o">.</span><span class="n">T</span><span class="p">[:</span><span class="n">i</span><span class="p">]:</span>
+            <span class="n">col</span> <span class="o">-=</span> <span class="n">col2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">col2</span><span class="o">.</span><span class="n">conj</span><span class="p">(),</span> <span class="n">col</span><span class="p">)</span>
+        <span class="n">col</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">col</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">gram_schmidt_single</span><span class="p">(</span><span class="n">U</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Orthogonalize columns of U to column n&quot;&quot;&quot;</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">U</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+    <span class="n">v_n</span> <span class="o">=</span> <span class="n">U</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="n">n</span><span class="p">]</span>
+    <span class="n">indices</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">N</span><span class="p">))</span>
+    <span class="k">del</span> <span class="n">indices</span><span class="p">[</span><span class="n">indices</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">indices</span><span class="p">:</span>
+        <span class="n">v_i</span> <span class="o">=</span> <span class="n">U</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">v_i</span> <span class="o">-=</span>  <span class="n">v_n</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">v_n</span><span class="o">.</span><span class="n">conj</span><span class="p">(),</span> <span class="n">v_i</span><span class="p">)</span>
+        
+
+<span class="k">def</span> <span class="nf">lowdin</span><span class="p">(</span><span class="n">U</span><span class="p">,</span> <span class="n">S</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Orthonormalize columns of U according to the Lowdin procedure.</span>
+<span class="sd">    </span>
+<span class="sd">    If the overlap matrix is know, it can be specified in S.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">S</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">S</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">dag</span><span class="p">(</span><span class="n">U</span><span class="p">),</span> <span class="n">U</span><span class="p">)</span>
+    <span class="n">eig</span><span class="p">,</span> <span class="n">rot</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eigh</span><span class="p">(</span><span class="n">S</span><span class="p">)</span>
+    <span class="n">rot</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">rot</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">eig</span><span class="p">),</span> <span class="n">dag</span><span class="p">(</span><span class="n">rot</span><span class="p">))</span>
+    <span class="n">U</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">U</span><span class="p">,</span> <span class="n">rot</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">neighbor_k_search</span><span class="p">(</span><span class="n">k_c</span><span class="p">,</span> <span class="n">G_c</span><span class="p">,</span> <span class="n">kpt_kc</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">):</span>
+    <span class="c"># search for k1 (in kpt_kc) and k0 (in alldir), such that</span>
+    <span class="c"># k1 - k - G + k0 = 0</span>
+    <span class="n">alldir_dc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">],[</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">],[</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">],[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">],[</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">],[</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">]],</span> <span class="nb">int</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">k0_c</span> <span class="ow">in</span> <span class="n">alldir_dc</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">k1</span><span class="p">,</span> <span class="n">k1_c</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">kpt_kc</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">k1_c</span> <span class="o">-</span> <span class="n">k_c</span> <span class="o">-</span> <span class="n">G_c</span> <span class="o">+</span> <span class="n">k0_c</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">tol</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">k1</span><span class="p">,</span> <span class="n">k0_c</span>
+
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;Wannier: Did not find matching kpoint for kpt=&#39;</span><span class="p">,</span> <span class="n">k_c</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;Probably non-uniform k-point grid&#39;</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+
+<span class="k">def</span> <span class="nf">calculate_weights</span><span class="p">(</span><span class="n">cell_cc</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; Weights are used for non-cubic cells, see PRB **61**, 10040&quot;&quot;&quot;</span>
+    <span class="n">alldirs_dc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">cell_cc</span><span class="p">,</span> <span class="n">cell_cc</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+    <span class="c"># NOTE: Only first 3 of following 6 weights are presently used:</span>
+    <span class="n">w</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span>              
+    <span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">g</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">g</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">g</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+    <span class="n">w</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">g</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">g</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">g</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+    <span class="n">w</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">g</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">-</span> <span class="n">g</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">-</span> <span class="n">g</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+    <span class="n">w</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="n">g</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+    <span class="n">w</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="o">=</span> <span class="n">g</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+    <span class="n">w</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span> <span class="o">=</span> <span class="n">g</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+    <span class="c"># Make sure that first 3 Gdir vectors are included - </span>
+    <span class="c"># these are used to calculate Wanniercenters.</span>
+    <span class="n">Gdir_dc</span> <span class="o">=</span> <span class="n">alldirs_dc</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span>
+    <span class="n">weight_d</span> <span class="o">=</span> <span class="n">w</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">6</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="n">d</span><span class="p">])</span> <span class="o">&gt;</span> <span class="mf">1e-5</span><span class="p">:</span>
+            <span class="n">Gdir_dc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">Gdir_dc</span><span class="p">,</span> <span class="n">alldirs_dc</span><span class="p">[</span><span class="n">d</span><span class="p">:</span><span class="n">d</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]))</span>
+            <span class="n">weight_d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">weight_d</span><span class="p">,</span> <span class="n">w</span><span class="p">[</span><span class="n">d</span><span class="p">:</span><span class="n">d</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]))</span>
+    <span class="n">weight_d</span> <span class="o">/=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">weight_d</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">weight_d</span><span class="p">,</span> <span class="n">Gdir_dc</span>
+
+
+<span class="k">def</span> <span class="nf">random_orthogonal_matrix</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">real</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Generate a random orthogonal matrix&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">seed</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
+
+    <span class="n">H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">dag</span><span class="p">(</span><span class="n">H</span><span class="p">),</span> <span class="n">H</span><span class="p">,</span> <span class="n">H</span><span class="p">)</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">multiply</span><span class="p">(</span><span class="o">.</span><span class="mi">5</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">H</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">real</span><span class="p">:</span>
+        <span class="n">gram_schmidt</span><span class="p">(</span><span class="n">H</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">H</span>
+    <span class="k">else</span><span class="p">:</span> 
+        <span class="n">val</span><span class="p">,</span> <span class="n">vec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eig</span><span class="p">(</span><span class="n">H</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">vec</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">1.j</span> <span class="o">*</span> <span class="n">val</span><span class="p">),</span> <span class="n">dag</span><span class="p">(</span><span class="n">vec</span><span class="p">))</span>
+
+
+<span class="k">def</span> <span class="nf">steepest_descent</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">step</span><span class="o">=.</span><span class="mo">005</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="n">fvalueold</span> <span class="o">=</span> <span class="mf">0.</span>
+    <span class="n">fvalue</span> <span class="o">=</span> <span class="n">fvalueold</span> <span class="o">+</span> <span class="mi">10</span>
+    <span class="n">count</span><span class="o">=</span><span class="mi">0</span>
+    <span class="k">while</span> <span class="nb">abs</span><span class="p">((</span><span class="n">fvalue</span> <span class="o">-</span> <span class="n">fvalueold</span><span class="p">)</span> <span class="o">/</span> <span class="n">fvalue</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">tolerance</span><span class="p">:</span>
+        <span class="n">fvalueold</span> <span class="o">=</span> <span class="n">fvalue</span>
+        <span class="n">dF</span> <span class="o">=</span> <span class="n">func</span><span class="o">.</span><span class="n">get_gradients</span><span class="p">()</span>
+        <span class="n">func</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">dF</span> <span class="o">*</span> <span class="n">step</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">fvalue</span> <span class="o">=</span> <span class="n">func</span><span class="o">.</span><span class="n">get_functional_value</span><span class="p">()</span>
+        <span class="n">count</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;SteepestDescent: iter=</span><span class="si">%s</span><span class="s">, value=</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">fvalue</span><span class="p">))</span>
+
+
+<span class="k">def</span> <span class="nf">md_min</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">step</span><span class="o">=.</span><span class="mi">25</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Localize with step =&#39;</span><span class="p">,</span> <span class="n">step</span><span class="p">,</span> <span class="s">&#39;and tolerance =&#39;</span><span class="p">,</span> <span class="n">tolerance</span><span class="p">)</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="o">-</span><span class="n">time</span><span class="p">()</span>
+    <span class="n">fvalueold</span> <span class="o">=</span> <span class="mf">0.</span>
+    <span class="n">fvalue</span> <span class="o">=</span> <span class="n">fvalueold</span> <span class="o">+</span> <span class="mi">10</span>
+    <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">V</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">func</span><span class="o">.</span><span class="n">get_gradients</span><span class="p">()</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span>
+    <span class="k">while</span> <span class="nb">abs</span><span class="p">((</span><span class="n">fvalue</span> <span class="o">-</span> <span class="n">fvalueold</span><span class="p">)</span> <span class="o">/</span> <span class="n">fvalue</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">tolerance</span><span class="p">:</span>
+        <span class="n">fvalueold</span> <span class="o">=</span> <span class="n">fvalue</span>
+        <span class="n">dF</span> <span class="o">=</span> <span class="n">func</span><span class="o">.</span><span class="n">get_gradients</span><span class="p">()</span>
+        <span class="n">V</span> <span class="o">*=</span> <span class="p">(</span><span class="n">dF</span> <span class="o">*</span> <span class="n">V</span><span class="o">.</span><span class="n">conj</span><span class="p">())</span><span class="o">.</span><span class="n">real</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="n">V</span> <span class="o">+=</span> <span class="n">step</span> <span class="o">*</span> <span class="n">dF</span>
+        <span class="n">func</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">V</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">fvalue</span> <span class="o">=</span> <span class="n">func</span><span class="o">.</span><span class="n">get_functional_value</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">fvalue</span> <span class="o">&lt;</span> <span class="n">fvalueold</span><span class="p">:</span>
+            <span class="n">step</span> <span class="o">*=</span> <span class="mf">0.5</span>
+        <span class="n">count</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;MDmin: iter=</span><span class="si">%s</span><span class="s">, step=</span><span class="si">%s</span><span class="s">, value=</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">step</span><span class="p">,</span> <span class="n">fvalue</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+        <span class="n">t</span> <span class="o">+=</span> <span class="n">time</span><span class="p">()</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%d</span><span class="s"> iterations in </span><span class="si">%0.2f</span><span class="s"> seconds (</span><span class="si">%0.2f</span><span class="s"> ms/iter), endstep = </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span><span class="p">(</span>
+            <span class="n">count</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">t</span> <span class="o">*</span> <span class="mf">1000.</span> <span class="o">/</span> <span class="n">count</span><span class="p">,</span> <span class="n">step</span><span class="p">))</span>
+
+
+<span class="k">def</span> <span class="nf">rotation_from_projection2</span><span class="p">(</span><span class="n">proj_nw</span><span class="p">,</span> <span class="n">fixed</span><span class="p">):</span>
+    <span class="n">V_ni</span> <span class="o">=</span> <span class="n">proj_nw</span>
+    <span class="n">Nb</span><span class="p">,</span> <span class="n">Nw</span> <span class="o">=</span> <span class="n">proj_nw</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">M</span> <span class="o">=</span> <span class="n">fixed</span>
+    <span class="n">L</span> <span class="o">=</span> <span class="n">Nw</span> <span class="o">-</span> <span class="n">M</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;M=</span><span class="si">%i</span><span class="s">, L=</span><span class="si">%i</span><span class="s">, Nb=</span><span class="si">%i</span><span class="s">, Nw=</span><span class="si">%i</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">M</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">Nb</span><span class="p">,</span> <span class="n">Nw</span><span class="p">))</span> 
+    <span class="n">U_ww</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">Nw</span><span class="p">,</span> <span class="n">Nw</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">proj_nw</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">c_ul</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">Nb</span><span class="o">-</span><span class="n">M</span><span class="p">,</span> <span class="n">L</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">proj_nw</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">V_n</span> <span class="ow">in</span> <span class="n">V_ni</span><span class="o">.</span><span class="n">T</span><span class="p">:</span>
+        <span class="n">V_n</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">V_n</span><span class="p">)</span>
+    
+    <span class="c"># Find EDF</span>
+    <span class="n">P_ui</span> <span class="o">=</span> <span class="n">V_ni</span><span class="p">[</span><span class="n">M</span><span class="p">:]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">la</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span>
+    <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">L</span><span class="p">):</span>
+        <span class="n">norm_list</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">la</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">P_ui</span><span class="o">.</span><span class="n">T</span><span class="p">])</span>
+        <span class="n">perm_list</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="o">-</span><span class="n">norm_list</span><span class="p">)</span>
+        <span class="n">P_ui</span> <span class="o">=</span> <span class="n">P_ui</span><span class="p">[:,</span> <span class="n">perm_list</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>    <span class="c"># largest norm to the left</span>
+        <span class="n">P_ui</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">/=</span> <span class="n">la</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">P_ui</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">])</span>   <span class="c"># normalize</span>
+        <span class="n">c_ul</span><span class="p">[:,</span> <span class="n">l</span><span class="p">]</span> <span class="o">=</span> <span class="n">P_ui</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>             <span class="c"># save normalized EDF</span>
+        <span class="n">gram_schmidt_single</span><span class="p">(</span><span class="n">P_ui</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>        <span class="c"># ortho remain. to this EDF</span>
+        <span class="n">P_ui</span> <span class="o">=</span> <span class="n">P_ui</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>           <span class="c"># remove this EDF</span>
+
+    <span class="n">U_ww</span><span class="p">[:</span><span class="n">M</span><span class="p">]</span> <span class="o">=</span> <span class="n">V_ni</span><span class="p">[:</span><span class="n">M</span><span class="p">,</span> <span class="p">:]</span>
+    <span class="n">U_ww</span><span class="p">[</span><span class="n">M</span><span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">c_ul</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">conj</span><span class="p">(),</span> <span class="n">V_ni</span><span class="p">[</span><span class="n">M</span><span class="p">:])</span>
+    <span class="n">gram_schmidt</span><span class="p">(</span><span class="n">U_ww</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">U_ww</span><span class="p">,</span> <span class="n">c_ul</span>
+
+
+<span class="k">def</span> <span class="nf">rotation_from_projection</span><span class="p">(</span><span class="n">proj_nw</span><span class="p">,</span> <span class="n">fixed</span><span class="p">,</span> <span class="n">ortho</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Determine rotation and coefficient matrices from projections</span>
+<span class="sd">    </span>
+<span class="sd">    proj_nw = &lt;psi_n|p_w&gt;</span>
+<span class="sd">    psi_n: eigenstates</span>
+<span class="sd">    p_w: localized function</span>
+<span class="sd">    </span>
+<span class="sd">    Nb (n) = Number of bands</span>
+<span class="sd">    Nw (w) = Number of wannier functions</span>
+<span class="sd">    M  (f) = Number of fixed states</span>
+<span class="sd">    L  (l) = Number of extra degrees of freedom</span>
+<span class="sd">    U  (u) = Number of non-fixed states</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">Nb</span><span class="p">,</span> <span class="n">Nw</span> <span class="o">=</span> <span class="n">proj_nw</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">M</span> <span class="o">=</span> <span class="n">fixed</span>
+    <span class="n">L</span> <span class="o">=</span> <span class="n">Nw</span> <span class="o">-</span> <span class="n">M</span>
+
+    <span class="n">U_ww</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">Nw</span><span class="p">,</span> <span class="n">Nw</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">proj_nw</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">U_ww</span><span class="p">[:</span><span class="n">M</span><span class="p">]</span> <span class="o">=</span> <span class="n">proj_nw</span><span class="p">[:</span><span class="n">M</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">L</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">proj_uw</span> <span class="o">=</span> <span class="n">proj_nw</span><span class="p">[</span><span class="n">M</span><span class="p">:]</span>
+        <span class="n">eig_w</span><span class="p">,</span> <span class="n">C_ww</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eigh</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">dag</span><span class="p">(</span><span class="n">proj_uw</span><span class="p">),</span> <span class="n">proj_uw</span><span class="p">))</span>
+        <span class="n">C_ul</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">proj_uw</span><span class="p">,</span> <span class="n">C_ww</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="o">-</span><span class="n">eig_w</span><span class="o">.</span><span class="n">real</span><span class="p">)[:</span><span class="n">L</span><span class="p">]])</span>
+        <span class="c">#eig_u, C_uu = np.linalg.eigh(np.dot(proj_uw, dag(proj_uw)))</span>
+        <span class="c">#C_ul = C_uu[:, np.argsort(-eig_u.real)[:L]]</span>
+
+        <span class="n">U_ww</span><span class="p">[</span><span class="n">M</span><span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">dag</span><span class="p">(</span><span class="n">C_ul</span><span class="p">),</span> <span class="n">proj_uw</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">C_ul</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">Nb</span> <span class="o">-</span> <span class="n">M</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+
+    <span class="n">normalize</span><span class="p">(</span><span class="n">C_ul</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">ortho</span><span class="p">:</span>
+        <span class="n">lowdin</span><span class="p">(</span><span class="n">U_ww</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">normalize</span><span class="p">(</span><span class="n">U_ww</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">U_ww</span><span class="p">,</span> <span class="n">C_ul</span>
+
+
+<div class="viewcode-block" id="Wannier"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier">[docs]</a><span class="k">class</span> <span class="nc">Wannier</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Maximally localized Wannier Functions</span>
+
+<span class="sd">    Find the set of maximally localized Wannier functions using the</span>
+<span class="sd">    spread functional of Marzari and Vanderbilt (PRB 56, 1997 page</span>
+<span class="sd">    12847).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nwannier</span><span class="p">,</span> <span class="n">calc</span><span class="p">,</span>
+                 <span class="nb">file</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">nbands</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">fixedenergy</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">fixedstates</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">spin</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                 <span class="n">initialwannier</span><span class="o">=</span><span class="s">&#39;random&#39;</span><span class="p">,</span>
+                 <span class="n">seed</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">verbose</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Required arguments:</span>
+
+<span class="sd">          ``nwannier``: The number of Wannier functions you wish to construct.</span>
+<span class="sd">            This must be at least half the number of electrons in the system</span>
+<span class="sd">            and at most equal to the number of bands in the calculation.</span>
+
+<span class="sd">          ``calc``: A converged DFT calculator class.</span>
+<span class="sd">            If ``file`` arg. is not provided, the calculator *must* provide the</span>
+<span class="sd">            method ``get_wannier_localization_matrix``, and contain the</span>
+<span class="sd">            wavefunctions (save files with only the density is not enough).</span>
+<span class="sd">            If the localization matrix is read from file, this is not needed,</span>
+<span class="sd">            unless ``get_function`` or ``write_cube`` is called.</span>
+<span class="sd">          </span>
+<span class="sd">        Optional arguments:</span>
+
+<span class="sd">          ``nbands``: Bands to include in localization.</span>
+<span class="sd">            The number of bands considered by Wannier can be smaller than the</span>
+<span class="sd">            number of bands in the calculator. This is useful if the highest</span>
+<span class="sd">            bands of the DFT calculation are not well converged.</span>
+
+<span class="sd">          ``spin``: The spin channel to be considered.</span>
+<span class="sd">            The Wannier code treats each spin channel independently.</span>
+
+<span class="sd">          ``fixedenergy`` / ``fixedstates``: Fixed part of Heilbert space.</span>
+<span class="sd">            Determine the fixed part of Hilbert space by either a maximal</span>
+<span class="sd">            energy *or* a number of bands (possibly a list for multiple</span>
+<span class="sd">            k-points).</span>
+<span class="sd">            Default is None meaning that the number of fixed states is equated</span>
+<span class="sd">            to ``nwannier``.</span>
+
+<span class="sd">          ``file``: Read localization and rotation matrices from this file.</span>
+
+<span class="sd">          ``initialwannier``: Initial guess for Wannier rotation matrix.</span>
+<span class="sd">            Can be &#39;bloch&#39; to start from the Bloch states, &#39;random&#39; to be</span>
+<span class="sd">            randomized, or a list passed to calc.get_initial_wannier.</span>
+
+<span class="sd">          ``seed``: Seed for random ``initialwannier``.</span>
+
+<span class="sd">          ``verbose``: True / False level of verbosity.</span>
+<span class="sd">          &quot;&quot;&quot;</span>
+        <span class="c"># Bloch phase sign convention</span>
+        <span class="n">sign</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="n">classname</span> <span class="o">=</span> <span class="n">calc</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span>
+        <span class="k">if</span> <span class="n">classname</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;Dacapo&#39;</span><span class="p">,</span> <span class="s">&#39;Jacapo&#39;</span><span class="p">]:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;Using &#39;</span> <span class="o">+</span> <span class="n">classname</span><span class="p">)</span>
+            <span class="n">sign</span> <span class="o">=</span> <span class="o">+</span><span class="mi">1</span>
+            
+        <span class="bp">self</span><span class="o">.</span><span class="n">nwannier</span> <span class="o">=</span> <span class="n">nwannier</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">calc</span> <span class="o">=</span> <span class="n">calc</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">spin</span> <span class="o">=</span> <span class="n">spin</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kpt_kc</span> <span class="o">=</span> <span class="n">calc</span><span class="o">.</span><span class="n">get_bz_k_points</span><span class="p">()</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">calc</span><span class="o">.</span><span class="n">get_ibz_k_points</span><span class="p">())</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">kpt_kc</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kptgrid</span> <span class="o">=</span> <span class="n">get_monkhorst_pack_size_and_offset</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">kpt_kc</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kpt_kc</span> <span class="o">*=</span> <span class="n">sign</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">Nk</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">kpt_kc</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">unitcell_cc</span> <span class="o">=</span> <span class="n">calc</span><span class="o">.</span><span class="n">get_atoms</span><span class="p">()</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">largeunitcell_cc</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unitcell_cc</span><span class="o">.</span><span class="n">T</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">kptgrid</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">weight_d</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Gdir_dc</span> <span class="o">=</span> <span class="n">calculate_weights</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">largeunitcell_cc</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Ndir</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">weight_d</span><span class="p">)</span> <span class="c"># Number of directions</span>
+
+        <span class="k">if</span> <span class="n">nbands</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">nbands</span> <span class="o">=</span> <span class="n">nbands</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">nbands</span> <span class="o">=</span> <span class="n">calc</span><span class="o">.</span><span class="n">get_number_of_bands</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">fixedenergy</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">fixedstates</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">fixedstates_k</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">nwannier</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">Nk</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fixedstates</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+                    <span class="n">fixedstates</span> <span class="o">=</span> <span class="p">[</span><span class="n">fixedstates</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">Nk</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">fixedstates_k</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">fixedstates</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c"># Setting number of fixed states and EDF from specified energy.</span>
+            <span class="c"># All states below this energy (relative to Fermi level) are fixed.</span>
+            <span class="n">fixedenergy</span> <span class="o">+=</span> <span class="n">calc</span><span class="o">.</span><span class="n">get_fermi_level</span><span class="p">()</span>
+            <span class="k">print</span><span class="p">(</span><span class="n">fixedenergy</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fixedstates_k</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+                <span class="p">[</span><span class="n">calc</span><span class="o">.</span><span class="n">get_eigenvalues</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">spin</span><span class="p">)</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">fixedenergy</span><span class="p">)</span>
+                 <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Nk</span><span class="p">)],</span> <span class="nb">int</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">edf_k</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nwannier</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">fixedstates_k</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;Wannier: Fixed states            : </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">fixedstates_k</span><span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;Wannier: Extra degrees of freedom: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">edf_k</span><span class="p">)</span>
+
+        <span class="c"># Set the list of neighboring k-points k1, and the &quot;wrapping&quot; k0,</span>
+        <span class="c"># such that k1 - k - G + k0 = 0</span>
+        <span class="c">#</span>
+        <span class="c"># Example: kpoints = (-0.375,-0.125,0.125,0.375), dir=0</span>
+        <span class="c"># G = [0.25,0,0]</span>
+        <span class="c"># k=0.375, k1= -0.375 : -0.375-0.375-0.25 =&gt; k0=[1,0,0]</span>
+        <span class="c">#</span>
+        <span class="c"># For a gamma point calculation k1 = k = 0,  k0 = [1,0,0] for dir=0</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">Nk</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">kklst_dk</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">Ndir</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="nb">int</span><span class="p">)</span>
+            <span class="n">k0_dkc</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Gdir_dc</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">kklst_dk</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">Ndir</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Nk</span><span class="p">),</span> <span class="nb">int</span><span class="p">)</span>
+            <span class="n">k0_dkc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">Ndir</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Nk</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="nb">int</span><span class="p">)</span>
+
+            <span class="c"># Distance between kpoints</span>
+            <span class="n">kdist_c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+                <span class="c"># make a sorted list of the kpoint values in this direction</span>
+                <span class="n">slist</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">kpt_kc</span><span class="p">[:,</span> <span class="n">c</span><span class="p">],</span> <span class="n">kind</span><span class="o">=</span><span class="s">&#39;mergesort&#39;</span><span class="p">)</span>
+                <span class="n">skpoints_kc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">kpt_kc</span><span class="p">,</span> <span class="n">slist</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">kdist_c</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">([</span><span class="n">skpoints_kc</span><span class="p">[</span><span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">c</span><span class="p">]</span> <span class="o">-</span> <span class="n">skpoints_kc</span><span class="p">[</span><span class="n">n</span><span class="p">,</span> <span class="n">c</span><span class="p">]</span>
+                                  <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Nk</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)])</span>               
+
+            <span class="k">for</span> <span class="n">d</span><span class="p">,</span> <span class="n">Gdir_c</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Gdir_dc</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">k_c</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">kpt_kc</span><span class="p">):</span>
+                    <span class="c"># setup dist vector to next kpoint</span>
+                    <span class="n">G_c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">Gdir_c</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="n">kdist_c</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="nb">max</span><span class="p">(</span><span class="n">G_c</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-4</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">kklst_dk</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">k</span>
+                        <span class="n">k0_dkc</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">Gdir_c</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">kklst_dk</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">k</span><span class="p">],</span> <span class="n">k0_dkc</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">=</span> \
+                                       <span class="n">neighbor_k_search</span><span class="p">(</span><span class="n">k_c</span><span class="p">,</span> <span class="n">G_c</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">kpt_kc</span><span class="p">)</span>
+
+        <span class="c"># Set the inverse list of neighboring k-points</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">invkklst_dk</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">Ndir</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Nk</span><span class="p">),</span> <span class="nb">int</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Ndir</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">k1</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Nk</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">invkklst_dk</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">k1</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kklst_dk</span><span class="p">[</span><span class="n">d</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">k1</span><span class="p">)</span>
+
+        <span class="n">Nw</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nwannier</span>
+        <span class="n">Nb</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nbands</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Z_dkww</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">Ndir</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Nk</span><span class="p">,</span> <span class="n">Nw</span><span class="p">,</span> <span class="n">Nw</span><span class="p">),</span> <span class="nb">complex</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">V_knw</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">Nk</span><span class="p">,</span> <span class="n">Nb</span><span class="p">,</span> <span class="n">Nw</span><span class="p">),</span> <span class="nb">complex</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">file</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">Z_dknn</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">Ndir</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Nk</span><span class="p">,</span> <span class="n">Nb</span><span class="p">,</span> <span class="n">Nb</span><span class="p">),</span> <span class="nb">complex</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">d</span><span class="p">,</span> <span class="n">dirG</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Gdir_dc</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Nk</span><span class="p">):</span>
+                    <span class="n">k1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kklst_dk</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span>
+                    <span class="n">k0_c</span> <span class="o">=</span> <span class="n">k0_dkc</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">Z_dknn</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">calc</span><span class="o">.</span><span class="n">get_wannier_localization_matrix</span><span class="p">(</span>
+                        <span class="n">nbands</span><span class="o">=</span><span class="n">Nb</span><span class="p">,</span> <span class="n">dirG</span><span class="o">=</span><span class="n">dirG</span><span class="p">,</span> <span class="n">kpoint</span><span class="o">=</span><span class="n">k</span><span class="p">,</span> <span class="n">nextkpoint</span><span class="o">=</span><span class="n">k1</span><span class="p">,</span>
+                        <span class="n">G_I</span><span class="o">=</span><span class="n">k0_c</span><span class="p">,</span> <span class="n">spin</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spin</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialize</span><span class="p">(</span><span class="nb">file</span><span class="o">=</span><span class="nb">file</span><span class="p">,</span> <span class="n">initialwannier</span><span class="o">=</span><span class="n">initialwannier</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="n">seed</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Wannier.initialize"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.initialize">[docs]</a>    <span class="k">def</span> <span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">file</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">initialwannier</span><span class="o">=</span><span class="s">&#39;random&#39;</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Re-initialize current rotation matrix.</span>
+
+<span class="sd">        Keywords are identical to those of the constructor.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">Nw</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nwannier</span>
+        <span class="n">Nb</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nbands</span>
+
+        <span class="k">if</span> <span class="nb">file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">Z_dknn</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">U_kww</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">C_kul</span> <span class="o">=</span> <span class="n">load</span><span class="p">(</span><span class="n">paropen</span><span class="p">(</span><span class="nb">file</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">initialwannier</span> <span class="o">==</span> <span class="s">&#39;bloch&#39;</span><span class="p">:</span>
+            <span class="c"># Set U and C to pick the lowest Bloch states</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">U_kww</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">Nk</span><span class="p">,</span> <span class="n">Nw</span><span class="p">,</span> <span class="n">Nw</span><span class="p">),</span> <span class="nb">complex</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">C_kul</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">U</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="n">L</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">U_kww</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">fixedstates_k</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">edf_k</span><span class="p">):</span>
+                <span class="n">U</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">identity</span><span class="p">(</span><span class="n">Nw</span><span class="p">,</span> <span class="nb">complex</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">L</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">C_kul</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="n">np</span><span class="o">.</span><span class="n">identity</span><span class="p">(</span><span class="n">Nb</span> <span class="o">-</span> <span class="n">M</span><span class="p">,</span> <span class="nb">complex</span><span class="p">)[:,</span> <span class="p">:</span><span class="n">L</span><span class="p">])</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">C_kul</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
+        <span class="k">elif</span> <span class="n">initialwannier</span> <span class="o">==</span> <span class="s">&#39;random&#39;</span><span class="p">:</span>
+            <span class="c"># Set U and C to random (orthogonal) matrices</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">U_kww</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">Nk</span><span class="p">,</span> <span class="n">Nw</span><span class="p">,</span> <span class="n">Nw</span><span class="p">),</span> <span class="nb">complex</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">C_kul</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">U</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="n">L</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">U_kww</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">fixedstates_k</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">edf_k</span><span class="p">):</span>
+                <span class="n">U</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">random_orthogonal_matrix</span><span class="p">(</span><span class="n">Nw</span><span class="p">,</span> <span class="n">seed</span><span class="p">,</span> <span class="n">real</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">L</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">C_kul</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">random_orthogonal_matrix</span><span class="p">(</span>
+                        <span class="n">Nb</span> <span class="o">-</span> <span class="n">M</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="n">seed</span><span class="p">,</span> <span class="n">real</span><span class="o">=</span><span class="bp">False</span><span class="p">)[:,</span> <span class="p">:</span><span class="n">L</span><span class="p">])</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">C_kul</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([]))</span>        
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c"># Use initial guess to determine U and C</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">C_kul</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">U_kww</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">initial_wannier</span><span class="p">(</span>
+                <span class="n">initialwannier</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">kptgrid</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">fixedstates_k</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">edf_k</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">spin</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nbands</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="Wannier.save"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.save">[docs]</a>    <span class="k">def</span> <span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">file</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Save information on localization and rotation matrices to file.&quot;&quot;&quot;</span>
+        <span class="n">dump</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">Z_dknn</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">U_kww</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">C_kul</span><span class="p">),</span> <span class="n">paropen</span><span class="p">(</span><span class="nb">file</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">))</span>
+</div>
+    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># Update large rotation matrix V (from rotation U and coeff C)</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">M</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fixedstates_k</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">V_knw</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="p">:</span><span class="n">M</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">U_kww</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="p">:</span><span class="n">M</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">M</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">nwannier</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">V_knw</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">M</span><span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">C_kul</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">U_kww</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">M</span><span class="p">:])</span>
+            <span class="c"># else: self.V_knw[k, M:] = 0.0</span>
+
+        <span class="c"># Calculate the Zk matrix from the large rotation matrix:</span>
+        <span class="c"># Zk = V^d[k] Zbloch V[k1]</span>
+        <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Ndir</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Nk</span><span class="p">):</span>
+                <span class="n">k1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kklst_dk</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">Z_dkww</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">dag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">V_knw</span><span class="p">[</span><span class="n">k</span><span class="p">]),</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">Z_dknn</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">k</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">V_knw</span><span class="p">[</span><span class="n">k1</span><span class="p">]))</span>
+
+        <span class="c"># Update the new Z matrix</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Z_dww</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Z_dkww</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">Nk</span>
+
+<div class="viewcode-block" id="Wannier.get_centers"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.get_centers">[docs]</a>    <span class="k">def</span> <span class="nf">get_centers</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scaled</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculate the Wannier centers</span>
+
+<span class="sd">        ::</span>
+<span class="sd">        </span>
+<span class="sd">          pos =  L / 2pi * phase(diag(Z))</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">coord_wc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">angle</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Z_dww</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span><span class="o">.</span><span class="n">diagonal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span><span class="o">.</span><span class="n">T</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">pi</span><span class="p">)</span> <span class="o">%</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">scaled</span><span class="p">:</span>
+            <span class="n">coord_wc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">coord_wc</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">largeunitcell_cc</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">coord_wc</span>
+</div>
+<div class="viewcode-block" id="Wannier.get_radii"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.get_radii">[docs]</a>    <span class="k">def</span> <span class="nf">get_radii</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculate the spread of the Wannier functions.</span>
+
+<span class="sd">        ::</span>
+<span class="sd">          </span>
+<span class="sd">                        --  /  L  \ 2       2</span>
+<span class="sd">          radius**2 = - &gt;   | --- |   ln |Z| </span>
+<span class="sd">                        --d \ 2pi /</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">r2</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">largeunitcell_cc</span><span class="o">.</span><span class="n">diagonal</span><span class="p">()</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">pi</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span>
+                     <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Z_dww</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span><span class="o">.</span><span class="n">diagonal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">r2</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">get_spectral_weight</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">w</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">V_knw</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">w</span><span class="p">])</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">Nk</span>
+
+<div class="viewcode-block" id="Wannier.get_pdos"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.get_pdos">[docs]</a>    <span class="k">def</span> <span class="nf">get_pdos</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">energies</span><span class="p">,</span> <span class="n">width</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Projected density of states (PDOS).</span>
+
+<span class="sd">        Returns the (PDOS) for Wannier function ``w``. The calculation</span>
+<span class="sd">        is performed over the energy grid specified in energies. The</span>
+<span class="sd">        PDOS is produced as a sum of Gaussians centered at the points</span>
+<span class="sd">        of the energy grid and with the specified width.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">spec_kn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_spectral_weight</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>
+        <span class="n">dos</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">energies</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">spec_n</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">spec_kn</span><span class="p">):</span>
+            <span class="n">eig_n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">get_eigenvalues</span><span class="p">(</span><span class="n">k</span><span class="o">=</span><span class="n">kpt</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spin</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">weight</span><span class="p">,</span> <span class="n">eig</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">spec_n</span><span class="p">,</span> <span class="n">eig</span><span class="p">):</span>
+                <span class="c"># Add gaussian centered at the eigenvalue</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="p">((</span><span class="n">energies</span> <span class="o">-</span> <span class="n">center</span><span class="p">)</span> <span class="o">/</span> <span class="n">width</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span>
+                <span class="n">dos</span> <span class="o">+=</span> <span class="n">weight</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">x</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">40.</span><span class="p">))</span> <span class="o">/</span> <span class="p">(</span><span class="n">sqrt</span><span class="p">(</span><span class="n">pi</span><span class="p">)</span> <span class="o">*</span> <span class="n">width</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">dos</span>
+</div>
+<div class="viewcode-block" id="Wannier.max_spread"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.max_spread">[docs]</a>    <span class="k">def</span> <span class="nf">max_spread</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">directions</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the index of the most delocalized Wannier function</span>
+<span class="sd">        together with the value of the spread functional&quot;&quot;&quot;</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nwannier</span><span class="p">)</span>
+        <span class="k">for</span> <span class="nb">dir</span> <span class="ow">in</span> <span class="n">directions</span><span class="p">:</span>
+            <span class="n">d</span><span class="p">[</span><span class="nb">dir</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Z_dww</span><span class="p">[</span><span class="nb">dir</span><span class="p">]</span><span class="o">.</span><span class="n">diagonal</span><span class="p">())</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">weight_d</span><span class="p">[</span><span class="nb">dir</span><span class="p">]</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">d</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Index:&#39;</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Spread:&#39;</span><span class="p">,</span> <span class="n">d</span><span class="p">[</span><span class="n">index</span><span class="p">])</span>           
+</div>
+<div class="viewcode-block" id="Wannier.translate"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.translate">[docs]</a>    <span class="k">def</span> <span class="nf">translate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">R</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Translate the w&#39;th Wannier function</span>
+
+<span class="sd">        The distance vector R = [n1, n2, n3], is in units of the basis</span>
+<span class="sd">        vectors of the small cell.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">kpt_c</span><span class="p">,</span> <span class="n">U_ww</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">kpt_kc</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">U_kww</span><span class="p">):</span>
+            <span class="n">U_ww</span><span class="p">[:,</span> <span class="n">w</span><span class="p">]</span> <span class="o">*=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">2.j</span> <span class="o">*</span> <span class="n">pi</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">R</span><span class="p">),</span> <span class="n">kpt_c</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="Wannier.translate_to_cell"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.translate_to_cell">[docs]</a>    <span class="k">def</span> <span class="nf">translate_to_cell</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">cell</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Translate the w&#39;th Wannier function to specified cell&quot;&quot;&quot;</span>
+        <span class="n">scaled_c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">angle</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Z_dww</span><span class="p">[:</span><span class="mi">3</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">w</span><span class="p">])</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">kptgrid</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">pi</span><span class="p">)</span>
+        <span class="n">trans</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">cell</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">scaled_c</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">translate</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">trans</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="Wannier.translate_all_to_cell"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.translate_all_to_cell">[docs]</a>    <span class="k">def</span> <span class="nf">translate_all_to_cell</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cell</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]):</span>
+        <span class="sd">&quot;&quot;&quot;Translate all Wannier functions to specified cell.</span>
+
+<span class="sd">        Move all Wannier orbitals to a specific unit cell.  There</span>
+<span class="sd">        exists an arbitrariness in the positions of the Wannier</span>
+<span class="sd">        orbitals relative to the unit cell. This method can move all</span>
+<span class="sd">        orbitals to the unit cell specified by ``cell``.  For a</span>
+<span class="sd">        `\Gamma`-point calculation, this has no effect. For a</span>
+<span class="sd">        **k**-point calculation the periodicity of the orbitals are</span>
+<span class="sd">        given by the large unit cell defined by repeating the original</span>
+<span class="sd">        unitcell by the number of **k**-points in each direction.  In</span>
+<span class="sd">        this case it is usefull to move the orbitals away from the</span>
+<span class="sd">        boundaries of the large cell before plotting them. For a bulk</span>
+<span class="sd">        calculation with, say 10x10x10 **k** points, one could move</span>
+<span class="sd">        the orbitals to the cell [2,2,2].  In this way the pbc</span>
+<span class="sd">        boundary conditions will not be noticed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">scaled_wc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">angle</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Z_dww</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span><span class="o">.</span><span class="n">diagonal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span><span class="o">.</span><span class="n">T</span>  <span class="o">*</span> \
+                    <span class="bp">self</span><span class="o">.</span><span class="n">kptgrid</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">pi</span><span class="p">)</span>
+        <span class="n">trans_wc</span> <span class="o">=</span>  <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">cell</span><span class="p">)[</span><span class="bp">None</span><span class="p">]</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">scaled_wc</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">kpt_c</span><span class="p">,</span> <span class="n">U_ww</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">kpt_kc</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">U_kww</span><span class="p">):</span>
+            <span class="n">U_ww</span> <span class="o">*=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">2.j</span> <span class="o">*</span> <span class="n">pi</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">trans_wc</span><span class="p">,</span> <span class="n">kpt_c</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
+</div>
+    <span class="k">def</span> <span class="nf">distances</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">R</span><span class="p">):</span>
+        <span class="n">Nw</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nwannier</span>
+        <span class="n">cen</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_centers</span><span class="p">()</span>
+        <span class="n">r1</span> <span class="o">=</span> <span class="n">cen</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">Nw</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">Nw</span><span class="p">,</span> <span class="n">Nw</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="n">r2</span> <span class="o">=</span> <span class="n">cen</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+            <span class="n">r2</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unitcell_cc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">*</span> <span class="n">R</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+        <span class="n">r2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">swapaxes</span><span class="p">(</span><span class="n">r2</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">Nw</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">Nw</span><span class="p">,</span> <span class="n">Nw</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">r1</span> <span class="o">-</span> <span class="n">r2</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">))</span>
+
+<div class="viewcode-block" id="Wannier.get_hopping"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.get_hopping">[docs]</a>    <span class="k">def</span> <span class="nf">get_hopping</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">R</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the matrix H(R)_nm=&lt;0,n|H|R,m&gt;.</span>
+
+<span class="sd">        ::</span>
+<span class="sd">        </span>
+<span class="sd">                                1   _   -ik.R </span>
+<span class="sd">          H(R) = &lt;0,n|H|R,m&gt; = --- &gt;_  e      H(k)</span>
+<span class="sd">                                Nk  k         </span>
+
+<span class="sd">        where R is the cell-distance (in units of the basis vectors of</span>
+<span class="sd">        the small cell) and n,m are indices of the Wannier functions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">H_ww</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">nwannier</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nwannier</span><span class="p">],</span> <span class="nb">complex</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">kpt_c</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">kpt_kc</span><span class="p">):</span>
+            <span class="n">phase</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">2.j</span> <span class="o">*</span> <span class="n">pi</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">R</span><span class="p">),</span> <span class="n">kpt_c</span><span class="p">))</span>
+            <span class="n">H_ww</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_hamiltonian</span><span class="p">(</span><span class="n">k</span><span class="p">)</span> <span class="o">*</span> <span class="n">phase</span>
+        <span class="k">return</span> <span class="n">H_ww</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">Nk</span>
+</div>
+<div class="viewcode-block" id="Wannier.get_hamiltonian"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.get_hamiltonian">[docs]</a>    <span class="k">def</span> <span class="nf">get_hamiltonian</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Get Hamiltonian at existing k-vector of index k</span>
+
+<span class="sd">        ::</span>
+<span class="sd">        </span>
+<span class="sd">                  dag</span>
+<span class="sd">          H(k) = V    diag(eps )  V</span>
+<span class="sd">                  k           k    k</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">eps_n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">get_eigenvalues</span><span class="p">(</span><span class="n">kpt</span><span class="o">=</span><span class="n">k</span><span class="p">,</span> <span class="n">spin</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spin</span><span class="p">)[:</span><span class="bp">self</span><span class="o">.</span><span class="n">nbands</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">dag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">V_knw</span><span class="p">[</span><span class="n">k</span><span class="p">])</span> <span class="o">*</span> <span class="n">eps_n</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">V_knw</span><span class="p">[</span><span class="n">k</span><span class="p">])</span>
+</div>
+<div class="viewcode-block" id="Wannier.get_hamiltonian_kpoint"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.get_hamiltonian_kpoint">[docs]</a>    <span class="k">def</span> <span class="nf">get_hamiltonian_kpoint</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kpt_c</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Get Hamiltonian at some new arbitrary k-vector</span>
+
+<span class="sd">        ::</span>
+<span class="sd">        </span>
+<span class="sd">                  _   ik.R </span>
+<span class="sd">          H(k) = &gt;_  e     H(R)</span>
+<span class="sd">                  R         </span>
+
+<span class="sd">        Warning: This method moves all Wannier functions to cell (0, 0, 0)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;Translating all Wannier functions to cell (0, 0, 0)&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">translate_all_to_cell</span><span class="p">()</span>
+        <span class="nb">max</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">kptgrid</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+        <span class="n">N1</span><span class="p">,</span> <span class="n">N2</span><span class="p">,</span> <span class="n">N3</span> <span class="o">=</span> <span class="nb">max</span>
+        <span class="n">Hk</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">nwannier</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nwannier</span><span class="p">],</span> <span class="nb">complex</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">n1</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="o">-</span><span class="n">N1</span><span class="p">,</span> <span class="n">N1</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">n2</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="o">-</span><span class="n">N2</span><span class="p">,</span> <span class="n">N2</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">n3</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="o">-</span><span class="n">N3</span><span class="p">,</span> <span class="n">N3</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                    <span class="n">R</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">n1</span><span class="p">,</span> <span class="n">n2</span><span class="p">,</span> <span class="n">n3</span><span class="p">],</span> <span class="nb">float</span><span class="p">)</span>
+                    <span class="n">hop_ww</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_hopping</span><span class="p">(</span><span class="n">R</span><span class="p">)</span>
+                    <span class="n">phase</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">+</span><span class="mf">2.j</span> <span class="o">*</span> <span class="n">pi</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">R</span><span class="p">,</span> <span class="n">kpt_c</span><span class="p">))</span>
+                    <span class="n">Hk</span> <span class="o">+=</span> <span class="n">hop_ww</span> <span class="o">*</span> <span class="n">phase</span>
+        <span class="k">return</span> <span class="n">Hk</span>
+</div>
+<div class="viewcode-block" id="Wannier.get_function"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.get_function">[docs]</a>    <span class="k">def</span> <span class="nf">get_function</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">repeat</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Get Wannier function on grid.</span>
+
+<span class="sd">        Returns an array with the funcion values of the indicated Wannier</span>
+<span class="sd">        function on a grid with the size of the *repeated* unit cell.</span>
+<span class="sd">       </span>
+<span class="sd">        For a calculation using **k**-points the relevant unit cell for</span>
+<span class="sd">        eg. visualization of the Wannier orbitals is not the original unit</span>
+<span class="sd">        cell, but rather a larger unit cell defined by repeating the</span>
+<span class="sd">        original unit cell by the number of **k**-points in each direction.</span>
+<span class="sd">        Note that for a `\Gamma`-point calculation the large unit cell</span>
+<span class="sd">        coinsides with the original unit cell.</span>
+<span class="sd">        The large unitcell also defines the periodicity of the Wannier</span>
+<span class="sd">        orbitals.</span>
+
+<span class="sd">        ``index`` can be either a single WF or a coordinate vector in terms</span>
+<span class="sd">        of the WFs.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c"># Default size of plotting cell is the one corresponding to k-points.</span>
+        <span class="k">if</span> <span class="n">repeat</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">repeat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kptgrid</span>
+        <span class="n">N1</span><span class="p">,</span> <span class="n">N2</span><span class="p">,</span> <span class="n">N3</span> <span class="o">=</span> <span class="n">repeat</span>
+
+        <span class="n">dim</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">get_number_of_grid_points</span><span class="p">()</span>
+        <span class="n">largedim</span> <span class="o">=</span> <span class="n">dim</span> <span class="o">*</span> <span class="p">[</span><span class="n">N1</span><span class="p">,</span> <span class="n">N2</span><span class="p">,</span> <span class="n">N3</span><span class="p">]</span>
+        
+        <span class="n">wanniergrid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">largedim</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">kpt_c</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">kpt_kc</span><span class="p">):</span>
+            <span class="c"># The coordinate vector of wannier functions</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+                <span class="n">vec_n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">V_knw</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="p">:,</span> <span class="n">index</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>   
+                <span class="n">vec_n</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">V_knw</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">index</span><span class="p">)</span>
+
+            <span class="n">wan_G</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="nb">complex</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">coeff</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">vec_n</span><span class="p">):</span>
+                <span class="n">wan_G</span> <span class="o">+=</span> <span class="n">coeff</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">get_pseudo_wave_function</span><span class="p">(</span>
+                    <span class="n">n</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">spin</span><span class="p">,</span> <span class="n">pad</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+            <span class="c"># Distribute the small wavefunction over large cell:</span>
+            <span class="k">for</span> <span class="n">n1</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">N1</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">n2</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">N2</span><span class="p">):</span>
+                    <span class="k">for</span> <span class="n">n3</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">N3</span><span class="p">):</span> <span class="c"># sign?</span>
+                        <span class="n">e</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">2.j</span> <span class="o">*</span> <span class="n">pi</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">([</span><span class="n">n1</span><span class="p">,</span> <span class="n">n2</span><span class="p">,</span> <span class="n">n3</span><span class="p">],</span> <span class="n">kpt_c</span><span class="p">))</span>
+                        <span class="n">wanniergrid</span><span class="p">[</span><span class="n">n1</span> <span class="o">*</span> <span class="n">dim</span><span class="p">[</span><span class="mi">0</span><span class="p">]:(</span><span class="n">n1</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">dim</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+                                    <span class="n">n2</span> <span class="o">*</span> <span class="n">dim</span><span class="p">[</span><span class="mi">1</span><span class="p">]:(</span><span class="n">n2</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">dim</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+                                    <span class="n">n3</span> <span class="o">*</span> <span class="n">dim</span><span class="p">[</span><span class="mi">2</span><span class="p">]:(</span><span class="n">n3</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">dim</span><span class="p">[</span><span class="mi">2</span><span class="p">]]</span> <span class="o">+=</span> <span class="n">e</span> <span class="o">*</span> <span class="n">wan_G</span>
+
+        <span class="c"># Normalization</span>
+        <span class="n">wanniergrid</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Nk</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">wanniergrid</span>
+</div>
+<div class="viewcode-block" id="Wannier.write_cube"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.write_cube">[docs]</a>    <span class="k">def</span> <span class="nf">write_cube</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">fname</span><span class="p">,</span> <span class="n">repeat</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">real</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Dump specified Wannier function to a cube file&quot;&quot;&quot;</span>
+        <span class="kn">from</span> <span class="nn">ase.io.cube</span> <span class="kn">import</span> <span class="n">write_cube</span>
+
+        <span class="c"># Default size of plotting cell is the one corresponding to k-points.</span>
+        <span class="k">if</span> <span class="n">repeat</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">repeat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kptgrid</span>
+        <span class="n">atoms</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">get_atoms</span><span class="p">()</span> <span class="o">*</span> <span class="n">repeat</span>
+        <span class="n">func</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_function</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">repeat</span><span class="p">)</span>
+
+        <span class="c"># Handle separation of complex wave into real parts</span>
+        <span class="k">if</span> <span class="n">real</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">Nk</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">func</span> <span class="o">*=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">1.j</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">angle</span><span class="p">(</span><span class="n">func</span><span class="o">.</span><span class="n">max</span><span class="p">()))</span>
+                <span class="k">if</span> <span class="mi">0</span><span class="p">:</span> <span class="k">assert</span> <span class="nb">max</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">func</span><span class="o">.</span><span class="n">imag</span><span class="p">)</span><span class="o">.</span><span class="n">flat</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-4</span>
+                <span class="n">func</span> <span class="o">=</span> <span class="n">func</span><span class="o">.</span><span class="n">real</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">func</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">phase_fname</span> <span class="o">=</span> <span class="n">fname</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;.&#39;</span><span class="p">)</span>
+            <span class="n">phase_fname</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s">&#39;phase&#39;</span><span class="p">)</span>
+            <span class="n">phase_fname</span> <span class="o">=</span> <span class="s">&#39;.&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">phase_fname</span><span class="p">)</span>
+            <span class="n">write_cube</span><span class="p">(</span><span class="n">phase_fname</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">angle</span><span class="p">(</span><span class="n">func</span><span class="p">))</span>
+            <span class="n">func</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+
+        <span class="n">write_cube</span><span class="p">(</span><span class="n">fname</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">func</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="Wannier.localize"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.localize">[docs]</a>    <span class="k">def</span> <span class="nf">localize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mf">0.25</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mf">1e-08</span><span class="p">,</span>
+                 <span class="n">updaterot</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">updatecoeff</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Optimize rotation to give maximal localization&quot;&quot;&quot;</span>
+        <span class="n">md_min</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">step</span><span class="p">,</span> <span class="n">tolerance</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span>
+               <span class="n">updaterot</span><span class="o">=</span><span class="n">updaterot</span><span class="p">,</span> <span class="n">updatecoeff</span><span class="o">=</span><span class="n">updatecoeff</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="Wannier.get_functional_value"><a class="viewcode-back" href="../../../ase/dft/wannier.html#ase.dft.wannier.Wannier.get_functional_value">[docs]</a>    <span class="k">def</span> <span class="nf">get_functional_value</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> 
+        <span class="sd">&quot;&quot;&quot;Calculate the value of the spread functional.</span>
+
+<span class="sd">        ::</span>
+
+<span class="sd">          Tr[|ZI|^2]=sum(I)sum(n) w_i|Z_(i)_nn|^2,</span>
+
+<span class="sd">        where w_i are weights.&quot;&quot;&quot;</span>
+        <span class="n">a_d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Z_dww</span><span class="o">.</span><span class="n">diagonal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">a_d</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">weight_d</span><span class="p">)</span><span class="o">.</span><span class="n">real</span>
+</div>
+    <span class="k">def</span> <span class="nf">get_gradients</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># Determine gradient of the spread functional.</span>
+        <span class="c"># </span>
+        <span class="c"># The gradient for a rotation A_kij is::</span>
+        <span class="c"># </span>
+        <span class="c">#    dU = dRho/dA_{k,i,j} = sum(I) sum(k&#39;)</span>
+        <span class="c">#            + Z_jj Z_kk&#39;,ij^* - Z_ii Z_k&#39;k,ij^*</span>
+        <span class="c">#            - Z_ii^* Z_kk&#39;,ji + Z_jj^* Z_k&#39;k,ji</span>
+        <span class="c"># </span>
+        <span class="c"># The gradient for a change of coefficients is::</span>
+        <span class="c"># </span>
+        <span class="c">#   dRho/da^*_{k,i,j} = sum(I) [[(Z_0)_{k} V_{k&#39;} diag(Z^*) +</span>
+        <span class="c">#                                (Z_0_{k&#39;&#39;})^d V_{k&#39;&#39;} diag(Z)] *</span>
+        <span class="c">#                                U_k^d]_{N+i,N+j}</span>
+        <span class="c"># </span>
+        <span class="c"># where diag(Z) is a square,diagonal matrix with Z_nn in the diagonal, </span>
+        <span class="c"># k&#39; = k + dk and k = k&#39;&#39; + dk.</span>
+        <span class="c"># </span>
+        <span class="c"># The extra degrees of freedom chould be kept orthonormal to the fixed</span>
+        <span class="c"># space, thus we introduce lagrange multipliers, and minimize instead::</span>
+        <span class="c"># </span>
+        <span class="c">#     Rho_L=Rho- sum_{k,n,m} lambda_{k,nm} &lt;c_{kn}|c_{km}&gt;</span>
+        <span class="c"># </span>
+        <span class="c"># for this reason the coefficient gradients should be multiplied</span>
+        <span class="c"># by (1 - c c^d).</span>
+        
+        <span class="n">Nb</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nbands</span>
+        <span class="n">Nw</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nwannier</span>
+        
+        <span class="n">dU</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">dC</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Nk</span><span class="p">):</span>
+            <span class="n">M</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fixedstates_k</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="n">L</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">edf_k</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="n">U_ww</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">U_kww</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="n">C_ul</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">C_kul</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="n">Utemp_ww</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">Nw</span><span class="p">,</span> <span class="n">Nw</span><span class="p">),</span> <span class="nb">complex</span><span class="p">)</span>
+            <span class="n">Ctemp_nw</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">Nb</span><span class="p">,</span> <span class="n">Nw</span><span class="p">),</span> <span class="nb">complex</span><span class="p">)</span>
+
+            <span class="k">for</span> <span class="n">d</span><span class="p">,</span> <span class="n">weight</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">weight_d</span><span class="p">):</span>
+                <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">weight</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1.0e-6</span><span class="p">:</span>
+                    <span class="k">continue</span>
+
+                <span class="n">Z_knn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Z_dknn</span><span class="p">[</span><span class="n">d</span><span class="p">]</span>
+                <span class="n">diagZ_w</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Z_dww</span><span class="p">[</span><span class="n">d</span><span class="p">]</span><span class="o">.</span><span class="n">diagonal</span><span class="p">()</span>
+                <span class="n">Zii_ww</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">diagZ_w</span><span class="p">,</span> <span class="n">Nw</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">Nw</span><span class="p">,</span> <span class="n">Nw</span><span class="p">)</span>
+                <span class="n">k1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kklst_dk</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span>
+                <span class="n">k2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">invkklst_dk</span><span class="p">[</span><span class="n">d</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span>
+                <span class="n">V_knw</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">V_knw</span>
+                <span class="n">Z_kww</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Z_dkww</span><span class="p">[</span><span class="n">d</span><span class="p">]</span>
+                
+                <span class="k">if</span> <span class="n">L</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">Ctemp_nw</span> <span class="o">+=</span> <span class="n">weight</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span>
+                        <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">Z_knn</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">V_knw</span><span class="p">[</span><span class="n">k1</span><span class="p">])</span> <span class="o">*</span> <span class="n">diagZ_w</span><span class="o">.</span><span class="n">conj</span><span class="p">()</span> <span class="o">+</span>
+                        <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">dag</span><span class="p">(</span><span class="n">Z_knn</span><span class="p">[</span><span class="n">k2</span><span class="p">]),</span> <span class="n">V_knw</span><span class="p">[</span><span class="n">k2</span><span class="p">])</span> <span class="o">*</span> <span class="n">diagZ_w</span><span class="p">,</span>
+                        <span class="n">dag</span><span class="p">(</span><span class="n">U_ww</span><span class="p">))</span>
+
+                <span class="n">temp</span> <span class="o">=</span> <span class="n">Zii_ww</span><span class="o">.</span><span class="n">T</span> <span class="o">*</span> <span class="n">Z_kww</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">conj</span><span class="p">()</span> <span class="o">-</span> <span class="n">Zii_ww</span> <span class="o">*</span> <span class="n">Z_kww</span><span class="p">[</span><span class="n">k2</span><span class="p">]</span><span class="o">.</span><span class="n">conj</span><span class="p">()</span>
+                <span class="n">Utemp_ww</span> <span class="o">+=</span> <span class="n">weight</span> <span class="o">*</span> <span class="p">(</span><span class="n">temp</span> <span class="o">-</span> <span class="n">dag</span><span class="p">(</span><span class="n">temp</span><span class="p">))</span>
+            <span class="n">dU</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Utemp_ww</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
+            <span class="k">if</span> <span class="n">L</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="c"># Ctemp now has same dimension as V, the gradient is in the</span>
+                <span class="c"># lower-right (Nb-M) x L block</span>
+                <span class="n">Ctemp_ul</span> <span class="o">=</span> <span class="n">Ctemp_nw</span><span class="p">[</span><span class="n">M</span><span class="p">:,</span> <span class="n">M</span><span class="p">:]</span>
+                <span class="n">G_ul</span> <span class="o">=</span> <span class="n">Ctemp_ul</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">C_ul</span><span class="p">,</span> <span class="n">dag</span><span class="p">(</span><span class="n">C_ul</span><span class="p">)),</span> <span class="n">Ctemp_ul</span><span class="p">)</span>
+                <span class="n">dC</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">G_ul</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
+
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">dU</span> <span class="o">+</span> <span class="n">dC</span><span class="p">)</span>
+                        
+    <span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dX</span><span class="p">,</span> <span class="n">updaterot</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">updatecoeff</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="c"># dX is (A, dC) where U-&gt;Uexp(-A) and C-&gt;C+dC</span>
+        <span class="n">Nw</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nwannier</span>
+        <span class="n">Nk</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Nk</span>
+        <span class="n">M_k</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fixedstates_k</span>
+        <span class="n">L_k</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">edf_k</span>
+        <span class="k">if</span> <span class="n">updaterot</span><span class="p">:</span>
+            <span class="n">A_kww</span> <span class="o">=</span> <span class="n">dX</span><span class="p">[:</span><span class="n">Nk</span> <span class="o">*</span> <span class="n">Nw</span><span class="o">**</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">Nk</span><span class="p">,</span> <span class="n">Nw</span><span class="p">,</span> <span class="n">Nw</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">U</span><span class="p">,</span> <span class="n">A</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">U_kww</span><span class="p">,</span> <span class="n">A_kww</span><span class="p">):</span>
+                <span class="n">H</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.j</span> <span class="o">*</span> <span class="n">A</span><span class="o">.</span><span class="n">conj</span><span class="p">()</span>
+                <span class="n">epsilon</span><span class="p">,</span> <span class="n">Z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eigh</span><span class="p">(</span><span class="n">H</span><span class="p">)</span>
+                <span class="c"># Z contains the eigenvectors as COLUMNS.</span>
+                <span class="c"># Since H = iA, dU = exp(-A) = exp(iH) = ZDZ^d</span>
+                <span class="n">dU</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">Z</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">1.j</span> <span class="o">*</span> <span class="n">epsilon</span><span class="p">),</span> <span class="n">dag</span><span class="p">(</span><span class="n">Z</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">U</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="nb">float</span><span class="p">:</span>
+                    <span class="n">U</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">U</span><span class="p">,</span> <span class="n">dU</span><span class="p">)</span><span class="o">.</span><span class="n">real</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">U</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">U</span><span class="p">,</span> <span class="n">dU</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">updatecoeff</span><span class="p">:</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">C</span><span class="p">,</span> <span class="n">unocc</span><span class="p">,</span> <span class="n">L</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">C_kul</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nbands</span> <span class="o">-</span> <span class="n">M_k</span><span class="p">,</span> <span class="n">L_k</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">L</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">unocc</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="n">Ncoeff</span> <span class="o">=</span> <span class="n">L</span> <span class="o">*</span> <span class="n">unocc</span>
+                <span class="n">deltaC</span> <span class="o">=</span> <span class="n">dX</span><span class="p">[</span><span class="n">Nk</span> <span class="o">*</span> <span class="n">Nw</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">start</span><span class="p">:</span> <span class="n">Nk</span> <span class="o">*</span> <span class="n">Nw</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">start</span> <span class="o">+</span> <span class="n">Ncoeff</span><span class="p">]</span>
+                <span class="n">C</span> <span class="o">+=</span> <span class="n">deltaC</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">unocc</span><span class="p">,</span> <span class="n">L</span><span class="p">)</span>
+                <span class="n">gram_schmidt</span><span class="p">(</span><span class="n">C</span><span class="p">)</span>
+                <span class="n">start</span> <span class="o">+=</span> <span class="n">Ncoeff</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">()</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../../overview.html">
+              Overview</a></li>
+            <li><a href="../../../download.html">
+              Installation</a></li>
+            <li><a href="../../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../../faq.html">FAQ</a></li>
+            <li><a href="../../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../dft.html" accesskey="U">ase.dft</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,450 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>EAM &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="Calculators" href="calculators.html" />
+    <link rel="next" title="Pure Python EMT calculator" href="emt.html" />
+    <link rel="prev" title="Calculators" href="calculators.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+          <li><a href="calculators.html" accesskey="U">Calculators</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <span class="target" id="module-ase.calculators.eam"></span><div class="section" id="eam">
+<h1>EAM<a class="headerlink" href="#eam" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="introduction">
+<h2>Introduction<a class="headerlink" href="#introduction" title="Permalink to this headline">¶</a></h2>
+<p>The Embedded Atom Method (EAM) <a class="footnote-reference" href="#id3" id="id1">[1]</a> is a classical potential which is
+good for modelling metals, particularly fcc materials. Because it is
+an equiaxial potential the EAM does not model directional bonds
+well. However, the Angular Dependent Potential (ADP) <a class="footnote-reference" href="#id4" id="id2">[2]</a> which is an
+extended version of EAM is able to model directional bonds and is also
+included in the EAM calculator.</p>
+<p>Generally all that is required to use this calculator is to supply a
+potential file or as a set of functions that describe the potential.
+The files containing the potentials for this calculator are not
+included but many suitable potentials can be downloaded from The
+Interatomic Potentials Repository Project at
+<a class="reference external" href="http://www.ctcms.nist.gov/potentials/">http://www.ctcms.nist.gov/potentials/</a></p>
+</div>
+<div class="section" id="theory">
+<h2>Theory<a class="headerlink" href="#theory" title="Permalink to this headline">¶</a></h2>
+<p>A single element EAM potential is defined by three functions: the
+embedded energy, electron density and the pair potential.  A two
+element alloy contains the individual three functions for each element
+plus cross pair interactions.  The ADP potential has two additional
+sets of data to define the dipole and quadrupole directional terms for
+each alloy and their cross interactions.</p>
+<p>The total energy <span class="math">\(E_{\rm tot}\)</span> of an arbitrary arrangement of atoms is
+given by the EAM potential as</p>
+<div class="math">
+\[E_\text{tot} = \sum_i F(\bar\rho_i) + \frac{1}{2}\sum_{i\ne j} \phi(r_{ij})\]</div>
+<p>and</p>
+<div class="math">
+\[\bar\rho_i = \sum_j \rho(r_{ij})\]</div>
+<p>where <span class="math">\(F\)</span> is an embedding function, namely the energy to embed an atom <span class="math">\(i\)</span> in
+the combined electron density <span class="math">\(\bar\rho_i\)</span> which is contributed from
+each of its neighbouring atoms <span class="math">\(j\)</span> by an amount <span class="math">\(\rho(r_{ij})\)</span>,
+<span class="math">\(\phi(r_{ij})\)</span> is the pair potential function representing the energy
+in bond <span class="math">\(ij\)</span> which is due to the short-range electro-static
+interaction between atoms, and <span class="math">\(r_{ij}\)</span> is the distance between an
+atom and its neighbour for that bond.</p>
+<p>The ADP potential is defined as</p>
+<div class="math">
+\[E_\text{tot} = \sum_i F(\bar\rho_i) + \frac{1}{2}\sum_{i\ne j} \phi(r_{ij})
++ \frac{1}{2} \sum_{i,\alpha} (\mu_i^\alpha)^2
++ \frac{1}{2} \sum_{i,\alpha,\beta} (\lambda_i^{\alpha\beta})^2
+- \frac{1}{6} \sum_i \nu_i^2\]</div>
+<p>where <span class="math">\(\mu_i^\alpha\)</span> is the dipole vector, <span class="math">\(\lambda_i^{\alpha\beta}\)</span>
+is the quadrupole tensor and <span class="math">\(\nu_i\)</span> is the trace of
+<span class="math">\(\lambda_i^{\alpha\beta}\)</span>.</p>
+</div>
+<div class="section" id="running-the-calculator">
+<h2>Running the Calculator<a class="headerlink" href="#running-the-calculator" title="Permalink to this headline">¶</a></h2>
+<p>EAM calculates the cohesive atom energy and forces. Internally the
+potential functions are defined by splines which may be directly
+supplied or created by reading the spline points from a data file from
+which a spline function is created.  The LAMMPS compatible <tt class="docutils literal"><span class="pre">.alloy</span></tt>
+and <tt class="docutils literal"><span class="pre">.adp</span></tt> formats are supported. The LAMMPS <tt class="docutils literal"><span class="pre">.eam</span></tt> format is
+slightly different from the <tt class="docutils literal"><span class="pre">.alloy</span></tt> format and is currently not
+supported.</p>
+<p>For example:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.calculators.eam</span> <span class="kn">import</span> <span class="n">EAM</span>
+
+<span class="n">mishin</span> <span class="o">=</span> <span class="n">EAM</span><span class="p">(</span><span class="n">potential</span><span class="o">=</span><span class="s">&#39;Al99.eam.alloy&#39;</span><span class="p">)</span>
+<span class="n">mishin</span><span class="o">.</span><span class="n">write_potential</span><span class="p">(</span><span class="s">&#39;new.eam.alloy&#39;</span><span class="p">)</span>
+<span class="n">mishin</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+
+<span class="n">slab</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">mishin</span><span class="p">)</span>
+<span class="n">slab</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+<span class="n">slab</span><span class="o">.</span><span class="n">get_forces</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>The breakdown of energy contribution from the indvidual components are
+stored in the calculator instance <tt class="docutils literal"><span class="pre">.results['energy_components']</span></tt></p>
+</div>
+<div class="section" id="arguments">
+<h2>Arguments<a class="headerlink" href="#arguments" title="Permalink to this headline">¶</a></h2>
+<table border="1" class="docutils">
+<colgroup>
+<col width="32%" />
+<col width="68%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">Keyword</th>
+<th class="head">Description</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td><tt class="docutils literal"><span class="pre">potential</span></tt></td>
+<td>file of potential in <tt class="docutils literal"><span class="pre">.alloy</span></tt> or <tt class="docutils literal"><span class="pre">.adp</span></tt> format
+(This is generally all you need to supply)</td>
+</tr>
+<tr class="row-odd"><td><tt class="docutils literal"><span class="pre">elements[N]</span></tt></td>
+<td>array of N element abbreviations</td>
+</tr>
+<tr class="row-even"><td><tt class="docutils literal"><span class="pre">embedded_energy[N]</span></tt></td>
+<td>arrays of embedded energy functions</td>
+</tr>
+<tr class="row-odd"><td><tt class="docutils literal"><span class="pre">electron_density[N]</span></tt></td>
+<td>arrays of electron density functions</td>
+</tr>
+<tr class="row-even"><td><tt class="docutils literal"><span class="pre">phi[N,N]</span></tt></td>
+<td>arrays of pair potential functions</td>
+</tr>
+<tr class="row-odd"><td><tt class="docutils literal"><span class="pre">d_embedded_energy[N]</span></tt></td>
+<td>arrays of derivative embedded energy functions</td>
+</tr>
+<tr class="row-even"><td><tt class="docutils literal"><span class="pre">d_electron_density[N]</span></tt></td>
+<td>arrays of derivative electron density functions</td>
+</tr>
+<tr class="row-odd"><td><tt class="docutils literal"><span class="pre">d_phi[N,N]</span></tt></td>
+<td>arrays of derivative pair potentials functions</td>
+</tr>
+<tr class="row-even"><td><tt class="docutils literal"><span class="pre">d[N,N],</span> <span class="pre">q[N,N]</span></tt></td>
+<td>ADP dipole and quadrupole function</td>
+</tr>
+<tr class="row-odd"><td><tt class="docutils literal"><span class="pre">d_d[N,N],</span> <span class="pre">d_q[N,N]</span></tt></td>
+<td>ADP dipole and quadrupole derivative functions</td>
+</tr>
+<tr class="row-even"><td><tt class="docutils literal"><span class="pre">skin</span></tt></td>
+<td>skin distance passed to NeighborList(). If no atom
+has moved more than the skin-distance since the last
+call to the <tt class="docutils literal"><span class="pre">update()</span></tt> method then the neighbor
+list can be reused. Defaults to 1.0.</td>
+</tr>
+<tr class="row-odd"><td><tt class="docutils literal"><span class="pre">form</span></tt></td>
+<td>the form of the potential <tt class="docutils literal"><span class="pre">alloy</span></tt> or <tt class="docutils literal"><span class="pre">adp</span></tt>. This
+will be determined from the file suffix or must be
+set if using equations</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="additional-parameters-for-writing-potential-files">
+<h2>Additional parameters for writing potential files<a class="headerlink" href="#additional-parameters-for-writing-potential-files" title="Permalink to this headline">¶</a></h2>
+<p>The following parameters are only required for writing a potential in
+<tt class="docutils literal"><span class="pre">.alloy</span></tt> or <tt class="docutils literal"><span class="pre">.adp</span></tt> format file.</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="32%" />
+<col width="68%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">Keyword</th>
+<th class="head">Description</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td><tt class="docutils literal"><span class="pre">header</span></tt></td>
+<td>Three line text header. Default is standard message.</td>
+</tr>
+<tr class="row-odd"><td><tt class="docutils literal"><span class="pre">Z[N]</span></tt></td>
+<td>Array of atomic number of each element</td>
+</tr>
+<tr class="row-even"><td><tt class="docutils literal"><span class="pre">mass[N]</span></tt></td>
+<td>Atomic mass of each element</td>
+</tr>
+<tr class="row-odd"><td><tt class="docutils literal"><span class="pre">a[N]</span></tt></td>
+<td>Array of lattice parameters for each element</td>
+</tr>
+<tr class="row-even"><td><tt class="docutils literal"><span class="pre">lattice[N]</span></tt></td>
+<td>Lattice type</td>
+</tr>
+<tr class="row-odd"><td><tt class="docutils literal"><span class="pre">nrho</span></tt></td>
+<td>No. of rho samples along embedded energy curve</td>
+</tr>
+<tr class="row-even"><td><tt class="docutils literal"><span class="pre">drho</span></tt></td>
+<td>Increment for sampling density</td>
+</tr>
+<tr class="row-odd"><td><tt class="docutils literal"><span class="pre">nr</span></tt></td>
+<td>No. of radial points along density and pair
+potential curves</td>
+</tr>
+<tr class="row-even"><td><tt class="docutils literal"><span class="pre">dr</span></tt></td>
+<td>Increment for sampling radius</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="special-features">
+<h2>Special features<a class="headerlink" href="#special-features" title="Permalink to this headline">¶</a></h2>
+<dl class="docutils">
+<dt><tt class="docutils literal"><span class="pre">.plot()</span></tt></dt>
+<dd>Plots the individual functions. This may be called from multiple EAM
+potentials to compare the shape of the individual curves. This
+function requires the installation of the Matplotlib libraries.</dd>
+</dl>
+</div>
+<div class="section" id="notes-issues">
+<h2>Notes/Issues<a class="headerlink" href="#notes-issues" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li>Although currently not fast, this calculator can be good for trying
+small calculations or for creating new potentials by matching baseline
+data such as from DFT results. The format for these potentials is
+compatible with <a class="reference external" href="http://lammps.sandia.gov/">LAMMPS</a> and so can be used either directly by LAMMPS or
+with the ASE LAMMPS calculator interface.</li>
+<li>Supported formats are the <a class="reference external" href="http://lammps.sandia.gov/">LAMMPS</a> <tt class="docutils literal"><span class="pre">.alloy</span></tt> and <tt class="docutils literal"><span class="pre">.adp</span></tt>. The
+<tt class="docutils literal"><span class="pre">.eam</span></tt> format is currently not supported. The form of the
+potential will be determined from the file suffix.</li>
+<li>Any supplied values will override values read from the file.</li>
+<li>The derivative functions, if supplied, are only used to calculate
+forces.</li>
+<li>There is a bug in early versions of scipy that will cause eam.py to
+crash when trying to evaluate splines of a potential with one
+neighbor such as caused by evaluating a dimer.</li>
+</ul>
+<table class="docutils footnote" frame="void" id="id3" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[1]</a></td><td>M.S. Daw and M.I. Baskes, Phys. Rev. Letters 50 (1983)
+1285.</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="id4" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id2">[2]</a></td><td>Y. Mishin, M.J. Mehl, and D.A. Papaconstantopoulos,
+Acta Materialia 53 2005 4029&#8211;4041.</td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="example">
+<h2>Example:<a class="headerlink" href="#example" title="Permalink to this headline">¶</a></h2>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">ase.calculators.eam</span> <span class="kn">import</span> <span class="n">EAM</span>
+<span class="kn">from</span> <span class="nn">ase.lattice</span> <span class="kn">import</span> <span class="n">bulk</span>
+
+<span class="c"># test to generate an EAM potential file using a simplified</span>
+<span class="c"># approximation to the Mishin potential Al99.eam.alloy data</span>
+
+<span class="kn">from</span> <span class="nn">scipy.interpolate</span> <span class="kn">import</span> <span class="n">InterpolatedUnivariateSpline</span> <span class="k">as</span> <span class="n">spline</span>
+
+<span class="n">cutoff</span> <span class="o">=</span> <span class="mf">6.28721</span>
+
+<span class="n">n</span> <span class="o">=</span> <span class="mi">21</span>
+<span class="n">rs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">cutoff</span> <span class="o">/</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">rhos</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mf">2.</span> <span class="o">/</span> <span class="n">n</span><span class="p">)</span>
+
+<span class="c"># generated from</span>
+<span class="c"># mishin = EAM(potential=&#39;../potentials/Al99.eam.alloy&#39;)</span>
+<span class="c"># m_density = mishin.electron_density[0](rs)</span>
+<span class="c"># m_embedded = mishin.embedded_energy[0](rhos)</span>
+<span class="c"># m_phi = mishin.phi[0,0](rs)</span>
+
+<span class="n">m_density</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">2.78589606e-01</span><span class="p">,</span> <span class="mf">2.02694937e-01</span><span class="p">,</span> <span class="mf">1.45334053e-01</span><span class="p">,</span>
+                      <span class="mf">1.06069912e-01</span><span class="p">,</span> <span class="mf">8.42517168e-02</span><span class="p">,</span> <span class="mf">7.65140344e-02</span><span class="p">,</span>
+                      <span class="mf">7.76263116e-02</span><span class="p">,</span> <span class="mf">8.23214224e-02</span><span class="p">,</span> <span class="mf">8.53322309e-02</span><span class="p">,</span>
+                      <span class="mf">8.13915861e-02</span><span class="p">,</span> <span class="mf">6.59095390e-02</span><span class="p">,</span> <span class="mf">4.28915711e-02</span><span class="p">,</span>
+                      <span class="mf">2.27910928e-02</span><span class="p">,</span> <span class="mf">1.13713167e-02</span><span class="p">,</span> <span class="mf">6.05020311e-03</span><span class="p">,</span>
+                      <span class="mf">3.65836583e-03</span><span class="p">,</span> <span class="mf">2.60587564e-03</span><span class="p">,</span> <span class="mf">2.06750708e-03</span><span class="p">,</span>
+                      <span class="mf">1.48749693e-03</span><span class="p">,</span> <span class="mf">7.40019174e-04</span><span class="p">,</span> <span class="mf">6.21225205e-05</span><span class="p">])</span>
+
+<span class="n">m_embedded</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.04222211e-10</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.04142633e+00</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.60359806e+00</span><span class="p">,</span>
+                       <span class="o">-</span><span class="mf">1.89287637e+00</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.09490167e+00</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.26456628e+00</span><span class="p">,</span>
+                       <span class="o">-</span><span class="mf">2.40590322e+00</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.52245359e+00</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.61385603e+00</span><span class="p">,</span>
+                       <span class="o">-</span><span class="mf">2.67744693e+00</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.71053295e+00</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.71110418e+00</span><span class="p">,</span>
+                       <span class="o">-</span><span class="mf">2.69287013e+00</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.68464527e+00</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.69204083e+00</span><span class="p">,</span>
+                       <span class="o">-</span><span class="mf">2.68976209e+00</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.66001244e+00</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.60122024e+00</span><span class="p">,</span>
+                       <span class="o">-</span><span class="mf">2.51338548e+00</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.39650817e+00</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.25058831e+00</span><span class="p">])</span>
+
+<span class="n">m_phi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">6.27032242e+01</span><span class="p">,</span> <span class="mf">3.49638589e+01</span><span class="p">,</span> <span class="mf">1.79007014e+01</span><span class="p">,</span>
+                  <span class="mf">8.69001383e+00</span><span class="p">,</span> <span class="mf">4.51545250e+00</span><span class="p">,</span> <span class="mf">2.83260884e+00</span><span class="p">,</span>
+                  <span class="mf">1.93216616e+00</span><span class="p">,</span> <span class="mf">1.06795515e+00</span><span class="p">,</span> <span class="mf">3.37740836e-01</span><span class="p">,</span>
+                  <span class="mf">1.61087890e-02</span><span class="p">,</span> <span class="o">-</span><span class="mf">6.20816372e-02</span><span class="p">,</span> <span class="o">-</span><span class="mf">6.51314297e-02</span><span class="p">,</span>
+                  <span class="o">-</span><span class="mf">5.35210341e-02</span><span class="p">,</span> <span class="o">-</span><span class="mf">5.20950200e-02</span><span class="p">,</span> <span class="o">-</span><span class="mf">5.51709524e-02</span><span class="p">,</span>
+                  <span class="o">-</span><span class="mf">4.89093894e-02</span><span class="p">,</span> <span class="o">-</span><span class="mf">3.28051688e-02</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.13738785e-02</span><span class="p">,</span>
+                  <span class="mf">2.33833655e-03</span><span class="p">,</span> <span class="mf">4.19132033e-03</span><span class="p">,</span> <span class="mf">1.68600692e-04</span><span class="p">])</span>
+
+<span class="n">m_densityf</span> <span class="o">=</span> <span class="n">spline</span><span class="p">(</span><span class="n">rs</span><span class="p">,</span> <span class="n">m_density</span><span class="p">)</span>
+<span class="n">m_embeddedf</span> <span class="o">=</span> <span class="n">spline</span><span class="p">(</span><span class="n">rhos</span><span class="p">,</span> <span class="n">m_embedded</span><span class="p">)</span>
+<span class="n">m_phif</span> <span class="o">=</span> <span class="n">spline</span><span class="p">(</span><span class="n">rs</span><span class="p">,</span> <span class="n">m_phi</span><span class="p">)</span>
+
+<span class="n">a</span> <span class="o">=</span> <span class="mf">4.05</span>  <span class="c"># Angstrom lattice spacing</span>
+<span class="n">al</span> <span class="o">=</span> <span class="n">bulk</span><span class="p">(</span><span class="s">&#39;Al&#39;</span><span class="p">,</span> <span class="s">&#39;fcc&#39;</span><span class="p">,</span> <span class="n">a</span><span class="o">=</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">mishin_approx</span> <span class="o">=</span> <span class="n">EAM</span><span class="p">(</span><span class="n">elements</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;Al&#39;</span><span class="p">],</span> <span class="n">embedded_energy</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">m_embeddedf</span><span class="p">]),</span>
+                    <span class="n">electron_density</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">m_densityf</span><span class="p">]),</span>
+                    <span class="n">phi</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">m_phif</span><span class="p">]]),</span> <span class="n">cutoff</span><span class="o">=</span><span class="n">cutoff</span><span class="p">,</span> <span class="n">form</span><span class="o">=</span><span class="s">&#39;alloy&#39;</span><span class="p">,</span>
+                    <span class="c"># the following terms are only required to write out a file</span>
+                    <span class="n">Z</span><span class="o">=</span><span class="p">[</span><span class="mi">13</span><span class="p">],</span> <span class="n">nr</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">nrho</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">dr</span><span class="o">=</span><span class="n">cutoff</span> <span class="o">/</span> <span class="n">n</span><span class="p">,</span> <span class="n">drho</span><span class="o">=</span><span class="mf">2.</span> <span class="o">/</span> <span class="n">n</span><span class="p">,</span>
+                    <span class="n">lattice</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;fcc&#39;</span><span class="p">],</span> <span class="n">mass</span><span class="o">=</span><span class="p">[</span><span class="mf">26.982</span><span class="p">],</span> <span class="n">a</span><span class="o">=</span><span class="p">[</span><span class="n">a</span><span class="p">])</span>
+
+<span class="n">al</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">mishin_approx</span><span class="p">)</span>
+<span class="n">mishin_approx_energy</span> <span class="o">=</span> <span class="n">al</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+
+<span class="n">mishin_approx</span><span class="o">.</span><span class="n">write_potential</span><span class="p">(</span><span class="s">&#39;Al99-test.eam.alloy&#39;</span><span class="p">)</span>
+
+<span class="n">mishin_check</span> <span class="o">=</span> <span class="n">EAM</span><span class="p">(</span><span class="n">potential</span><span class="o">=</span><span class="s">&#39;Al99-test.eam.alloy&#39;</span><span class="p">)</span>
+<span class="n">al</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">mishin_check</span><span class="p">)</span>
+<span class="n">mishin_check_energy</span> <span class="o">=</span> <span class="n">al</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">&#39;Cohesive Energy for Al = &#39;</span><span class="p">,</span> <span class="n">mishin_approx_energy</span><span class="p">,</span> <span class="s">&#39; eV&#39;</span><span class="p">)</span>
+
+<span class="n">error</span> <span class="o">=</span> <span class="p">(</span><span class="n">mishin_approx_energy</span> <span class="o">-</span> <span class="n">mishin_check_energy</span><span class="p">)</span> <span class="o">/</span> <span class="n">mishin_approx_energy</span>
+<span class="k">print</span><span class="p">(</span><span class="s">&#39;read/write check error = &#39;</span><span class="p">,</span> <span class="n">error</span><span class="p">)</span>
+
+<span class="k">assert</span> <span class="nb">abs</span><span class="p">(</span><span class="n">error</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-4</span>
+</pre></div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>This Page</h3>
+            <ul>
+<li><a class="reference internal" href="#">EAM</a><ul>
+<li><a class="reference internal" href="#introduction">Introduction</a></li>
+<li><a class="reference internal" href="#theory">Theory</a></li>
+<li><a class="reference internal" href="#running-the-calculator">Running the Calculator</a></li>
+<li><a class="reference internal" href="#arguments">Arguments</a></li>
+<li><a class="reference internal" href="#additional-parameters-for-writing-potential-files">Additional parameters for writing potential files</a></li>
+<li><a class="reference internal" href="#special-features">Special features</a></li>
+<li><a class="reference internal" href="#notes-issues">Notes/Issues</a></li>
+<li><a class="reference internal" href="#example">Example:</a></li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="calculators.html" title="previous chapter">Calculators</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="emt.html" title="next chapter">Pure Python EMT calculator</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../../_sources/ase/calculators/eam.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+          <li><a href="calculators.html" accesskey="U">Calculators</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

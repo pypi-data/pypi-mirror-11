@@ -1,0 +1,392 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Nudged elastic band &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../contents.html" />
+    <link rel="index" title="Global index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="top" title="ASE  documentation" href="../index.html" />
+    <link rel="up" title="Documentation for modules in ASE" href="ase.html" />
+    <link rel="next" title="Vibration analysis" href="vibrations.html" />
+    <link rel="prev" title="Constraints" href="constraints.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="module-ase.neb">
+<span id="nudged-elastic-band"></span><h1>Nudged elastic band<a class="headerlink" href="#module-ase.neb" title="Permalink to this headline">¶</a></h1>
+<p>The Nudged Elastic Band method is a technique for finding transition paths
+(and corresponding energy barriers) between given initial and final states.
+The method involves constructing a &#8220;chain&#8221; of &#8220;replicas&#8221; or &#8220;images&#8221; of the
+system and relaxing them in a certain way.</p>
+<p>Relevant literature References:</p>
+<ol class="arabic simple">
+<li>H. Jonsson, G. Mills, and K. W. Jacobsen, in &#8216;Classical and Quantum
+Dynamics in Condensed Phase Systems&#8217;, edited by B. J. Berne,
+G. Cicotti, and D. F. Coker, World Scientific, 1998 [standard
+formulation]</li>
+<li>&#8216;Improved Tangent Estimate in the NEB method for Finding Minimum
+Energy Paths and Saddle Points&#8217;, G. Henkelman and H.
+Jonsson, J. Chem. Phys. 113, 9978 (2000) [improved tangent
+estimates]</li>
+<li>&#8216;A Climbing-Image NEB Method for Finding Saddle Points and Minimum
+Energy Paths&#8217;, G. Henkelman, B. P. Uberuaga and H.
+Jonsson, J. Chem. Phys. 113, 9901 (2000)</li>
+<li>&#8216;Improved initial guess for minimum energy path calculations.&#8217;,
+S. Smidstrup, A. Pedersen, K. Stokbro and H. Jonsson,
+J. Chem. Phys. 140, 214106 (2014)</li>
+</ol>
+<div class="section" id="the-neb-class">
+<h2>The NEB class<a class="headerlink" href="#the-neb-class" title="Permalink to this headline">¶</a></h2>
+<p>This module defines one class:</p>
+<dl class="class">
+<dt id="ase.neb.NEB">
+<em class="property">class </em><tt class="descclassname">ase.neb.</tt><tt class="descname">NEB</tt><big>(</big><em>images</em>, <em>k=0.1</em>, <em>climb=False</em>, <em>parallel=False</em>, <em>world=None</em><big>)</big><a class="reference internal" href="../_modules/ase/neb.html#NEB"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.neb.NEB" title="Permalink to this definition">¶</a></dt>
+<dd><p>Nudged elastic band.</p>
+<dl class="docutils">
+<dt>images: list of Atoms objects</dt>
+<dd>Images defining path from initial to final state.</dd>
+<dt>k: float or list of floats</dt>
+<dd>Spring constant(s) in eV/Ang.  One number or one for each spring.</dd>
+<dt>climb: bool</dt>
+<dd>Use a climbing image (default is no climbing image).</dd>
+<dt>parallel: bool</dt>
+<dd>Distribute images over processors.</dd>
+</dl>
+</dd></dl>
+
+<p>Example of use, between initial and final state which have been previously
+saved in A.traj and B.traj:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">io</span>
+<span class="kn">from</span> <span class="nn">ase.neb</span> <span class="kn">import</span> <span class="n">NEB</span>
+<span class="kn">from</span> <span class="nn">ase.optimize</span> <span class="kn">import</span> <span class="n">MDMin</span>
+<span class="c"># Read initial and final states:</span>
+<span class="n">initial</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="s">&#39;A.traj&#39;</span><span class="p">)</span>
+<span class="n">final</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="s">&#39;B.traj&#39;</span><span class="p">)</span>
+<span class="c"># Make a band consisting of 5 images:</span>
+<span class="n">images</span> <span class="o">=</span> <span class="p">[</span><span class="n">initial</span><span class="p">]</span>
+<span class="n">images</span> <span class="o">+=</span> <span class="p">[</span><span class="n">initial</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+<span class="n">images</span> <span class="o">+=</span> <span class="p">[</span><span class="n">final</span><span class="p">]</span>
+<span class="n">neb</span> <span class="o">=</span> <span class="n">NEB</span><span class="p">(</span><span class="n">images</span><span class="p">)</span>
+<span class="c"># Interpolate linearly the potisions of the three middle images:</span>
+<span class="n">neb</span><span class="o">.</span><span class="n">interpolate</span><span class="p">()</span>
+<span class="c"># Set calculators:</span>
+<span class="k">for</span> <span class="n">image</span> <span class="ow">in</span> <span class="n">images</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">]:</span>
+    <span class="n">image</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">MyCalculator</span><span class="p">(</span><span class="o">...</span><span class="p">))</span>
+<span class="c"># Optimize:</span>
+<span class="n">optimizer</span> <span class="o">=</span> <span class="n">MDMin</span><span class="p">(</span><span class="n">neb</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="s">&#39;A2B.traj&#39;</span><span class="p">)</span>
+<span class="n">optimizer</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.04</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Be sure to use the copy method (or similar) to create new instances
+of atoms within the list of images fed to the NEB. Do <em>not</em> use something
+like [initial for i in range(3)], as it will only create references to
+the original atoms object.</p>
+<p>Notice the use of the <a class="reference internal" href="#ase.neb.NEB.interpolate" title="ase.neb.NEB.interpolate"><tt class="xref py py-meth docutils literal"><span class="pre">interpolate()</span></tt></a> method to obtain an
+initial guess for the path from A to B.</p>
+</div>
+<div class="section" id="interpolation">
+<h2>Interpolation<a class="headerlink" href="#interpolation" title="Permalink to this headline">¶</a></h2>
+<dl class="method">
+<dt id="ase.neb.NEB.interpolate">
+<tt class="descclassname">NEB.</tt><tt class="descname">interpolate</tt><big>(</big><big>)</big><a class="reference internal" href="../_modules/ase/neb.html#NEB.interpolate"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.neb.NEB.interpolate" title="Permalink to this definition">¶</a></dt>
+<dd><p>Interpolate path linearly from initial to final state.</p>
+</dd></dl>
+
+<dl class="method">
+<dt>
+<tt class="descclassname">NEB.</tt><tt class="descname">interpolate</tt><big>(</big><em>'idpp'</em><big>)</big><a class="reference internal" href="../_modules/ase/neb.html#NEB.interpolate"><span class="viewcode-link">[source]</span></a></dt>
+<dd><p>From a linear interpolation, create an improved path
+from initial to final state using the IDPP approach [4].</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.neb.NEB.idpp_interpolate">
+<tt class="descclassname">NEB.</tt><tt class="descname">idpp_interpolate</tt><big>(</big><big>)</big><a class="reference internal" href="../_modules/ase/neb.html#NEB.idpp_interpolate"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.neb.NEB.idpp_interpolate" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generate an idpp pathway from a set of images. This differs
+from above in that an initial guess for the IDPP, other than
+linear interpolation can be provided.</p>
+</dd></dl>
+
+<p>Only the internal images (not the endpoints) need have
+calculators attached.</p>
+<div class="admonition seealso">
+<p class="first admonition-title">See also</p>
+<dl class="docutils">
+<dt><a class="reference internal" href="optimize.html#module-ase.optimize" title="ase.optimize: Structure Optimization"><tt class="xref py py-mod docutils literal"><span class="pre">ase.optimize</span></tt></a>:</dt>
+<dd>Information about energy minimization (optimization). Note that you
+cannot use the default optimizer, BFGSLineSearch, with NEBs. (This is
+the optimizer imported when you import QuasiNewton.) If you would
+like a quasi-newton optimizer, use BFGS instead.</dd>
+<dt><a class="reference internal" href="calculators/calculators.html#module-ase.calculators" title="ase.calculators: Energy, force and stress calculators."><tt class="xref py py-mod docutils literal"><span class="pre">ase.calculators</span></tt></a>:</dt>
+<dd>How to use calculators.</dd>
+</dl>
+<p><a class="reference internal" href="../tutorials/tutorials.html#tutorials"><em>Tutorials</em></a>:</p>
+<blockquote class="last">
+<div><ul class="simple">
+<li><a class="reference internal" href="../tutorials/neb/diffusion.html#diffusion-tutorial"><em>Diffusion of gold atom on Al(100) surface (NEB)</em></a></li>
+<li><a class="reference internal" href="../tutorials/dissociation.html#neb2"><em>Dissociation tutorial</em></a></li>
+<li><a class="reference internal" href="../tutorials/neb/idpp.html#idpp-tutorial"><em>Image Dependent Pair Potential for improved interpolation of NEB initial guess</em></a></li>
+</ul>
+</div></blockquote>
+</div>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">If there are <span class="math">\(M\)</span> images and each image has <span class="math">\(N\)</span> atoms, then the NEB
+object behaves like one big Atoms object with <span class="math">\(MN\)</span> atoms, so its
+<a class="reference internal" href="atoms.html#ase.atoms.Atoms.get_positions" title="ase.atoms.Atoms.get_positions"><tt class="xref py py-meth docutils literal"><span class="pre">get_positions()</span></tt></a> method will return a <span class="math">\(MN \times 3\)</span>
+array.</p>
+</div>
+</div>
+<div class="section" id="trajectories">
+<h2>Trajectories<a class="headerlink" href="#trajectories" title="Permalink to this headline">¶</a></h2>
+<p>The code:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.optimize</span> <span class="kn">import</span> <span class="n">BFGS</span>
+<span class="n">optimizer</span> <span class="o">=</span> <span class="n">BFGS</span><span class="p">(</span><span class="n">neb</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="s">&#39;A2B.traj&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>will write all images to one file.  The Trajectory object knows about
+NEB calculations, so it will write <span class="math">\(M\)</span> images with <span class="math">\(N\)</span> atoms at every
+iteration and not one big configuration containing <span class="math">\(MN\)</span> atoms.</p>
+<p>The result of the latest iteration can now be analysed with this
+command: <strong class="command">ase-gui A2B.traj&#64;-5:</strong>.</p>
+<p>For the example above, you can write the images to individual
+trajectory files like this:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">):</span>
+    <span class="n">qn</span><span class="o">.</span><span class="n">attach</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">PickleTrajectory</span><span class="p">(</span><span class="s">&#39;A2B-</span><span class="si">%d</span><span class="s">.traj&#39;</span> <span class="o">%</span> <span class="n">i</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">,</span> <span class="n">images</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
+</pre></div>
+</div>
+<p>The result of the latest iteration can be analysed like this:</p>
+<div class="highlight-bash"><div class="highlight"><pre><span class="nv">$ </span>ase-gui A.traj A2B-?.traj B.traj -n -1
+</pre></div>
+</div>
+</div>
+<div class="section" id="restarting">
+<h2>Restarting<a class="headerlink" href="#restarting" title="Permalink to this headline">¶</a></h2>
+<p>Restart the calculation like this:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">images</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="s">&#39;A2B.traj@-5:&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="climbing-image">
+<h2>Climbing image<a class="headerlink" href="#climbing-image" title="Permalink to this headline">¶</a></h2>
+<p>The &#8220;climbing image&#8221; variation involves designating a specific image to behave
+differently to the rest of the chain: it feels no spring forces, and the
+component of the potential force parallel to the chain is reversed, such that
+it moves towards the saddle point. This depends on the adjacent images
+providing a reasonably good approximation of the correct tangent at the
+location of the climbing image; thus in general the climbing image is not
+turned on until some iterations have been run without it (generally 20% to 50%
+of the total number of iterations).</p>
+<p>To use the climbing image NEB method, instantiate the NEB object like this:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">neb</span> <span class="o">=</span> <span class="n">NEB</span><span class="p">(</span><span class="n">images</span><span class="p">,</span> <span class="n">climb</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">Quasi-Newton methods, such as BFGS, are not well suited for climbing image
+NEB calculations. FIRE have been known to give good results, although
+convergence is slow.</p>
+</div>
+</div>
+<div class="section" id="parallelization-over-images">
+<h2>Parallelization over images<a class="headerlink" href="#parallelization-over-images" title="Permalink to this headline">¶</a></h2>
+<p>Some calculators can parallelize over the images of a NEB calculation.
+The script will have to be run with an MPI-enabled Python interpreter
+like <a class="reference external" href="http://wiki.fysik.dtu.dk/gpaw">GPAW</a>&#8216;s <a class="reference external" href="https://wiki.fysik.dtu.dk/gpaw/documentation/manual.html#parallel-calculations">gpaw-python</a>.  All images exist on all processors, but
+only some of them have a calculator attached:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.parallel</span> <span class="kn">import</span> <span class="n">rank</span><span class="p">,</span> <span class="n">size</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="c"># Number of internal images:</span>
+<span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">images</span><span class="p">)</span> <span class="o">-</span> <span class="mi">2</span>
+<span class="n">j</span> <span class="o">=</span> <span class="n">rank</span> <span class="o">*</span> <span class="n">n</span> <span class="o">//</span> <span class="n">size</span>
+<span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">image</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">images</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]):</span>
+    <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="n">j</span><span class="p">:</span>
+        <span class="n">image</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+</pre></div>
+</div>
+<p>Create the NEB object with <tt class="docutils literal"><span class="pre">NEB(images,</span> <span class="pre">parallel=True)</span></tt> and let the
+master processes write the images:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">if</span> <span class="n">rank</span> <span class="o">%</span> <span class="p">(</span><span class="n">size</span> <span class="o">//</span> <span class="n">n</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+    <span class="n">traj</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">PickleTrajectory</span><span class="p">(</span><span class="s">&#39;neb</span><span class="si">%d</span><span class="s">.traj&#39;</span> <span class="o">%</span> <span class="n">j</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">,</span> <span class="n">images</span><span class="p">[</span><span class="mi">1</span> <span class="o">+</span> <span class="n">j</span><span class="p">],</span>
+                               <span class="n">master</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    <span class="n">optimizer</span><span class="o">.</span><span class="n">attach</span><span class="p">(</span><span class="n">traj</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>For a complete example using <a class="reference external" href="http://wiki.fysik.dtu.dk/gpaw">GPAW</a>, see <a class="reference external" href="https://wiki.fysik.dtu.dk/gpaw/tutorials/neb/neb.html">here</a>.</p>
+</div>
+<div class="section" id="analysis-of-output">
+<span id="nebtools"></span><h2>Analysis of output<a class="headerlink" href="#analysis-of-output" title="Permalink to this headline">¶</a></h2>
+<p>A class exists to help in automating the analysis of NEB jobs. See the <a class="reference internal" href="../tutorials/neb/diffusion.html#diffusion-tutorial"><em>Diffusion Tutorial</em></a> for some examples of its use.</p>
+<dl class="class">
+<dt id="ase.neb.NEBtools">
+<em class="property">class </em><tt class="descclassname">ase.neb.</tt><tt class="descname">NEBtools</tt><big>(</big><em>images</em><big>)</big><a class="reference internal" href="../_modules/ase/neb.html#NEBtools"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.neb.NEBtools" title="Permalink to this definition">¶</a></dt>
+<dd><p>Class to make many of the common tools for NEB analysis available to
+the user. Useful for scripting the output of many jobs. Initialize with
+list of images which make up a single band.</p>
+<dl class="method">
+<dt id="ase.neb.NEBtools.get_barrier">
+<tt class="descname">get_barrier</tt><big>(</big><em>fit=True</em>, <em>raw=False</em><big>)</big><a class="reference internal" href="../_modules/ase/neb.html#NEBtools.get_barrier"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.neb.NEBtools.get_barrier" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the barrier estimate from the NEB, along with the
+Delta E of the elementary reaction. If fit=True, the barrier is
+estimated based on the interpolated fit to the images; if
+fit=False, the barrier is taken as the maximum-energy image
+without interpolation. Set raw=True to get the raw energy of the
+transition state instead of the forward barrier.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.neb.NEBtools.get_fit">
+<tt class="descname">get_fit</tt><big>(</big><big>)</big><a class="reference internal" href="../_modules/ase/neb.html#NEBtools.get_fit"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.neb.NEBtools.get_fit" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the parameters for fitting images to band.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.neb.NEBtools.get_fmax">
+<tt class="descname">get_fmax</tt><big>(</big><big>)</big><a class="reference internal" href="../_modules/ase/neb.html#NEBtools.get_fmax"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.neb.NEBtools.get_fmax" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns fmax, as used by optimizers with NEB.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ase.neb.NEBtools.plot_band">
+<tt class="descname">plot_band</tt><big>(</big><em>ax=None</em><big>)</big><a class="reference internal" href="../_modules/ase/neb.html#NEBtools.plot_band"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#ase.neb.NEBtools.plot_band" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots the NEB band on matplotlib axes object &#8216;ax&#8217;. If ax=None
+returns a new figure object.</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../overview.html">
+              Overview</a></li>
+            <li><a href="../download.html">
+              Installation</a></li>
+            <li><a href="../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="ase.html">
+              Documentation</a></li>
+            <li><a href="../faq.html">FAQ</a></li>
+            <li><a href="../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>This Page</h3>
+            <ul>
+<li><a class="reference internal" href="#">Nudged elastic band</a><ul>
+<li><a class="reference internal" href="#the-neb-class">The NEB class</a></li>
+<li><a class="reference internal" href="#interpolation">Interpolation</a></li>
+<li><a class="reference internal" href="#trajectories">Trajectories</a></li>
+<li><a class="reference internal" href="#restarting">Restarting</a></li>
+<li><a class="reference internal" href="#climbing-image">Climbing image</a></li>
+<li><a class="reference internal" href="#parallelization-over-images">Parallelization over images</a></li>
+<li><a class="reference internal" href="#analysis-of-output">Analysis of output</a></li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="constraints.html" title="previous chapter">Constraints</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="vibrations.html" title="next chapter">Vibration analysis</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../_sources/ase/neb.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

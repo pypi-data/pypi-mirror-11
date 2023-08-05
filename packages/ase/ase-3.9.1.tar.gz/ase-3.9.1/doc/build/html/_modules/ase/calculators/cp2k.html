@@ -1,0 +1,659 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.calculators.cp2k &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../../contents.html" />
+    <link rel="index" title="Global index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../../index.html" />
+    <link rel="up" title="ase.calculators" href="../calculators.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../calculators.html" accesskey="U">ase.calculators</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.calculators.cp2k</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+
+<span class="sd">&quot;&quot;&quot;This module defines an ASE interface to CP2K.</span>
+
+<span class="sd">http://www.cp2k.org</span>
+<span class="sd">Author: Ole Schuett &lt;ole.schuett@mat.ethz.ch&gt;</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">os.path</span>
+<span class="kn">from</span> <span class="nn">warnings</span> <span class="kn">import</span> <span class="n">warn</span>
+<span class="kn">from</span> <span class="nn">subprocess</span> <span class="kn">import</span> <span class="n">Popen</span><span class="p">,</span> <span class="n">PIPE</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">ase.io</span>
+<span class="kn">from</span> <span class="nn">ase.units</span> <span class="kn">import</span> <span class="n">Rydberg</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.calculator</span> <span class="kn">import</span> <span class="n">Calculator</span><span class="p">,</span> <span class="n">all_changes</span><span class="p">,</span> <span class="n">Parameters</span>
+
+
+<div class="viewcode-block" id="CP2K"><a class="viewcode-back" href="../../../ase/calculators/cp2k.html#ase.calculators.cp2k.CP2K">[docs]</a><span class="k">class</span> <span class="nc">CP2K</span><span class="p">(</span><span class="n">Calculator</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;ASE-Calculator for CP2K.</span>
+
+<span class="sd">    CP2K is a program to perform atomistic and molecular simulations of solid</span>
+<span class="sd">    state, liquid, molecular, and biological systems. It provides a general</span>
+<span class="sd">    framework for different methods such as e.g., density functional theory</span>
+<span class="sd">    (DFT) using a mixed Gaussian and plane waves approach (GPW) and classical</span>
+<span class="sd">    pair and many-body potentials.</span>
+
+<span class="sd">    CP2K is freely available under the GPL license.</span>
+<span class="sd">    It is written in Fortran 2003 and can be run efficiently in parallel.</span>
+
+<span class="sd">    Check http://www.cp2k.org about how to obtain and install CP2K.</span>
+<span class="sd">    Make sure that you also have the CP2K-shell available, since it is required</span>
+<span class="sd">    by the CP2K-calulator.</span>
+
+<span class="sd">    The CP2K-calculator relies on the CP2K-shell. The CP2K-shell was originally</span>
+<span class="sd">    designed for interactive sessions. When a calculator object is</span>
+<span class="sd">    instantiated, it launches a CP2K-shell as a subprocess in the background</span>
+<span class="sd">    and communications with it through stdin/stdout pipes. This has the</span>
+<span class="sd">    advantage that the CP2K process is kept alive for the whole lifetime of</span>
+<span class="sd">    the calculator object, i.e. there is no startup overhead for a sequence</span>
+<span class="sd">    of energy evaluations. Furthermore, the usage of pipes avoids slow file-</span>
+<span class="sd">    system I/O. This mechanism even works for MPI-parallelized runs, because</span>
+<span class="sd">    stdin/stdout of the first rank are forwarded by the MPI-environment to the</span>
+<span class="sd">    mpiexec-process.</span>
+
+<span class="sd">    The command used by the calculator to launch the CP2K-shell is</span>
+<span class="sd">    ``cp2k_shell``. To run a parallelized simulation use something like this:</span>
+
+<span class="sd">    &gt;&gt;&gt; CP2K.command=&quot;env OMP_NUM_THREADS=2 mpiexec -np 4 cp2k_shell.psmp&quot;</span>
+
+
+<span class="sd">    Arguments:</span>
+
+<span class="sd">    auto_write: bool</span>
+<span class="sd">        Flag to enable the auto-write mode. If enabled the</span>
+<span class="sd">        ``write()`` routine is called after every</span>
+<span class="sd">        calculation, which mimics the behavior of the</span>
+<span class="sd">        ``FileIOCalculator``. Default is ``False``.</span>
+<span class="sd">    basis_set: str</span>
+<span class="sd">        Name of the basis set to be use.</span>
+<span class="sd">        The default is ``DZVP-MOLOPT-SR-GTH``.</span>
+<span class="sd">    basis_set_file: str</span>
+<span class="sd">        Filename of the basis set file.</span>
+<span class="sd">        Default is ``BASIS_MOLOPT``.</span>
+<span class="sd">        Set the environment variable $CP2K_DATA_DIR</span>
+<span class="sd">        to enabled automatic file discovered.</span>
+<span class="sd">    charge: float</span>
+<span class="sd">        The total charge of the system.  Default is ``0``.</span>
+<span class="sd">    command: str</span>
+<span class="sd">        The command used to launch the CP2K-shell.</span>
+<span class="sd">        If ``command`` is not passed as an argument to the</span>
+<span class="sd">        constructor, the class-variable ``CP2K.command``,</span>
+<span class="sd">        and then the environment variabel</span>
+<span class="sd">        ``$ASE_CP2K_COMMAND`` are checked.</span>
+<span class="sd">        Eventually, ``cp2k_shell`` is used as default.</span>
+<span class="sd">    cutoff: float</span>
+<span class="sd">        The cutoff of the finest grid level.  Default is ``400 * Rydberg``.</span>
+<span class="sd">    debug: bool</span>
+<span class="sd">        Flag to enable debug mode. This will print all</span>
+<span class="sd">        communication between the CP2K-shell and the</span>
+<span class="sd">        CP2K-calculator. Default is ``False``.</span>
+<span class="sd">    force_eval_method: str</span>
+<span class="sd">        The method CP2K uses to evaluate energies and forces.</span>
+<span class="sd">        The default is ``Quickstep``, which is CP2K&#39;s</span>
+<span class="sd">        module for electronic structure methods like DFT.</span>
+<span class="sd">    inp: str</span>
+<span class="sd">        CP2K input template. If present, the calculator will</span>
+<span class="sd">        augment the template, e.g. with coordinates, and use</span>
+<span class="sd">        it to launch CP2K. Hence, this generic mechanism</span>
+<span class="sd">        gives access to all features of CP2K.</span>
+<span class="sd">        Note, that most keywords accept ``None`` to disable the generation</span>
+<span class="sd">        of the corresponding input section.</span>
+<span class="sd">    max_scf: int</span>
+<span class="sd">        Maximum number of SCF iteration to be performed for</span>
+<span class="sd">        one optimization. Default is ``50``.</span>
+<span class="sd">    poisson_solver: str</span>
+<span class="sd">        The poisson solver to be used. Currently, the only supported</span>
+<span class="sd">        values are ``auto`` and ``None``. Default is ``auto``.</span>
+<span class="sd">    potential_file: str</span>
+<span class="sd">        Filename of the pseudo-potential file.</span>
+<span class="sd">        Default is ``POTENTIAL``.</span>
+<span class="sd">        Set the environment variable $CP2K_DATA_DIR</span>
+<span class="sd">        to enabled automatic file discovered.</span>
+<span class="sd">    pseudo_potential: str</span>
+<span class="sd">        Name of the pseudo-potential to be use.</span>
+<span class="sd">        Default is ``auto``. This tries to infer the</span>
+<span class="sd">        potential from the employed XC-functional,</span>
+<span class="sd">        otherwise it falls back to ``GTH-PBE``.</span>
+<span class="sd">    stress_tensor: bool</span>
+<span class="sd">        Indicates whether the analytic stress-tensor should be calculated.</span>
+<span class="sd">        Default is ``True``.</span>
+<span class="sd">    uks: bool</span>
+<span class="sd">        Requests an unrestricted Kohn-Sham calculations.</span>
+<span class="sd">        This is need for spin-polarized systems, ie. with an</span>
+<span class="sd">        odd number of electrons. Default is ``False``.</span>
+<span class="sd">    xc: str</span>
+<span class="sd">        Name of exchange and correlation functional.</span>
+<span class="sd">        Accepts all functions supported by CP2K itself or libxc.</span>
+<span class="sd">        Default is ``LDA``.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">implemented_properties</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;energy&#39;</span><span class="p">,</span> <span class="s">&#39;forces&#39;</span><span class="p">,</span> <span class="s">&#39;stress&#39;</span><span class="p">]</span>
+    <span class="n">command</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="n">default_parameters</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+        <span class="n">auto_write</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+        <span class="n">basis_set</span><span class="o">=</span><span class="s">&#39;DZVP-MOLOPT-SR-GTH&#39;</span><span class="p">,</span>
+        <span class="n">basis_set_file</span><span class="o">=</span><span class="s">&#39;BASIS_MOLOPT&#39;</span><span class="p">,</span>
+        <span class="n">charge</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">cutoff</span><span class="o">=</span><span class="mi">400</span> <span class="o">*</span> <span class="n">Rydberg</span><span class="p">,</span>
+        <span class="n">force_eval_method</span><span class="o">=</span><span class="s">&quot;Quickstep&quot;</span><span class="p">,</span>
+        <span class="n">inp</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">,</span>
+        <span class="n">max_scf</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+        <span class="n">potential_file</span><span class="o">=</span><span class="s">&#39;POTENTIAL&#39;</span><span class="p">,</span>
+        <span class="n">pseudo_potential</span><span class="o">=</span><span class="s">&#39;auto&#39;</span><span class="p">,</span>
+        <span class="n">stress_tensor</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+        <span class="n">uks</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+        <span class="n">poisson_solver</span><span class="o">=</span><span class="s">&#39;auto&#39;</span><span class="p">,</span>
+        <span class="n">xc</span><span class="o">=</span><span class="s">&#39;LDA&#39;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">restart</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">ignore_bad_restart_file</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                 <span class="n">label</span><span class="o">=</span><span class="s">&#39;cp2k&#39;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">debug</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Construct CP2K-calculator object.&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_debug</span> <span class="o">=</span> <span class="n">debug</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_force_env_id</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_child</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_shell_version</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="bp">None</span>
+
+        <span class="c"># Several places are check to determine self.command</span>
+        <span class="k">if</span> <span class="n">command</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">command</span> <span class="o">=</span> <span class="n">command</span>
+        <span class="k">elif</span> <span class="n">CP2K</span><span class="o">.</span><span class="n">command</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">command</span> <span class="o">=</span> <span class="n">CP2K</span><span class="o">.</span><span class="n">command</span>
+        <span class="k">elif</span> <span class="s">&#39;ASE_CP2K_COMMAND&#39;</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">command</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s">&#39;ASE_CP2K_COMMAND&#39;</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">command</span> <span class="o">=</span> <span class="s">&#39;cp2k_shell&#39;</span>  <span class="c"># default</span>
+
+        <span class="k">assert</span> <span class="s">&#39;cp2k_shell&#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">command</span>
+
+        <span class="n">Calculator</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">restart</span><span class="p">,</span> <span class="n">ignore_bad_restart_file</span><span class="p">,</span>
+                            <span class="n">label</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c"># launch cp2k_shell child process</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_debug</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">command</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_child</span> <span class="o">=</span> <span class="n">Popen</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">command</span><span class="p">,</span> <span class="n">shell</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">universal_newlines</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                            <span class="n">stdin</span><span class="o">=</span><span class="n">PIPE</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=</span><span class="n">PIPE</span><span class="p">,</span> <span class="n">bufsize</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;* READY&#39;</span>
+
+        <span class="c"># check version of shell</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;VERSION&#39;</span><span class="p">)</span>
+        <span class="n">shell_version</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s">&quot;:&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;* READY&#39;</span>
+        <span class="k">assert</span> <span class="n">shell_version</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&quot;CP2K Shell Version&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_shell_version</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">shell_version</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_shell_version</span> <span class="o">&gt;=</span> <span class="mf">1.0</span>
+
+        <span class="c"># enable harsh mode, stops on any error</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;HARSH&#39;</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;* READY&#39;</span>
+
+        <span class="k">if</span> <span class="n">restart</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">restart</span><span class="p">)</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">ignore_bad_restart_file</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span>
+
+    <span class="k">def</span> <span class="nf">__del__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Release force_env and terminate cp2k_shell child process&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_release_force_env</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_child</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;EXIT&#39;</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_child</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span>  <span class="c"># child process exited properly?</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_child</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_shell_version</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set parameters like set(key1=value1, key2=value2, ...).&quot;&quot;&quot;</span>
+        <span class="n">changed_parameters</span> <span class="o">=</span> <span class="n">Calculator</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">changed_parameters</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+        <span class="s">&#39;Write atoms, parameters and calculated results into restart files.&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_debug</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&quot;Writting restart to: &quot;</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">label</span> <span class="o">+</span> <span class="s">&#39;_restart.traj&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">label</span> <span class="o">+</span> <span class="s">&#39;_params.ase&#39;</span><span class="p">)</span>
+        <span class="nb">open</span><span class="p">(</span><span class="n">label</span> <span class="o">+</span> <span class="s">&#39;_results.ase&#39;</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">read</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+        <span class="s">&#39;Read atoms, parameters and calculated results from restart files.&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="n">ase</span><span class="o">.</span><span class="n">io</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">label</span> <span class="o">+</span> <span class="s">&#39;_restart.traj&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span> <span class="o">=</span> <span class="n">Parameters</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">label</span> <span class="o">+</span> <span class="s">&#39;_params.ase&#39;</span><span class="p">)</span>
+        <span class="n">results_txt</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">label</span> <span class="o">+</span> <span class="s">&#39;_results.ase&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span> <span class="o">=</span> <span class="nb">eval</span><span class="p">(</span><span class="n">results_txt</span><span class="p">,</span> <span class="p">{</span><span class="s">&#39;array&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">})</span>
+
+    <span class="k">def</span> <span class="nf">calculate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">properties</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                  <span class="n">system_changes</span><span class="o">=</span><span class="n">all_changes</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Do the calculation.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">properties</span><span class="p">:</span>
+            <span class="n">properties</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;energy&#39;</span><span class="p">]</span>
+        <span class="n">Calculator</span><span class="o">.</span><span class="n">calculate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">properties</span><span class="p">,</span> <span class="n">system_changes</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_debug</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&quot;system_changes:&quot;</span><span class="p">,</span> <span class="n">system_changes</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="s">&#39;numbers&#39;</span> <span class="ow">in</span> <span class="n">system_changes</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_release_force_env</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_force_env_id</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_create_force_env</span><span class="p">()</span>
+
+        <span class="c"># enable eV and Angstrom as units</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;UNITS_EV_A&#39;</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;* READY&#39;</span>
+
+        <span class="n">n_atoms</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s">&#39;cell&#39;</span> <span class="ow">in</span> <span class="n">system_changes</span><span class="p">:</span>
+            <span class="n">cell</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;SET_CELL </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_force_env_id</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s">&#39;</span><span class="si">%.20e</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">cell</span><span class="o">.</span><span class="n">flat</span><span class="p">]))</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;* READY&#39;</span>
+
+        <span class="k">if</span> <span class="s">&#39;positions&#39;</span> <span class="ow">in</span> <span class="n">system_changes</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;SET_POS </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_force_env_id</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="mi">3</span> <span class="o">*</span> <span class="n">n_atoms</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">pos</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">():</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%.20e</span><span class="s">   </span><span class="si">%.20e</span><span class="s">   </span><span class="si">%.20e</span><span class="s">&#39;</span> <span class="o">%</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">pos</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;*END&#39;</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">())</span> <span class="o">&gt;=</span> <span class="mi">0</span>  <span class="c"># max change -&gt; ignore</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;* READY&#39;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;EVAL_EF </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_force_env_id</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;* READY&#39;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;GET_E </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_force_env_id</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s">&#39;energy&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">())</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;* READY&#39;</span>
+
+        <span class="n">forces</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="n">n_atoms</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;GET_F </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_force_env_id</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">())</span> <span class="o">==</span> <span class="mi">3</span> <span class="o">*</span> <span class="n">n_atoms</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_atoms</span><span class="p">):</span>
+            <span class="n">line</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span>
+            <span class="n">forces</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()]</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;* END&#39;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;* READY&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s">&#39;forces&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">forces</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;GET_STRESS </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_force_env_id</span><span class="p">)</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;* READY&#39;</span>
+
+        <span class="n">stress</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()])</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">stress</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">stress</span><span class="p">))</span>   <span class="c"># should be symmetric</span>
+        <span class="c"># Convert 3x3 stress tensor to Voigt form as required by ASE</span>
+        <span class="n">stress</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">stress</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">stress</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">stress</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
+                           <span class="n">stress</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">stress</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">stress</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s">&#39;stress&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span> <span class="o">*</span> <span class="n">stress</span>  <span class="c"># cp2k uses the opposite sign</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">auto_write</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">label</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_create_force_env</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Instantiates a new force-environment&quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_force_env_id</span> <span class="ow">is</span> <span class="bp">None</span>
+        <span class="n">label_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">label</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">label_dir</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">label_dir</span><span class="p">):</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;Creating directory: &#39;</span> <span class="o">+</span> <span class="n">label_dir</span><span class="p">)</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">label_dir</span><span class="p">)</span>  <span class="c"># cp2k expects dirs to exist</span>
+
+        <span class="n">inp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate_input</span><span class="p">()</span>
+        <span class="n">inp_fn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">+</span> <span class="s">&#39;.inp&#39;</span>
+        <span class="n">out_fn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">+</span> <span class="s">&#39;.out&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_write_file</span><span class="p">(</span><span class="n">inp_fn</span><span class="p">,</span> <span class="n">inp</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;LOAD </span><span class="si">%s</span><span class="s"> </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">inp_fn</span><span class="p">,</span> <span class="n">out_fn</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_force_env_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">())</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_force_env_id</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;* READY&#39;</span>
+
+    <span class="k">def</span> <span class="nf">_write_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fn</span><span class="p">,</span> <span class="n">content</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Write content to a file&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_debug</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;Writting to file: &#39;</span> <span class="o">+</span> <span class="n">fn</span><span class="p">)</span>
+            <span class="k">print</span><span class="p">(</span><span class="n">content</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_shell_version</span> <span class="o">&lt;</span> <span class="mf">2.0</span><span class="p">:</span>
+            <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">fn</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">content</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">lines</span> <span class="o">=</span> <span class="n">content</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;WRITE_FILE&#39;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="n">fn</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">lines</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;*END&#39;</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;* READY&#39;</span>
+
+    <span class="k">def</span> <span class="nf">_release_force_env</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Destroys the current force-environment&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_force_env_id</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_send</span><span class="p">(</span><span class="s">&#39;DESTROY </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_force_env_id</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_recv</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;* READY&#39;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_force_env_id</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">_generate_input</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Generates a CP2K input file&quot;&quot;&quot;</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span>
+        <span class="n">root</span> <span class="o">=</span> <span class="n">parse_input</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">inp</span><span class="p">)</span>
+        <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;GLOBAL&#39;</span><span class="p">,</span> <span class="s">&#39;PROJECT &#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">label</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">force_eval_method</span><span class="p">:</span>
+            <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL&#39;</span><span class="p">,</span> <span class="s">&#39;METHOD &#39;</span> <span class="o">+</span> <span class="n">p</span><span class="o">.</span><span class="n">force_eval_method</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">stress_tensor</span><span class="p">:</span>
+            <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL&#39;</span><span class="p">,</span> <span class="s">&#39;STRESS_TENSOR ANALYTICAL&#39;</span><span class="p">)</span>
+            <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/PRINT/STRESS_TENSOR&#39;</span><span class="p">,</span>
+                             <span class="s">&#39;_SECTION_PARAMETERS_ ON&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">basis_set_file</span><span class="p">:</span>
+            <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/DFT&#39;</span><span class="p">,</span>
+                             <span class="s">&#39;BASIS_SET_FILE_NAME &#39;</span> <span class="o">+</span> <span class="n">p</span><span class="o">.</span><span class="n">basis_set_file</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">potential_file</span><span class="p">:</span>
+            <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/DFT&#39;</span><span class="p">,</span>
+                             <span class="s">&#39;POTENTIAL_FILE_NAME &#39;</span> <span class="o">+</span> <span class="n">p</span><span class="o">.</span><span class="n">potential_file</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">cutoff</span><span class="p">:</span>
+            <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/DFT/MGRID&#39;</span><span class="p">,</span>
+                             <span class="s">&#39;CUTOFF [eV] </span><span class="si">%.20e</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">p</span><span class="o">.</span><span class="n">cutoff</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">max_scf</span><span class="p">:</span>
+            <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/DFT/SCF&#39;</span><span class="p">,</span> <span class="s">&#39;MAX_SCF </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">p</span><span class="o">.</span><span class="n">max_scf</span><span class="p">)</span>
+            <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/DFT/LS_SCF&#39;</span><span class="p">,</span> <span class="s">&#39;MAX_SCF </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">p</span><span class="o">.</span><span class="n">max_scf</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">xc</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">xc</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&quot;XC_&quot;</span><span class="p">):</span>
+                <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/DFT/XC/XC_FUNCTIONAL/LIBXC&#39;</span><span class="p">,</span>
+                                 <span class="s">&#39;FUNCTIONAL &#39;</span> <span class="o">+</span> <span class="n">p</span><span class="o">.</span><span class="n">xc</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/DFT/XC/XC_FUNCTIONAL&#39;</span><span class="p">,</span>
+                                 <span class="s">&#39;_SECTION_PARAMETERS_ &#39;</span> <span class="o">+</span> <span class="n">p</span><span class="o">.</span><span class="n">xc</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">uks</span><span class="p">:</span>
+            <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/DFT&#39;</span><span class="p">,</span> <span class="s">&#39;UNRESTRICTED_KOHN_SHAM ON&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">charge</span> <span class="ow">and</span> <span class="n">p</span><span class="o">.</span><span class="n">charge</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/DFT&#39;</span><span class="p">,</span> <span class="s">&#39;CHARGE </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">p</span><span class="o">.</span><span class="n">charge</span><span class="p">)</span>
+
+        <span class="c"># add Poisson solver if needed</span>
+        <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">poisson_solver</span> <span class="o">==</span> <span class="s">&#39;auto&#39;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_pbc</span><span class="p">()):</span>
+            <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/DFT/POISSON&#39;</span><span class="p">,</span> <span class="s">&#39;PERIODIC NONE&#39;</span><span class="p">)</span>
+            <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/DFT/POISSON&#39;</span><span class="p">,</span> <span class="s">&#39;PSOLVER  MT&#39;</span><span class="p">)</span>
+
+        <span class="c"># write coords</span>
+        <span class="n">syms</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">()</span>
+        <span class="n">atoms</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">elm</span><span class="p">,</span> <span class="n">pos</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">syms</span><span class="p">,</span> <span class="n">atoms</span><span class="p">):</span>
+            <span class="n">line</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">  </span><span class="si">%.20e</span><span class="s">   </span><span class="si">%.20e</span><span class="s">   </span><span class="si">%.20e</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">elm</span><span class="p">,</span> <span class="n">pos</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">pos</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">pos</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+            <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/SUBSYS/COORD&#39;</span><span class="p">,</span> <span class="n">line</span><span class="p">,</span> <span class="n">unique</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+
+        <span class="c"># write cell</span>
+        <span class="n">pbc</span> <span class="o">=</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">a</span> <span class="k">for</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="s">&#39;XYZ&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_pbc</span><span class="p">())</span> <span class="k">if</span> <span class="n">b</span><span class="p">])</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">pbc</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">pbc</span> <span class="o">=</span> <span class="s">&#39;NONE&#39;</span>
+        <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/SUBSYS/CELL&#39;</span><span class="p">,</span> <span class="s">&#39;PERIODIC &#39;</span> <span class="o">+</span> <span class="n">pbc</span><span class="p">)</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">a</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="s">&#39;ABC&#39;</span><span class="p">):</span>
+            <span class="n">line</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">  </span><span class="si">%.20e</span><span class="s">  </span><span class="si">%.20e</span><span class="s">  </span><span class="si">%.20e</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">c</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+            <span class="n">root</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/SUBSYS/CELL&#39;</span><span class="p">,</span> <span class="n">line</span><span class="p">)</span>
+
+        <span class="c"># determine pseudo-potential</span>
+        <span class="n">potential</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">pseudo_potential</span>
+        <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">pseudo_potential</span> <span class="o">==</span> <span class="s">&#39;auto&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">xc</span> <span class="ow">and</span> <span class="n">p</span><span class="o">.</span><span class="n">xc</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&#39;LDA&#39;</span><span class="p">,</span> <span class="s">&#39;PADE&#39;</span><span class="p">,</span> <span class="s">&#39;BP&#39;</span><span class="p">,</span> <span class="s">&#39;BLYP&#39;</span><span class="p">,</span> <span class="s">&#39;PBE&#39;</span><span class="p">,):</span>
+                <span class="n">potential</span> <span class="o">=</span> <span class="s">&#39;GTH-&#39;</span> <span class="o">+</span> <span class="n">p</span><span class="o">.</span><span class="n">xc</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;No matching pseudo potential found, using GTH-PBE&#39;</span>
+                <span class="n">warn</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="ne">RuntimeWarning</span><span class="p">)</span>
+                <span class="n">potential</span> <span class="o">=</span> <span class="s">&#39;GTH-PBE&#39;</span>  <span class="c"># fall back</span>
+
+        <span class="c"># write atomic kinds</span>
+        <span class="n">subsys</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">get_subsection</span><span class="p">(</span><span class="s">&#39;FORCE_EVAL/SUBSYS&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">subsections</span>
+        <span class="n">kinds</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">([(</span><span class="n">s</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">subsys</span> <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s">&quot;KIND&quot;</span><span class="p">])</span>
+        <span class="k">for</span> <span class="n">elem</span> <span class="ow">in</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">()):</span>
+            <span class="k">if</span> <span class="n">elem</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">kinds</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+                <span class="n">s</span> <span class="o">=</span> <span class="n">InputSection</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">&#39;KIND&#39;</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">elem</span><span class="p">)</span>
+                <span class="n">subsys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+                <span class="n">kinds</span><span class="p">[</span><span class="n">elem</span><span class="p">]</span> <span class="o">=</span> <span class="n">s</span>
+            <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">basis_set</span><span class="p">:</span>
+                <span class="n">kinds</span><span class="p">[</span><span class="n">elem</span><span class="p">]</span><span class="o">.</span><span class="n">keywords</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;BASIS_SET &#39;</span> <span class="o">+</span> <span class="n">p</span><span class="o">.</span><span class="n">basis_set</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">potential</span><span class="p">:</span>
+                <span class="n">kinds</span><span class="p">[</span><span class="n">elem</span><span class="p">]</span><span class="o">.</span><span class="n">keywords</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;POTENTIAL &#39;</span> <span class="o">+</span> <span class="n">potential</span><span class="p">)</span>
+
+        <span class="n">output_lines</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;!!! Generated by ASE !!!&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">root</span><span class="o">.</span><span class="n">write</span><span class="p">()</span>
+        <span class="k">return</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_lines</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_send</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">line</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Send a line to the cp2k_shell&quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_child</span><span class="o">.</span><span class="n">poll</span><span class="p">()</span> <span class="ow">is</span> <span class="bp">None</span>  <span class="c"># child process still alive?</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_debug</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;Sending: &#39;</span> <span class="o">+</span> <span class="n">line</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_child</span><span class="o">.</span><span class="n">stdin</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">line</span> <span class="o">+</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_recv</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Receive a line from the cp2k_shell&quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_child</span><span class="o">.</span><span class="n">poll</span><span class="p">()</span> <span class="ow">is</span> <span class="bp">None</span>  <span class="c"># child process still alive?</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_child</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_debug</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;Received: &#39;</span> <span class="o">+</span> <span class="n">line</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">line</span>
+
+</div>
+<span class="k">class</span> <span class="nc">InputSection</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Represents a section of a CP2K input file&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">params</span> <span class="o">=</span> <span class="n">params</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">keywords</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">subsections</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">def</span> <span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Outputs input section as string&quot;&quot;&quot;</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">keywords</span><span class="p">:</span>
+            <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">subsections</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">params</span><span class="p">:</span>
+                <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;&amp;</span><span class="si">%s</span><span class="s"> </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">s</span><span class="o">.</span><span class="n">params</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;&amp;</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">s</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">s</span><span class="o">.</span><span class="n">write</span><span class="p">():</span>
+                <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;   </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">l</span><span class="p">)</span>
+            <span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;&amp;END </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">s</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">output</span>
+
+    <span class="k">def</span> <span class="nf">add_keyword</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">line</span><span class="p">,</span> <span class="n">unique</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Adds a keyword to section.&quot;&quot;&quot;</span>
+        <span class="n">parts</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">subsections</span> <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">InputSection</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">subsections</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+            <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s">&#39;Multiple </span><span class="si">%s</span><span class="s"> sections found &#39;</span> <span class="o">%</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+        <span class="n">key</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">candidates</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">add_keyword</span><span class="p">(</span><span class="n">parts</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">line</span><span class="p">,</span> <span class="n">unique</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">key</span> <span class="o">==</span> <span class="s">&#39;_SECTION_PARAMETERS_&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">candidates</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;Section parameter of section </span><span class="si">%s</span><span class="s"> already set&#39;</span> <span class="o">%</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="n">candidates</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">params</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39; &#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">old_keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">candidates</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">keywords</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">unique</span> <span class="ow">and</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">old_keys</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;Keyword </span><span class="si">%s</span><span class="s"> already present in section </span><span class="si">%s</span><span class="s">&#39;</span>
+                <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="n">msg</span> <span class="o">%</span> <span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+            <span class="n">candidates</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">keywords</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">get_subsection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Finds a subsection&quot;&quot;&quot;</span>
+        <span class="n">parts</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">subsections</span> <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s">&#39;Multiple </span><span class="si">%s</span><span class="s"> sections found &#39;</span> <span class="o">%</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">InputSection</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">subsections</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+            <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">candidates</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">candidates</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get_subsection</span><span class="p">(</span><span class="n">parts</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+
+<span class="k">def</span> <span class="nf">parse_input</span><span class="p">(</span><span class="n">inp</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Parses the given CP2K input string&quot;&quot;&quot;</span>
+    <span class="n">root_section</span> <span class="o">=</span> <span class="n">InputSection</span><span class="p">(</span><span class="s">&#39;CP2K_INPUT&#39;</span><span class="p">)</span>
+    <span class="n">section_stack</span> <span class="o">=</span> <span class="p">[</span><span class="n">root_section</span><span class="p">]</span>
+
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">inp</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">):</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;!&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">line</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;&amp;END&#39;</span><span class="p">):</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">section_stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="n">line</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;&amp;&#39;</span><span class="p">:</span>
+            <span class="n">parts</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39; &#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">:]</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">s</span> <span class="o">=</span> <span class="n">InputSection</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">parts</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">s</span> <span class="o">=</span> <span class="n">InputSection</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
+            <span class="n">section_stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">subsections</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+            <span class="n">section_stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">section_stack</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">keywords</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">root_section</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../../overview.html">
+              Overview</a></li>
+            <li><a href="../../../download.html">
+              Installation</a></li>
+            <li><a href="../../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../../faq.html">FAQ</a></li>
+            <li><a href="../../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../calculators.html" accesskey="U">ase.calculators</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

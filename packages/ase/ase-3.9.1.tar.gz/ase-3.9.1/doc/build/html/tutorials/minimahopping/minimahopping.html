@@ -1,0 +1,190 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Constrained minima hopping (global optimization) &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="Tutorials" href="../tutorials.html" />
+    <link rel="next" title="Optimization with a Genetic Algorithm" href="../ga/ga_optimize.html" />
+    <link rel="prev" title="Partly occupied Wannier Functions" href="../wannier/wannier.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../tutorials.html" accesskey="U">Tutorials</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="constrained-minima-hopping-global-optimization">
+<span id="mhtutorial"></span><h1>Constrained minima hopping (global optimization)<a class="headerlink" href="#constrained-minima-hopping-global-optimization" title="Permalink to this headline">¶</a></h1>
+<p>This is an example of a search for a global optimum geometric configuration using the minima hopping algorithm, along with the Hookean class of constraints. This type of approach is useful in searching for the global optimum position of adsorbates on a surface while enforcing that the adsorbates&#8217; identity is preserved.</p>
+<p>The below example looks at finding the optimum configuration of a Cu<sub>2</sub> adsorbate on a fixed Pt (110) surface. Although this is not a physically relevant simulation &#8212; these elements (Cu, Pt) were chosen only because they work with the EMT calculator &#8211; one can imagine replacing the Cu<sub>2</sub> adsorbate with CO, for example, to find its optimum binding configuration under the constraint that the CO does not dissociate into separate C and O adsorbates.</p>
+<p>This also uses the Hookean constraint in two different ways. In the first, it constrains the Cu atoms to feel a restorative force if their interatomic distance exceeds 2.6 Angstroms; this preserves the dimer character of the Cu<sub>2</sub>, and if they are near each other they feel no constraint. The second constrains one of the Cu atoms to feel a downward force if its position exceeds a z coordinate of 15 Angstroms. Since the Cu atoms are tied together, we don&#8217;t necessarily need to put such a force on both of the Cu atoms. This second constraint prevents the Cu<sub>2</sub> adsorbate from flying off the surface, which would lead to it exploring a lot of irrelevant configurational space, such as up in the vacuum or on the bottom of the next periodic slab.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">Atoms</span><span class="p">,</span> <span class="n">Atom</span>
+<span class="kn">from</span> <span class="nn">ase.lattice.surface</span> <span class="kn">import</span> <span class="n">fcc110</span>
+<span class="kn">from</span> <span class="nn">ase.optimize.minimahopping</span> <span class="kn">import</span> <span class="n">MinimaHopping</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="kn">from</span> <span class="nn">ase.constraints</span> <span class="kn">import</span> <span class="n">FixAtoms</span><span class="p">,</span> <span class="n">Hookean</span>
+
+<span class="c"># Make the Pt 110 slab.</span>
+<span class="n">atoms</span> <span class="o">=</span> <span class="n">fcc110</span><span class="p">(</span><span class="s">&#39;Pt&#39;</span><span class="p">,</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">vacuum</span><span class="o">=</span><span class="mf">7.</span><span class="p">)</span>
+
+<span class="c"># Add the Cu2 adsorbate.</span>
+<span class="n">adsorbate</span> <span class="o">=</span> <span class="n">Atoms</span><span class="p">([</span><span class="n">Atom</span><span class="p">(</span><span class="s">&#39;Cu&#39;</span><span class="p">,</span> <span class="n">atoms</span><span class="p">[</span><span class="mi">7</span><span class="p">]</span><span class="o">.</span><span class="n">position</span> <span class="o">+</span> <span class="p">(</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">)),</span>
+                   <span class="n">Atom</span><span class="p">(</span><span class="s">&#39;Cu&#39;</span><span class="p">,</span> <span class="n">atoms</span><span class="p">[</span><span class="mi">7</span><span class="p">]</span><span class="o">.</span><span class="n">position</span> <span class="o">+</span> <span class="p">(</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">))])</span>
+<span class="n">atoms</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">adsorbate</span><span class="p">)</span>
+
+<span class="c"># Constrain the surface to be fixed and a Hookean constraint between</span>
+<span class="c"># the adsorbate atoms.</span>
+<span class="n">constraints</span> <span class="o">=</span> <span class="p">[</span><span class="n">FixAtoms</span><span class="p">(</span><span class="n">indices</span><span class="o">=</span><span class="p">[</span><span class="n">atom</span><span class="o">.</span><span class="n">index</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">atoms</span> <span class="k">if</span>
+                                 <span class="n">atom</span><span class="o">.</span><span class="n">symbol</span><span class="o">==</span><span class="s">&#39;Pt&#39;</span><span class="p">]),</span>
+               <span class="n">Hookean</span><span class="p">(</span><span class="n">a1</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">a2</span><span class="o">=</span><span class="mi">9</span><span class="p">,</span> <span class="n">rt</span><span class="o">=</span><span class="mf">2.6</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mf">15.</span><span class="p">),</span>
+               <span class="n">Hookean</span><span class="p">(</span><span class="n">a1</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">a2</span><span class="o">=</span><span class="p">(</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">,</span> <span class="o">-</span><span class="mf">15.</span><span class="p">),</span> <span class="n">k</span><span class="o">=</span><span class="mf">15.</span><span class="p">),]</span>
+<span class="n">atoms</span><span class="o">.</span><span class="n">set_constraint</span><span class="p">(</span><span class="n">constraints</span><span class="p">)</span>
+
+<span class="c"># Set the calculator.</span>
+<span class="n">calc</span> <span class="o">=</span> <span class="n">EMT</span><span class="p">()</span>
+<span class="n">atoms</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">calc</span><span class="p">)</span>
+
+<span class="c"># Instantiate and run the minima hopping algorithm.</span>
+<span class="n">hop</span> <span class="o">=</span> <span class="n">MinimaHopping</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span>
+                    <span class="n">Ediff0</span><span class="o">=</span><span class="mf">2.5</span><span class="p">,</span>
+                    <span class="n">T0</span><span class="o">=</span><span class="mf">4000.</span><span class="p">)</span>
+<span class="n">hop</span><span class="p">(</span><span class="n">totalsteps</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>This script will produce 10 molecular dynamics and 11 optimization files. It will also produce a file called &#8216;minima.traj&#8217; which contains all of the accepted minima. You can look at the progress of the algorithm in the file hop.log in combination with the trajectory files.</p>
+<p>Alternatively, there is a utility to allow you to visualize the progress of the algorithm. You can run this from within the same directory as your algorithm as:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.optimize.minimahopping</span> <span class="kn">import</span> <span class="n">MHPlot</span>
+
+<span class="n">mhplot</span> <span class="o">=</span> <span class="n">MHPlot</span><span class="p">()</span>
+<span class="n">mhplot</span><span class="o">.</span><span class="n">save_figure</span><span class="p">(</span><span class="s">&#39;summary.png&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>This will make a summary figure, which should look something like the one below. As the search is inherently random, yours will look different than this (and this will look different each time the documentation is rebuilt). In this figure, you will see on the <span class="math">\(E_\mathrm{pot}\)</span> axes the energy levels of the conformers found. The flat bars represent the energy at the end of each local optimization step. The checkmark indicates the local minimum was accepted; red arrows indicate it was rejected for the three possible reasons. The black path between steps is the potential energy during the molecular dynamics (MD) portion of the step; the dashed line is the local optimization on termination of the MD step. Note the y axis is broken to allow different energy scales between the local minima and the space explored in the MD simulations. The <span class="math">\(T\)</span> and <span class="math">\(E_\mathrm{diff}\)</span> plots show the values of the self-adjusting parameters as the algorithm progresses.</p>
+<img alt="../../_images/summary.png" src="../../_images/summary.png" />
+<p>You can see examples of the implementation of this for real adsorbates as well as find suitable parameters for the Hookean constraints:</p>
+<blockquote>
+<div><div class="line-block">
+<div class="line">Andrew Peterson</div>
+<div class="line"><a class="reference external" href="http://dx.doi.org/10.1007/s11244-013-0161-8">Global optimization of adsorbate–surface structures while preserving molecular identity</a></div>
+<div class="line">Top. Catal., Vol. <strong>57</strong>, 40 (2014)</div>
+</div>
+</div></blockquote>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="../wannier/wannier.html" title="previous chapter">Partly occupied Wannier Functions</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="../ga/ga_optimize.html" title="next chapter">Optimization with a Genetic Algorithm</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../../_sources/tutorials/minimahopping/minimahopping.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../tutorials.html" accesskey="U">Tutorials</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

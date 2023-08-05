@@ -1,0 +1,1024 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.io.bundletrajectory &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../../contents.html" />
+    <link rel="index" title="Global index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../../index.html" />
+    <link rel="up" title="ase.io" href="../io.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../io.html" accesskey="U">ase.io</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.io.bundletrajectory</h1><div class="highlight"><pre>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+<span class="sd">&quot;&quot;&quot;bundletrajectory - a module for I/O from large MD simulations.</span>
+
+<span class="sd">The BundleTrajectory class writes trajectory into a directory with the</span>
+<span class="sd">following structure::</span>
+
+<span class="sd">    filename.bundle (dir)</span>
+<span class="sd">        metadata.pickle        Data about the file format, and about which</span>
+<span class="sd">                               data is present.</span>
+<span class="sd">        state.pickle           The number of frames</span>
+<span class="sd">        F0 (dir)               Frame number 0</span>
+<span class="sd">            small.pickle       Small data structures in a dictionary</span>
+<span class="sd">                               (pbc, cell, ...)</span>
+<span class="sd">            numbers.pickle     Atomic numbers</span>
+<span class="sd">            positions.pickle   Positions</span>
+<span class="sd">            momenta.pickle     Momenta</span>
+<span class="sd">            ...</span>
+<span class="sd">        F1 (dir)</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">ase.parallel</span>
+<span class="kn">from</span> <span class="nn">ase.parallel</span> <span class="kn">import</span> <span class="n">paropen</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.singlepoint</span> <span class="kn">import</span> <span class="n">SinglePointCalculator</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">shutil</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">pickle</span>
+<span class="kn">import</span> <span class="nn">collections</span>
+
+<div class="viewcode-block" id="BundleTrajectory"><a class="viewcode-back" href="../../../ase/trajectory.html#ase.io.bundletrajectory.BundleTrajectory">[docs]</a><span class="k">class</span> <span class="nc">BundleTrajectory</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Reads and writes atoms into a .bundle directory.</span>
+
+<span class="sd">    The BundleTrajectory is an alternative way of storing</span>
+<span class="sd">    trajectories, intended for large-scale molecular dynamics</span>
+<span class="sd">    simulations, where a single flat file becomes unwieldy.  Instead,</span>
+<span class="sd">    the data is stored in directory, a &#39;bundle&#39; (the name bundle is</span>
+<span class="sd">    inspired from bundles in Mac OS, which are really just directories</span>
+<span class="sd">    the user is supposed to think of as a single file-like unit).</span>
+
+<span class="sd">    Parameters:</span>
+
+<span class="sd">    filename:</span>
+<span class="sd">        The name of the directory.  Preferably ending in .bundle.</span>
+
+<span class="sd">    mode (optional):</span>
+<span class="sd">        The file opening mode.  &#39;r&#39; means open for reading, &#39;w&#39; for</span>
+<span class="sd">        writing and &#39;a&#39; for appending.  Default: &#39;r&#39;.  If opening in</span>
+<span class="sd">        write mode, and the filename already exists, the old file is</span>
+<span class="sd">        renamed to .bak (any old .bak file is deleted), except if the</span>
+<span class="sd">        existing file is empty.</span>
+
+<span class="sd">    atoms (optional):</span>
+<span class="sd">        The atoms that will be written.  Can only be specified in</span>
+<span class="sd">        write or append mode.  If not specified, the atoms must be</span>
+<span class="sd">        given as an argument to the .write() method instead.</span>
+
+<span class="sd">    backup=True:</span>
+<span class="sd">        Use backup=False to disable renaming of an existing file.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">slavelog</span> <span class="o">=</span> <span class="bp">True</span>  <span class="c"># Log from all nodes</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s">&#39;r&#39;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">backup</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="s">&#39;constructing&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">filename</span> <span class="o">=</span> <span class="n">filename</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pre_observers</span> <span class="o">=</span> <span class="p">[]</span>   <span class="c"># Callback functions before write is performed</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">post_observers</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c"># Callback functions after write is performed</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">master</span> <span class="o">=</span> <span class="n">ase</span><span class="o">.</span><span class="n">parallel</span><span class="o">.</span><span class="n">rank</span> <span class="o">==</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">extra_data</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_defaults</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_backend</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s">&#39;r&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">atoms</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;You cannot specify atoms in read mode.&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_open_read</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s">&#39;w&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_open_write</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">backup</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s">&#39;a&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_open_append</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_set_defaults</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s">&quot;Set default values for internal parameters.&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">version</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">subtype</span> <span class="o">=</span> <span class="s">&#39;normal&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">backend_name</span> <span class="o">=</span> <span class="s">&#39;pickle&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;positions&#39;</span><span class="p">:</span> <span class="bp">True</span><span class="p">,</span>
+                          <span class="s">&#39;numbers&#39;</span><span class="p">:</span> <span class="s">&#39;once&#39;</span><span class="p">,</span>
+                          <span class="s">&#39;tags&#39;</span><span class="p">:</span> <span class="s">&#39;once&#39;</span><span class="p">,</span>
+                          <span class="s">&#39;masses&#39;</span><span class="p">:</span> <span class="s">&#39;once&#39;</span><span class="p">,</span>
+                          <span class="s">&#39;momenta&#39;</span><span class="p">:</span> <span class="bp">True</span><span class="p">,</span>
+                          <span class="s">&#39;forces&#39;</span><span class="p">:</span> <span class="bp">True</span><span class="p">,</span>
+                          <span class="s">&#39;energy&#39;</span><span class="p">:</span> <span class="bp">True</span><span class="p">,</span>
+                          <span class="s">&#39;energies&#39;</span><span class="p">:</span> <span class="bp">False</span><span class="p">,</span>
+                          <span class="s">&#39;stress&#39;</span><span class="p">:</span> <span class="bp">False</span><span class="p">,</span>
+                          <span class="s">&#39;magmoms&#39;</span><span class="p">:</span> <span class="bp">True</span>
+                          <span class="p">}</span>
+
+    <span class="k">def</span> <span class="nf">_set_backend</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">backend</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set the backed doing the actual I/O.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">backend_name</span> <span class="o">=</span> <span class="n">backend</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">backend_name</span> <span class="o">==</span> <span class="s">&#39;pickle&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">backend</span> <span class="o">=</span> <span class="n">PickleBundleBackend</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">master</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+                <span class="s">&quot;This version of ASE cannot use BundleTrajectory with backend &#39;</span><span class="si">%s</span><span class="s">&#39;&quot;</span>
+                <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">backend_name</span><span class="p">)</span>
+
+<div class="viewcode-block" id="BundleTrajectory.write"><a class="viewcode-back" href="../../../ase/trajectory.html#ase.io.bundletrajectory.BundleTrajectory.write">[docs]</a>    <span class="k">def</span> <span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Write the atoms to the file.</span>
+
+<span class="sd">        If the atoms argument is not given, the atoms object specified</span>
+<span class="sd">        when creating the trajectory object is used.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Check that we are in write mode</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">==</span> <span class="s">&#39;prewrite&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="s">&#39;write&#39;</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span> <span class="o">==</span> <span class="mi">0</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">!=</span> <span class="s">&#39;write&#39;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&#39;Cannot write in &#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">+</span> <span class="s">&#39; mode.&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">atoms</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">atoms</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="s">&#39;interpolate&#39;</span><span class="p">):</span>
+            <span class="c"># seems to be a NEB</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&#39;Beginning to write NEB data&#39;</span><span class="p">)</span>
+            <span class="n">neb</span> <span class="o">=</span> <span class="n">atoms</span>
+            <span class="k">assert</span> <span class="ow">not</span> <span class="n">neb</span><span class="o">.</span><span class="n">parallel</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">neb</span><span class="o">.</span><span class="n">get_energies_and_forces</span><span class="p">(</span><span class="nb">all</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">for</span> <span class="n">image</span> <span class="ow">in</span> <span class="n">neb</span><span class="o">.</span><span class="n">images</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">image</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&#39;Done writing NEB data&#39;</span><span class="p">)</span>
+            <span class="k">return</span>
+
+        <span class="c"># OK, it is a real atoms object.  Write it.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_call_observers</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pre_observers</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Beginning to write frame &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nframes</span><span class="p">))</span>
+        <span class="n">framedir</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_make_framedir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nframes</span><span class="p">)</span>
+
+        <span class="c"># Check which data should be written the first time:</span>
+        <span class="c"># Modify datatypes so any element of type &#39;once&#39; becomes true</span>
+        <span class="c"># for the first frame but false for subsequent frames.</span>
+        <span class="n">datatypes</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">v</span> <span class="o">==</span> <span class="s">&#39;once&#39;</span><span class="p">:</span>
+                <span class="n">v</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nframes</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="n">datatypes</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
+
+        <span class="c"># Write &#39;small&#39; data structures.  They are written jointly.</span>
+        <span class="n">smalldata</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;pbc&#39;</span><span class="p">:</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_pbc</span><span class="p">(),</span>
+                     <span class="s">&#39;cell&#39;</span><span class="p">:</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_cell</span><span class="p">(),</span>
+                     <span class="s">&#39;natoms&#39;</span><span class="p">:</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_number_of_atoms</span><span class="p">(),</span>
+                     <span class="s">&#39;constraints&#39;</span><span class="p">:</span> <span class="n">atoms</span><span class="o">.</span><span class="n">constraints</span><span class="p">,</span>
+                     <span class="p">}</span>
+        <span class="k">if</span> <span class="n">datatypes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;energy&#39;</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">smalldata</span><span class="p">[</span><span class="s">&#39;energy&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">RuntimeError</span><span class="p">,</span> <span class="ne">NotImplementedError</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="p">[</span><span class="s">&#39;energy&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">if</span> <span class="n">datatypes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;stress&#39;</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">smalldata</span><span class="p">[</span><span class="s">&#39;stress&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_stress</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">NotImplementedError</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="p">[</span><span class="s">&#39;stress&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">write_small</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="n">smalldata</span><span class="p">)</span>
+        
+        <span class="c"># Write the large arrays.</span>
+        <span class="k">if</span> <span class="n">datatypes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;positions&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="s">&#39;positions&#39;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">())</span>
+        <span class="k">if</span> <span class="n">datatypes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;numbers&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="s">&#39;numbers&#39;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">())</span>
+        <span class="k">if</span> <span class="n">datatypes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;tags&#39;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">atoms</span><span class="o">.</span><span class="n">has</span><span class="p">(</span><span class="s">&#39;tags&#39;</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="s">&#39;tags&#39;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_tags</span><span class="p">())</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="p">[</span><span class="s">&#39;tags&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">if</span> <span class="n">datatypes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;masses&#39;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">atoms</span><span class="o">.</span><span class="n">has</span><span class="p">(</span><span class="s">&#39;masses&#39;</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="s">&#39;masses&#39;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_masses</span><span class="p">())</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="p">[</span><span class="s">&#39;masses&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">if</span> <span class="n">datatypes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;momenta&#39;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">atoms</span><span class="o">.</span><span class="n">has</span><span class="p">(</span><span class="s">&#39;momenta&#39;</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="s">&#39;momenta&#39;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_momenta</span><span class="p">())</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="p">[</span><span class="s">&#39;momenta&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">if</span> <span class="n">datatypes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;magmoms&#39;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">atoms</span><span class="o">.</span><span class="n">has</span><span class="p">(</span><span class="s">&#39;magmoms&#39;</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="s">&#39;magmoms&#39;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_magmoms</span><span class="p">())</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="p">[</span><span class="s">&#39;magmoms&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">if</span> <span class="n">datatypes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;forces&#39;</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_forces</span><span class="p">()</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">RuntimeError</span><span class="p">,</span> <span class="ne">NotImplementedError</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="p">[</span><span class="s">&#39;forces&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="s">&#39;forces&#39;</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+                <span class="k">del</span> <span class="n">x</span>
+        <span class="k">if</span> <span class="n">datatypes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;energies&#39;</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energies</span><span class="p">()</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">RuntimeError</span><span class="p">,</span> <span class="ne">NotImplementedError</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="p">[</span><span class="s">&#39;energies&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="s">&#39;energies&#39;</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+                <span class="k">del</span> <span class="n">x</span>
+        <span class="c"># Write any extra data</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">once</span><span class="p">)</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">extra_data</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">once</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">source</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="n">x</span> <span class="o">=</span> <span class="n">source</span><span class="p">()</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">x</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_array</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+                <span class="k">del</span> <span class="n">x</span>
+                <span class="k">if</span> <span class="n">once</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="s">&#39;once&#39;</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="c"># Finally, write metadata if it is the first frame</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">metadata</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;datatypes&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="p">}</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_write_metadata</span><span class="p">(</span><span class="n">metadata</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_write_nframes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nframes</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_call_observers</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">post_observers</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Done writing frame &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nframes</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span> <span class="o">+=</span> <span class="mi">1</span>
+</div>
+<div class="viewcode-block" id="BundleTrajectory.select_data"><a class="viewcode-back" href="../../../ase/trajectory.html#ase.io.bundletrajectory.BundleTrajectory.select_data">[docs]</a>    <span class="k">def</span> <span class="nf">select_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Selects if a given data type should be written.</span>
+
+<span class="sd">        Data can be written in every frame (specify True), in the</span>
+<span class="sd">        first frame only (specify &#39;only&#39;) or not at all (specify</span>
+<span class="sd">        False).  Not all data types support the &#39;only&#39; keyword, if not</span>
+<span class="sd">        supported it is interpreted as True.</span>
+
+<span class="sd">        The following data types are supported, the letter in parenthesis</span>
+<span class="sd">        indicates the default:</span>
+
+<span class="sd">        positions (T), numbers (O), tags (O), masses (O), momenta (T),</span>
+<span class="sd">        forces (T), energy (T), energies (F), stress (F), magmoms (T)</span>
+
+<span class="sd">        If a given property is not present during the first write, it</span>
+<span class="sd">        will be not be saved at all.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="bp">True</span><span class="p">,</span> <span class="bp">False</span><span class="p">,</span> <span class="s">&#39;once&#39;</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Unknown write mode&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">data</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Unsupported data type: &quot;</span> <span class="o">+</span> <span class="n">data</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="p">[</span><span class="n">data</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+</div>
+<div class="viewcode-block" id="BundleTrajectory.set_extra_data"><a class="viewcode-back" href="../../../ase/trajectory.html#ase.io.bundletrajectory.BundleTrajectory.set_extra_data">[docs]</a>    <span class="k">def</span> <span class="nf">set_extra_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">once</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Adds extra data to be written.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        name:  The name of the data.</span>
+
+<span class="sd">        source (optional): If specified, a callable object returning</span>
+<span class="sd">        the data to be written.  If not specified it is instead</span>
+<span class="sd">        assumed that the atoms contains the data as an array of the</span>
+<span class="sd">        same name.</span>
+
+<span class="sd">        once (optional): If specified and True, the data will only be</span>
+<span class="sd">        written to the first frame.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">extra_data</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">name</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">once</span><span class="p">))</span>
+        </div>
+<div class="viewcode-block" id="BundleTrajectory.close"><a class="viewcode-back" href="../../../ase/trajectory.html#ase.io.bundletrajectory.BundleTrajectory.close">[docs]</a>    <span class="k">def</span> <span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s">&quot;Closes the trajectory.&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="s">&#39;closed&#39;</span>
+        <span class="n">lf</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;logfile&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">log</span><span class="o">=</span><span class="n">lf</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">lf</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">lf</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span>
+            </div>
+<div class="viewcode-block" id="BundleTrajectory.log"><a class="viewcode-back" href="../../../ase/trajectory.html#ase.io.bundletrajectory.BundleTrajectory.log">[docs]</a>    <span class="k">def</span> <span class="nf">log</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Write to the log file in the bundle.</span>
+
+<span class="sd">        Logging is only possible in write/append mode.</span>
+
+<span class="sd">        This function is mainly for internal use, but can also be called by</span>
+<span class="sd">        the user.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">master</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">slavelog</span><span class="p">):</span>
+            <span class="k">return</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">asctime</span><span class="p">()</span> <span class="o">+</span> <span class="s">&#39;: &#39;</span> <span class="o">+</span> <span class="n">text</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&quot;logfile&quot;</span><span class="p">):</span>
+            <span class="c"># Logging enabled</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="c"># Logfile not yet open</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">logdata</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">logdata</span> <span class="o">=</span> <span class="p">[</span><span class="n">text</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">text</span> <span class="o">+</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&quot;Cannot write to log file in mode &quot;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">state</span><span class="p">)</span>
+
+    <span class="c"># __getitem__ is the main reading method.</span></div>
+    <span class="k">def</span> <span class="nf">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_read</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="s">&quot;Read an atoms object from the BundleTrajectory.&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">!=</span> <span class="s">&#39;read&#39;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s">&#39;Cannot read in </span><span class="si">%s</span><span class="s"> mode&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">state</span><span class="p">,))</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">n</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">n</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s">&#39;Trajectory index </span><span class="si">%d</span><span class="s"> out of range [0, </span><span class="si">%d</span><span class="s">[&#39;</span>
+                             <span class="o">%</span> <span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span><span class="p">))</span>
+
+        <span class="n">framedir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;F&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">n</span><span class="p">))</span>
+        <span class="n">framezero</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;F0&#39;</span><span class="p">)</span>
+        <span class="n">smalldata</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">read_small</span><span class="p">(</span><span class="n">framedir</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">data</span><span class="p">[</span><span class="s">&#39;pbc&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">smalldata</span><span class="p">[</span><span class="s">&#39;pbc&#39;</span><span class="p">]</span>
+        <span class="n">data</span><span class="p">[</span><span class="s">&#39;cell&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">smalldata</span><span class="p">[</span><span class="s">&#39;cell&#39;</span><span class="p">]</span>
+        <span class="n">data</span><span class="p">[</span><span class="s">&#39;constraint&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">smalldata</span><span class="p">[</span><span class="s">&#39;constraints&#39;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">subtype</span> <span class="o">==</span> <span class="s">&#39;split&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">set_fragments</span><span class="p">(</span><span class="n">smalldata</span><span class="p">[</span><span class="s">&#39;fragments&#39;</span><span class="p">])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">atom_id</span><span class="p">,</span> <span class="n">dummy</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">read_split</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="s">&#39;ID&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">atom_id</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">atoms</span> <span class="o">=</span> <span class="n">ase</span><span class="o">.</span><span class="n">Atoms</span><span class="p">(</span><span class="o">**</span><span class="n">data</span><span class="p">)</span>
+        <span class="n">natoms</span> <span class="o">=</span> <span class="n">smalldata</span><span class="p">[</span><span class="s">&#39;natoms&#39;</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&#39;positions&#39;</span><span class="p">,</span> <span class="s">&#39;numbers&#39;</span><span class="p">,</span> <span class="s">&#39;tags&#39;</span><span class="p">,</span> <span class="s">&#39;masses&#39;</span><span class="p">,</span>
+                     <span class="s">&#39;momenta&#39;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+                <span class="n">atoms</span><span class="o">.</span><span class="n">arrays</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_data</span><span class="p">(</span><span class="n">framezero</span><span class="p">,</span> <span class="n">framedir</span><span class="p">,</span>
+                                                     <span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">atom_id</span><span class="p">)</span>
+                <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">arrays</span><span class="p">[</span><span class="n">name</span><span class="p">])</span> <span class="o">==</span> <span class="n">natoms</span>
+                
+        <span class="c"># Create the atoms object</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;energy&#39;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;forces&#39;</span><span class="p">):</span>
+                <span class="n">forces</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="s">&#39;forces&#39;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">forces</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;magmoms&#39;</span><span class="p">):</span>
+                <span class="n">magmoms</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="s">&#39;magmoms&#39;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">magmoms</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="n">calc</span> <span class="o">=</span> <span class="n">SinglePointCalculator</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span>
+                                         <span class="n">energy</span><span class="o">=</span><span class="n">smalldata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;energy&#39;</span><span class="p">),</span>
+                                         <span class="n">forces</span><span class="o">=</span><span class="n">forces</span><span class="p">,</span>
+                                         <span class="n">stress</span><span class="o">=</span><span class="n">smalldata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;stress&#39;</span><span class="p">),</span>
+                                         <span class="n">magmoms</span><span class="o">=</span><span class="n">magmoms</span><span class="p">)</span>
+            <span class="n">atoms</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">calc</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">atoms</span>
+
+<div class="viewcode-block" id="BundleTrajectory.read_extra_data"><a class="viewcode-back" href="../../../ase/trajectory.html#ase.io.bundletrajectory.BundleTrajectory.read_extra_data">[docs]</a>    <span class="k">def</span> <span class="nf">read_extra_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Read extra data stored alongside the atoms.</span>
+<span class="sd">        </span>
+<span class="sd">        Currently only used to read data stored by an NPT dynamics object.</span>
+<span class="sd">        The data is not associated with individual atoms.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">!=</span> <span class="s">&#39;read&#39;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s">&#39;Cannot read extra data in </span><span class="si">%s</span><span class="s"> mode&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">state</span><span class="p">,))</span>
+        <span class="c"># Handle negative n.</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">n</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">n</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s">&#39;Trajectory index </span><span class="si">%d</span><span class="s"> out of range [0, </span><span class="si">%d</span><span class="s">[&#39;</span>
+                             <span class="o">%</span> <span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span><span class="p">))</span>
+        <span class="n">framedir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;F&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">n</span><span class="p">))</span>
+        <span class="n">framezero</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;F0&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_data</span><span class="p">(</span><span class="n">framezero</span><span class="p">,</span> <span class="n">framedir</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">atom_id</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">_read_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f0</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">atom_id</span><span class="p">):</span>
+        <span class="s">&quot;Read single data item.&quot;</span>
+        
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">subtype</span> <span class="o">==</span> <span class="s">&#39;normal&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;once&#39;</span><span class="p">:</span>
+                <span class="n">d</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">f0</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">d</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">subtype</span> <span class="o">==</span> <span class="s">&#39;split&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;once&#39;</span><span class="p">:</span>
+                <span class="n">d</span><span class="p">,</span> <span class="n">issplit</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">read_split</span><span class="p">(</span><span class="n">f0</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">d</span><span class="p">,</span> <span class="n">issplit</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="o">.</span><span class="n">read_split</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">issplit</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="n">atom_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span>
+                <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">atom_id</span><span class="p">)</span>
+                <span class="n">d</span> <span class="o">=</span> <span class="n">d</span><span class="p">[</span><span class="n">atom_id</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">d</span>
+
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span>
+    
+    <span class="k">def</span> <span class="nf">_open_log</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">master</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">slavelog</span><span class="p">):</span>
+            <span class="k">return</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">master</span><span class="p">:</span>
+            <span class="n">lfn</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="s">&quot;log.txt&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">lfn</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="p">(</span><span class="s">&quot;log-node</span><span class="si">%d</span><span class="s">.txt&quot;</span> <span class="o">%</span>
+                                               <span class="p">(</span><span class="n">ase</span><span class="o">.</span><span class="n">parallel</span><span class="o">.</span><span class="n">rank</span><span class="p">,)))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">lfn</span><span class="p">,</span> <span class="s">&quot;a&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>   <span class="c"># Append to log if it exists.</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;logdata&#39;</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">text</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">logdata</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">text</span> <span class="o">+</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">logdata</span>
+
+    <span class="k">def</span> <span class="nf">_open_write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">backup</span><span class="p">):</span>
+        <span class="s">&quot;Open a bundle trajectory for writing.&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="o">=</span> <span class="bp">None</span> <span class="c"># Enable delayed logging</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="n">atoms</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">):</span>
+            <span class="c"># The output directory already exists.</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_bundle</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s">&quot;Filename &#39;&quot;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">filename</span> <span class="o">+</span>
+                              <span class="s">&quot;&#39; already exists, but is not a BundleTrajectory.&quot;</span> <span class="o">+</span>
+                              <span class="s">&quot;Cowardly refusing to remove it.&quot;</span><span class="p">)</span>
+            <span class="n">ase</span><span class="o">.</span><span class="n">parallel</span><span class="o">.</span><span class="n">barrier</span><span class="p">()</span> <span class="c"># All must have time to see it exists.</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_empty_bundle</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&#39;Deleting old &quot;</span><span class="si">%s</span><span class="s">&quot; as it is empty&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">delete_bundle</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="ow">not</span> <span class="n">backup</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&#39;Deleting old &quot;</span><span class="si">%s</span><span class="s">&quot; as backup is turned off.&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">delete_bundle</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c"># Make a backup file</span>
+                <span class="n">bakname</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">filename</span> <span class="o">+</span> <span class="s">&#39;.bak&#39;</span>
+                <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">bakname</span><span class="p">):</span>
+                    <span class="n">ase</span><span class="o">.</span><span class="n">parallel</span><span class="o">.</span><span class="n">barrier</span><span class="p">()</span>  <span class="c"># All must see it exists</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&#39;Deleting old backup file &quot;</span><span class="si">%s</span><span class="s">&quot;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">bakname</span><span class="p">,))</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">delete_bundle</span><span class="p">(</span><span class="n">bakname</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&#39;Renaming &quot;</span><span class="si">%s</span><span class="s">&quot; to &quot;</span><span class="si">%s</span><span class="s">&quot;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="n">bakname</span><span class="p">))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_rename_bundle</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="n">bakname</span><span class="p">)</span>
+        <span class="c"># Ready to create a new bundle.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&#39;Creating new &quot;</span><span class="si">%s</span><span class="s">&quot;&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_make_bundledir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="s">&#39;prewrite&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_write_metadata</span><span class="p">({})</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_write_nframes</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>    <span class="c"># Mark new bundle as empty</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_open_log</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">def</span> <span class="nf">_open_read</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s">&quot;Open a bundle trajectory for reading.&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s">&#39;File not found: &#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_bundle</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s">&#39;Not a BundleTrajectory: &#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="s">&#39;read&#39;</span>
+        <span class="c"># Read the metadata</span>
+        <span class="n">metadata</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_metadata</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">metadata</span> <span class="o">=</span> <span class="n">metadata</span>
+        <span class="k">if</span> <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;version&#39;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">version</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+                <span class="s">&quot;This version of ASE cannot read a BundleTrajectory version &quot;</span>
+                <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">metadata</span><span class="p">[</span><span class="s">&#39;version&#39;</span><span class="p">]))</span>
+        <span class="k">if</span> <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;subtype&#39;</span><span class="p">]</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&#39;normal&#39;</span><span class="p">,</span> <span class="s">&#39;split&#39;</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+                <span class="s">&quot;This version of ASE cannot read BundleTrajectory subtype &quot;</span>
+                <span class="o">+</span> <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;subtype&#39;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">subtype</span> <span class="o">=</span> <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;subtype&#39;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_backend</span><span class="p">(</span><span class="n">metadata</span><span class="p">[</span><span class="s">&#39;backend&#39;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_nframes</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s">&quot;Empty BundleTrajectory&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">datatypes</span> <span class="o">=</span> <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;datatypes&#39;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="s">&#39;read&#39;</span>
+        
+    <span class="k">def</span> <span class="nf">_open_append</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">):</span>
+            <span class="c"># OK, no old bundle.  Open as for write instead.</span>
+            <span class="n">ase</span><span class="o">.</span><span class="n">parallel</span><span class="o">.</span><span class="n">barrier</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_open_write</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="bp">False</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_bundle</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s">&#39;Not a BundleTrajectory: &#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="s">&#39;read&#39;</span>
+        <span class="n">metadata</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_metadata</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">metadata</span> <span class="o">=</span> <span class="n">metadata</span>
+        <span class="k">if</span> <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;version&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">version</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+                <span class="s">&quot;Cannot append to a BundleTrajectory version </span><span class="si">%s</span><span class="s"> (supported version is </span><span class="si">%s</span><span class="s">)&quot;</span>
+                <span class="o">%</span> <span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">metadata</span><span class="p">[</span><span class="s">&#39;version&#39;</span><span class="p">]),</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">version</span><span class="p">)))</span>
+        <span class="k">if</span> <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;subtype&#39;</span><span class="p">]</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&#39;normal&#39;</span><span class="p">,</span> <span class="s">&#39;split&#39;</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+                <span class="s">&quot;This version of ASE cannot append to BundleTrajectory subtype &quot;</span>
+                <span class="o">+</span> <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;subtype&#39;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">subtype</span> <span class="o">=</span> <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;subtype&#39;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_backend</span><span class="p">(</span><span class="n">metadata</span><span class="p">[</span><span class="s">&#39;backend&#39;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_read_nframes</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_open_log</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&#39;Opening &quot;</span><span class="si">%s</span><span class="s">&quot; in append mode (nframes=</span><span class="si">%i</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nframes</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="s">&#39;write&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="n">atoms</span>
+        
+    <span class="k">def</span> <span class="nf">_write_nframes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="s">&quot;Write the number of frames in the bundle.&quot;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">==</span> <span class="s">&#39;write&#39;</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">==</span> <span class="s">&#39;prewrite&#39;</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="n">paropen</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="s">&quot;frames&quot;</span><span class="p">),</span> <span class="s">&quot;w&quot;</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_read_nframes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s">&quot;Read the number of frames.&quot;</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;frames&#39;</span><span class="p">))</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
+        <span class="k">return</span> <span class="n">n</span>
+
+    <span class="k">def</span> <span class="nf">_write_metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">metadata</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Write the metadata file of the bundle.</span>
+
+<span class="sd">        Modifies the medadata dictionary!</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Add standard fields that must always be present.</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">==</span> <span class="s">&#39;write&#39;</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">==</span> <span class="s">&#39;prewrite&#39;</span>
+        <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;format&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s">&#39;BundleTrajectory&#39;</span>
+        <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;version&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">version</span>
+        <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;subtype&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">subtype</span>
+        <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;backend&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">backend_name</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="n">paropen</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="s">&quot;metadata&quot;</span><span class="p">),</span> <span class="s">&quot;w&quot;</span><span class="p">)</span>
+        <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">metadata</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_read_metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Read the metadata.&quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">==</span> <span class="s">&#39;read&#39;</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;metadata&#39;</span><span class="p">))</span>
+        <span class="n">metadata</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">metadata</span>
+
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="BundleTrajectory.is_bundle"><a class="viewcode-back" href="../../../ase/trajectory.html#ase.io.bundletrajectory.BundleTrajectory.is_bundle">[docs]</a>    <span class="k">def</span> <span class="nf">is_bundle</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Check if a filename exists and is a BundleTrajectory.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">False</span>
+        <span class="n">metaname</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;metadata&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">metaname</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">False</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">metaname</span><span class="p">)</span>
+        <span class="n">mdata</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">mdata</span><span class="p">[</span><span class="s">&#39;format&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;BundleTrajectory&#39;</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">False</span>
+</div>
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="BundleTrajectory.is_empty_bundle"><a class="viewcode-back" href="../../../ase/trajectory.html#ase.io.bundletrajectory.BundleTrajectory.is_empty_bundle">[docs]</a>    <span class="k">def</span> <span class="nf">is_empty_bundle</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Check if a filename is an empty bundle.  Assumes that it is a bundle.&quot;&quot;&quot;</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&quot;frames&quot;</span><span class="p">))</span>
+        <span class="n">nframes</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
+        <span class="n">ase</span><span class="o">.</span><span class="n">parallel</span><span class="o">.</span><span class="n">barrier</span><span class="p">()</span>  <span class="c"># File may be removed by the master immediately after this.</span>
+        <span class="k">return</span> <span class="n">nframes</span> <span class="o">==</span> <span class="mi">0</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="BundleTrajectory.delete_bundle"><a class="viewcode-back" href="../../../ase/trajectory.html#ase.io.bundletrajectory.BundleTrajectory.delete_bundle">[docs]</a>    <span class="k">def</span> <span class="nf">delete_bundle</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+        <span class="s">&quot;Deletes a bundle.&quot;</span>
+        <span class="k">if</span> <span class="n">ase</span><span class="o">.</span><span class="n">parallel</span><span class="o">.</span><span class="n">rank</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c"># Only the master deletes</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">cls</span><span class="o">.</span><span class="n">is_bundle</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s">&quot;Cannot remove &#39;</span><span class="si">%s</span><span class="s">&#39; as it is not a bundle trajectory.&quot;</span>
+                              <span class="o">%</span> <span class="p">(</span><span class="n">filename</span><span class="p">,))</span>
+            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">islink</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+                <span class="c"># A symbolic link to a bundle.  Only remove the link.</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c"># A real bundle</span>
+                <span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c"># All other tasks wait for the directory to go away.</span>
+            <span class="k">while</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+                <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="c"># The master may not proceed before all tasks have seen the</span>
+        <span class="c"># directory go away, as it might otherwise create a new bundle</span>
+        <span class="c"># with the same name, fooling the wait loop in _make_bundledir.</span>
+        <span class="n">ase</span><span class="o">.</span><span class="n">parallel</span><span class="o">.</span><span class="n">barrier</span><span class="p">()</span>
+</div>
+    <span class="k">def</span> <span class="nf">_rename_bundle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">oldname</span><span class="p">,</span> <span class="n">newname</span><span class="p">):</span>
+        <span class="s">&quot;Rename a bundle.  Used to create the .bak&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">master</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">oldname</span><span class="p">,</span> <span class="n">newname</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">while</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">oldname</span><span class="p">):</span>
+                <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="c"># The master may not proceed before all tasks have seen the</span>
+        <span class="c"># directory go away.</span>
+        <span class="n">ase</span><span class="o">.</span><span class="n">parallel</span><span class="o">.</span><span class="n">barrier</span><span class="p">()</span>
+            
+    <span class="k">def</span> <span class="nf">_make_bundledir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Make the main bundle directory.</span>
+
+<span class="sd">        Since all MPI tasks might write to it, all tasks must wait for</span>
+<span class="sd">        the directory to appear.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Making directory &quot;</span> <span class="o">+</span> <span class="n">filename</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+        <span class="n">ase</span><span class="o">.</span><span class="n">parallel</span><span class="o">.</span><span class="n">barrier</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">master</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">while</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+                <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+                <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Waiting </span><span class="si">%d</span><span class="s"> seconds for </span><span class="si">%s</span><span class="s"> to appear!&quot;</span>
+                         <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">filename</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">_make_framedir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">frame</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Make subdirectory for the frame.</span>
+
+<span class="sd">        As only the master writes to it, no synchronization between</span>
+<span class="sd">        MPI tasks is necessary.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">framedir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="s">&quot;F&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">frame</span><span class="p">))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">master</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Making directory &quot;</span> <span class="o">+</span> <span class="n">framedir</span><span class="p">)</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">framedir</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">framedir</span>
+
+<div class="viewcode-block" id="BundleTrajectory.pre_write_attach"><a class="viewcode-back" href="../../../ase/trajectory.html#ase.io.bundletrajectory.BundleTrajectory.pre_write_attach">[docs]</a>    <span class="k">def</span> <span class="nf">pre_write_attach</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">function</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Attach a function to be called before writing begins.</span>
+
+<span class="sd">        function: The function or callable object to be called.</span>
+
+<span class="sd">        interval: How often the function is called.  Default: every time (1).</span>
+
+<span class="sd">        All other arguments are stored, and passed to the function.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">function</span><span class="p">,</span> <span class="n">collections</span><span class="o">.</span><span class="n">Callable</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Callback object must be callable.&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pre_observers</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">function</span><span class="p">,</span> <span class="n">interval</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="BundleTrajectory.post_write_attach"><a class="viewcode-back" href="../../../ase/trajectory.html#ase.io.bundletrajectory.BundleTrajectory.post_write_attach">[docs]</a>    <span class="k">def</span> <span class="nf">post_write_attach</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">function</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Attach a function to be called after writing ends.</span>
+
+<span class="sd">        function: The function or callable object to be called.</span>
+
+<span class="sd">        interval: How often the function is called.  Default: every time (1).</span>
+
+<span class="sd">        All other arguments are stored, and passed to the function.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">function</span><span class="p">,</span> <span class="n">collections</span><span class="o">.</span><span class="n">Callable</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Callback object must be callable.&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">post_observers</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">function</span><span class="p">,</span> <span class="n">interval</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">))</span>
+</div>
+    <span class="k">def</span> <span class="nf">_call_observers</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obs</span><span class="p">):</span>
+        <span class="s">&quot;Call pre/post write observers.&quot;</span>
+        <span class="k">for</span> <span class="n">function</span><span class="p">,</span> <span class="n">interval</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="ow">in</span> <span class="n">obs</span><span class="p">:</span>
+            <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nframes</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="n">interval</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">function</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    
+</div>
+<span class="k">class</span> <span class="nc">PickleBundleBackend</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Backend for writing BundleTrajectories stored as pickle files.&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">master</span><span class="p">):</span>
+        <span class="c"># Store if this backend will actually write anything</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">writesmall</span> <span class="o">=</span> <span class="n">master</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">writelarge</span> <span class="o">=</span> <span class="n">master</span>
+        
+    <span class="k">def</span> <span class="nf">write_small</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">framedir</span><span class="p">,</span> <span class="n">smalldata</span><span class="p">):</span>
+        <span class="s">&quot;Write small data to be written jointly.&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">writesmall</span><span class="p">:</span>
+            <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="s">&quot;smalldata.pickle&quot;</span><span class="p">),</span> <span class="s">&quot;w&quot;</span><span class="p">)</span>
+            <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">smalldata</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">framedir</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="s">&quot;Write data to separate file.&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">writelarge</span><span class="p">:</span>
+            <span class="n">fn</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="n">name</span> <span class="o">+</span> <span class="s">&#39;.pickle&#39;</span><span class="p">)</span>
+            <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">fn</span><span class="p">,</span> <span class="s">&quot;w&quot;</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">info</span> <span class="o">=</span> <span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">dtype</span><span class="p">))</span>
+            <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+                <span class="n">info</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">info</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">read_small</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">framedir</span><span class="p">):</span>
+        <span class="s">&quot;Read small data.&quot;</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="s">&quot;smalldata.pickle&quot;</span><span class="p">))</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">data</span>
+
+    <span class="k">def</span> <span class="nf">read</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">framedir</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="s">&quot;Read data from separate file.&quot;</span>
+        <span class="n">fn</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="n">name</span> <span class="o">+</span> <span class="s">&#39;.pickle&#39;</span><span class="p">)</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">fn</span><span class="p">)</span>
+        <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>  <span class="c"># Discarded.</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">data</span>
+
+    <span class="k">def</span> <span class="nf">read_info</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">framedir</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">split</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="s">&quot;Read information about file contents without reading the data.&quot;</span>
+        <span class="n">fn</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="n">name</span> <span class="o">+</span> <span class="s">&#39;.pickle&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">split</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">fn</span><span class="p">):</span>
+            <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">fn</span><span class="p">)</span>
+            <span class="n">info</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="k">return</span> <span class="n">info</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">split</span><span class="p">):</span>
+                <span class="n">fn</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="n">name</span> <span class="o">+</span> <span class="s">&#39;_&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39;.pickle&#39;</span><span class="p">)</span>
+                <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">fn</span><span class="p">)</span>
+                <span class="n">info</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">shape</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">info</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                    <span class="n">dtype</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+=</span> <span class="n">info</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="k">assert</span> <span class="n">dtype</span> <span class="o">==</span> <span class="n">info</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">return</span> <span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">shape</span><span class="p">),</span> <span class="n">dtype</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">set_fragments</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nfrag</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nfrag</span> <span class="o">=</span> <span class="n">nfrag</span>
+        
+    <span class="k">def</span> <span class="nf">read_split</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">framedir</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Read data from multiple files.</span>
+<span class="sd">        </span>
+<span class="sd">        Falls back to reading from single file if that is how data is stored.</span>
+
+<span class="sd">        Returns the data and a flag indicating if the data was really read from</span>
+<span class="sd">        split files.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="n">name</span> <span class="o">+</span> <span class="s">&#39;.pickle&#39;</span><span class="p">)):</span>
+            <span class="c"># Not stored in split form!</span>
+            <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="n">name</span><span class="p">),</span> <span class="bp">False</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nfrag</span><span class="p">):</span>
+            <span class="n">suf</span> <span class="o">=</span> <span class="s">&quot;_</span><span class="si">%d</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="p">,)</span>
+            <span class="n">fn</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">framedir</span><span class="p">,</span> <span class="n">name</span> <span class="o">+</span> <span class="n">suf</span> <span class="o">+</span> <span class="s">&#39;.pickle&#39;</span><span class="p">)</span>
+            <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">fn</span><span class="p">)</span>
+            <span class="n">shape</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>  <span class="c"># Discarded.</span>
+            <span class="n">data</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="bp">True</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">log</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Close anything that needs to be closed by the backend.</span>
+<span class="sd">        </span>
+<span class="sd">        The default backend does nothing here.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span>
+    
+<span class="k">def</span> <span class="nf">read_bundletrajectory</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">index</span><span class="o">=-</span><span class="mi">1</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Reads one or more atoms objects from a BundleTrajectory.</span>
+
+<span class="sd">    Arguments:</span>
+
+<span class="sd">    filename: str</span>
+<span class="sd">        The name of the bundle (really a directory!)</span>
+<span class="sd">    index: int</span>
+<span class="sd">        An integer specifying which frame to read, or an index object</span>
+<span class="sd">        for reading multiple frames.  Default: -1 (reads the last</span>
+<span class="sd">        frame).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">traj</span> <span class="o">=</span> <span class="n">BundleTrajectory</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s">&#39;r&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">traj</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c"># Here, we try to read only the configurations we need to read</span>
+        <span class="c"># and len(traj) should only be called if we need to as it will</span>
+        <span class="c"># read all configurations!</span>
+
+        <span class="c"># XXX there must be a simpler way?</span>
+        <span class="n">step</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">step</span> <span class="ow">or</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">step</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">start</span> <span class="ow">or</span> <span class="mi">0</span>
+            <span class="k">if</span> <span class="n">start</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">start</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">traj</span><span class="p">)</span>
+            <span class="n">stop</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">stop</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">traj</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">stop</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">stop</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">traj</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">index</span><span class="o">.</span><span class="n">start</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">start</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">traj</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">start</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">start</span>
+                <span class="k">if</span> <span class="n">start</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">start</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">traj</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">index</span><span class="o">.</span><span class="n">stop</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">stop</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">stop</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">stop</span>
+                <span class="k">if</span> <span class="n">stop</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">stop</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">traj</span><span class="p">)</span>
+                    
+        <span class="k">return</span> <span class="p">[</span><span class="n">traj</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">stop</span><span class="p">,</span> <span class="n">step</span><span class="p">)]</span>
+
+<span class="k">def</span> <span class="nf">write_bundletrajectory</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">images</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Write image(s) to a BundleTrajectory.</span>
+
+<span class="sd">    Write also energy, forces, and stress if they are already</span>
+<span class="sd">    calculated.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">traj</span> <span class="o">=</span> <span class="n">BundleTrajectory</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s">&#39;w&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">images</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+        <span class="n">images</span> <span class="o">=</span> <span class="p">[</span><span class="n">images</span><span class="p">]</span>
+        
+    <span class="k">for</span> <span class="n">atoms</span> <span class="ow">in</span> <span class="n">images</span><span class="p">:</span>
+        <span class="c"># Avoid potentially expensive calculations:</span>
+        <span class="n">calc</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_calculator</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">calc</span><span class="p">,</span> <span class="s">&#39;calculation_required&#39;</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">quantity</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&#39;energy&#39;</span><span class="p">,</span> <span class="s">&#39;forces&#39;</span><span class="p">,</span> <span class="s">&#39;stress&#39;</span><span class="p">,</span> <span class="s">&#39;magmoms&#39;</span><span class="p">):</span>
+                <span class="n">traj</span><span class="o">.</span><span class="n">select_data</span><span class="p">(</span><span class="n">quantity</span><span class="p">,</span>
+                                 <span class="ow">not</span> <span class="n">calc</span><span class="o">.</span><span class="n">calculation_required</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="p">[</span><span class="n">quantity</span><span class="p">]))</span>
+        <span class="n">traj</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+    <span class="n">traj</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    
+<span class="k">def</span> <span class="nf">print_bundletrajectory_info</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Prints information about a BundleTrajectory.</span>
+
+<span class="sd">    Mainly intended to be called from a command line tool.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">BundleTrajectory</span><span class="o">.</span><span class="n">is_bundle</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Not a BundleTrajectory!&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">BundleTrajectory</span><span class="o">.</span><span class="n">is_empty_bundle</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+        <span class="k">print</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;is an empty BundleTrajectory.&#39;</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="c"># Read the metadata</span>
+    <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;metadata&#39;</span><span class="p">))</span>
+    <span class="n">metadata</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;Metadata information of BundleTrajectory &#39;</span><span class="si">%s</span><span class="s">&#39;:&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">filename</span><span class="p">,))</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">metadata</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="s">&#39;datatypes&#39;</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&quot;  </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">))</span>
+    <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&#39;frames&#39;</span><span class="p">))</span>
+    <span class="n">nframes</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;Number of frames: </span><span class="si">%i</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">nframes</span><span class="p">,))</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;Data types:&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;datatypes&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">v</span> <span class="o">==</span> <span class="s">&#39;once&#39;</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&quot;  </span><span class="si">%s</span><span class="s">: First frame only.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">k</span><span class="p">,))</span>
+        <span class="k">elif</span> <span class="n">v</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&quot;  </span><span class="si">%s</span><span class="s">: All frames.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">k</span><span class="p">,))</span>
+    <span class="c"># Look at first frame</span>
+    <span class="k">if</span> <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;backend&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;pickle&#39;</span><span class="p">:</span>
+        <span class="n">backend</span> <span class="o">=</span> <span class="n">PickleBundleBackend</span><span class="p">(</span><span class="bp">True</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s">&quot;Backend </span><span class="si">%s</span><span class="s"> not supported.&quot;</span>
+                                  <span class="o">%</span> <span class="p">(</span><span class="n">metadata</span><span class="p">[</span><span class="s">&#39;backend&#39;</span><span class="p">],))</span>
+    <span class="n">frame</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">&quot;F0&quot;</span><span class="p">)</span>
+    <span class="n">small</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">read_small</span><span class="p">(</span><span class="n">frame</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;Contents of first frame:&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">small</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">k</span> <span class="o">==</span> <span class="s">&#39;constraints&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">v</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">&quot;  </span><span class="si">%i</span><span class="s"> constraints are present&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">&quot;  Constraints are absent.&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">k</span> <span class="o">==</span> <span class="s">&#39;pbc&#39;</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&quot;  Periodic boundary conditions: </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">v</span><span class="p">),))</span>
+        <span class="k">elif</span> <span class="n">k</span> <span class="o">==</span> <span class="s">&#39;natoms&#39;</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&quot;  Number of atoms: </span><span class="si">%i</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">v</span><span class="p">,))</span>
+        <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="s">&#39;shape&#39;</span><span class="p">):</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&quot;  </span><span class="si">%s</span><span class="s">: shape = </span><span class="si">%s</span><span class="s">, type = </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">shape</span><span class="p">),</span> <span class="nb">str</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">dtype</span><span class="p">)))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&quot;  </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">v</span><span class="p">)))</span>
+    <span class="c"># Read info from separate files.</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">metadata</span><span class="p">[</span><span class="s">&#39;datatypes&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">v</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">small</span><span class="p">:</span>
+            <span class="n">info</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">read_info</span><span class="p">(</span><span class="n">frame</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">info</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">info</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">tuple</span><span class="p">):</span>
+                <span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span> <span class="o">=</span> <span class="n">info</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">shape</span> <span class="o">=</span> <span class="n">info</span>
+                <span class="n">dtype</span> <span class="o">=</span> <span class="s">&#39;unknown&#39;</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&quot;  </span><span class="si">%s</span><span class="s">: shape = </span><span class="si">%s</span><span class="s">, type = </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">shape</span><span class="p">),</span> <span class="n">dtype</span><span class="p">))</span>
+                
+            
+            
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">ase.lattice.cubic</span> <span class="kn">import</span> <span class="n">FaceCenteredCubic</span>
+    <span class="kn">from</span> <span class="nn">ase.io</span> <span class="kn">import</span> <span class="n">read</span><span class="p">,</span> <span class="n">write</span>
+    <span class="n">atoms</span> <span class="o">=</span> <span class="n">FaceCenteredCubic</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span> <span class="n">symbol</span><span class="o">=</span><span class="s">&#39;Au&#39;</span><span class="p">)</span>
+    <span class="n">write</span><span class="p">(</span><span class="s">&#39;test.bundle&#39;</span><span class="p">,</span> <span class="n">atoms</span><span class="p">)</span>
+    <span class="n">atoms2</span> <span class="o">=</span> <span class="n">read</span><span class="p">(</span><span class="s">&#39;test.bundle&#39;</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span> <span class="o">==</span> <span class="n">atoms2</span><span class="o">.</span><span class="n">get_positions</span><span class="p">())</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+    <span class="k">assert</span> <span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">()</span> <span class="o">==</span> <span class="n">atoms2</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">())</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+    
+    
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../../overview.html">
+              Overview</a></li>
+            <li><a href="../../../download.html">
+              Installation</a></li>
+            <li><a href="../../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../../faq.html">FAQ</a></li>
+            <li><a href="../../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../io.html" accesskey="U">ase.io</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

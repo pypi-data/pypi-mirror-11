@@ -1,0 +1,686 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.thermochemistry &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.thermochemistry</h1><div class="highlight"><pre>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+<span class="sd">&quot;&quot;&quot;Modules for calculating thermochemical information from computational</span>
+<span class="sd">outputs.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">units</span>
+
+
+<span class="k">def</span> <span class="nf">rotationalinertia</span><span class="p">(</span><span class="n">atoms</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Calculates the three principle moments of inertia for an ASE atoms</span>
+<span class="sd">    object. This uses the atomic masses from ASE, which (if not explicitly</span>
+<span class="sd">    specified by the user) gives an inexact approximation of an isotopically</span>
+<span class="sd">    averaged result. Units are in amu*angstroms**2.&quot;&quot;&quot;</span>
+
+    <span class="c"># Calculate the center of mass.</span>
+    <span class="n">xcm</span><span class="p">,</span> <span class="n">ycm</span><span class="p">,</span> <span class="n">zcm</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_center_of_mass</span><span class="p">()</span>
+    <span class="n">masses</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_masses</span><span class="p">()</span>
+
+    <span class="c"># Calculate moments of inertia in the current frame of reference.</span>
+    <span class="n">Ixx</span> <span class="o">=</span> <span class="mf">0.</span>
+    <span class="n">Iyy</span> <span class="o">=</span> <span class="mf">0.</span>
+    <span class="n">Izz</span> <span class="o">=</span> <span class="mf">0.</span>
+    <span class="n">Ixy</span> <span class="o">=</span> <span class="mf">0.</span>
+    <span class="n">Ixz</span> <span class="o">=</span> <span class="mf">0.</span>
+    <span class="n">Iyz</span> <span class="o">=</span> <span class="mf">0.</span>
+    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">atom</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">atoms</span><span class="p">):</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">masses</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">atom</span><span class="o">.</span><span class="n">x</span> <span class="o">-</span> <span class="n">xcm</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">atom</span><span class="o">.</span><span class="n">y</span> <span class="o">-</span> <span class="n">ycm</span>
+        <span class="n">z</span> <span class="o">=</span> <span class="n">atom</span><span class="o">.</span><span class="n">z</span> <span class="o">-</span> <span class="n">zcm</span>
+        <span class="n">Ixx</span> <span class="o">+=</span> <span class="n">m</span> <span class="o">*</span> <span class="p">(</span><span class="n">y</span><span class="o">**</span><span class="mf">2.</span> <span class="o">+</span> <span class="n">z</span><span class="o">**</span><span class="mf">2.</span><span class="p">)</span>
+        <span class="n">Iyy</span> <span class="o">+=</span> <span class="n">m</span> <span class="o">*</span> <span class="p">(</span><span class="n">x</span><span class="o">**</span><span class="mf">2.</span> <span class="o">+</span> <span class="n">z</span><span class="o">**</span><span class="mf">2.</span><span class="p">)</span>
+        <span class="n">Izz</span> <span class="o">+=</span> <span class="n">m</span> <span class="o">*</span> <span class="p">(</span><span class="n">x</span><span class="o">**</span><span class="mf">2.</span> <span class="o">+</span> <span class="n">y</span><span class="o">**</span><span class="mf">2.</span><span class="p">)</span>
+        <span class="n">Ixy</span> <span class="o">+=</span> <span class="n">m</span> <span class="o">*</span> <span class="n">x</span> <span class="o">*</span> <span class="n">y</span>
+        <span class="n">Ixz</span> <span class="o">+=</span> <span class="n">m</span> <span class="o">*</span> <span class="n">x</span> <span class="o">*</span> <span class="n">z</span>
+        <span class="n">Iyz</span> <span class="o">+=</span> <span class="n">m</span> <span class="o">*</span> <span class="n">y</span> <span class="o">*</span> <span class="n">z</span>
+    <span class="c"># Create the inertia tensor in the current frame of reference.</span>
+    <span class="n">I_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">matrix</span><span class="p">([[</span> <span class="n">Ixx</span><span class="p">,</span> <span class="o">-</span><span class="n">Ixy</span><span class="p">,</span> <span class="o">-</span><span class="n">Ixz</span><span class="p">],</span>
+                    <span class="p">[</span><span class="o">-</span><span class="n">Ixy</span><span class="p">,</span>  <span class="n">Iyy</span><span class="p">,</span> <span class="o">-</span><span class="n">Iyz</span><span class="p">],</span>
+                    <span class="p">[</span><span class="o">-</span><span class="n">Ixz</span><span class="p">,</span> <span class="o">-</span><span class="n">Iyz</span><span class="p">,</span>  <span class="n">Izz</span><span class="p">]])</span>
+    <span class="c"># Find the eigenvalues, which are the principle moments of inertia.</span>
+    <span class="n">I</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eigvals</span><span class="p">(</span><span class="n">I_</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">I</span>
+
+
+<span class="k">class</span> <span class="nc">ThermoChem</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Base class containing common methods used in thermochemistry</span>
+<span class="sd">    calculations.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">get_ZPE_correction</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the zero-point vibrational energy correction in eV.&quot;&quot;&quot;</span>
+        <span class="n">zpe</span> <span class="o">=</span> <span class="mf">0.</span>
+        <span class="k">for</span> <span class="n">energy</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">vib_energies</span><span class="p">:</span>
+            <span class="n">zpe</span> <span class="o">+=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">energy</span>
+        <span class="k">return</span> <span class="n">zpe</span>
+
+    <span class="k">def</span> <span class="nf">_vibrational_energy_contribution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">temperature</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculates the change in internal energy due to vibrations from</span>
+<span class="sd">        0K to the specified temperature for a set of vibrations given in</span>
+<span class="sd">        eV and a temperature given in Kelvin. Returns the energy change</span>
+<span class="sd">        in eV.&quot;&quot;&quot;</span>
+        <span class="n">kT</span> <span class="o">=</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span> <span class="o">*</span> <span class="n">temperature</span>
+        <span class="n">dU</span> <span class="o">=</span> <span class="mf">0.</span>
+        <span class="k">for</span> <span class="n">energy</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">vib_energies</span><span class="p">:</span>
+            <span class="n">dU</span> <span class="o">+=</span> <span class="n">energy</span> <span class="o">/</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">energy</span> <span class="o">/</span> <span class="n">kT</span><span class="p">)</span> <span class="o">-</span> <span class="mf">1.</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">dU</span>
+
+    <span class="k">def</span> <span class="nf">_vibrational_entropy_contribution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">temperature</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculates the entropy due to vibrations for a set of vibrations</span>
+<span class="sd">        given in eV and a temperature given in Kelvin.  Returns the entropy</span>
+<span class="sd">        in eV/K.&quot;&quot;&quot;</span>
+        <span class="n">kT</span> <span class="o">=</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span> <span class="o">*</span> <span class="n">temperature</span>
+        <span class="n">S_v</span> <span class="o">=</span> <span class="mf">0.</span>
+        <span class="k">for</span> <span class="n">energy</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">vib_energies</span><span class="p">:</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">energy</span> <span class="o">/</span> <span class="n">kT</span>
+            <span class="n">S_v</span> <span class="o">+=</span> <span class="n">x</span> <span class="o">/</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">-</span> <span class="mf">1.</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">1.</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">x</span><span class="p">))</span>
+        <span class="n">S_v</span> <span class="o">*=</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span>
+        <span class="k">return</span> <span class="n">S_v</span>
+
+    <span class="k">def</span> <span class="nf">_vprint</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Print output if verbose flag True.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">text</span> <span class="o">+</span> <span class="n">os</span><span class="o">.</span><span class="n">linesep</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="HarmonicThermo"><a class="viewcode-back" href="../../ase/thermochemistry/thermochemistry.html#ase.thermochemistry.HarmonicThermo">[docs]</a><span class="k">class</span> <span class="nc">HarmonicThermo</span><span class="p">(</span><span class="n">ThermoChem</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Class for calculating thermodynamic properties in the approximation</span>
+<span class="sd">    that all degrees of freedom are treated harmonically. Often used for</span>
+<span class="sd">    adsorbates.</span>
+
+<span class="sd">    Inputs:</span>
+
+<span class="sd">    vib_energies : list</span>
+<span class="sd">        a list of the harmonic energies of the adsorbate (e.g., from</span>
+<span class="sd">        ase.vibrations.Vibrations.get_energies). The number of</span>
+<span class="sd">        energies should match the number of degrees of freedom of the</span>
+<span class="sd">        adsorbate; i.e., 3*n, where n is the number of atoms. Note that</span>
+<span class="sd">        this class does not check that the user has supplied the correct</span>
+<span class="sd">        number of energies. Units of energies are eV.</span>
+<span class="sd">    electronicenergy : float</span>
+<span class="sd">        the electronic energy in eV</span>
+<span class="sd">        (if electronicenergy is unspecified, then the methods of this</span>
+<span class="sd">        class can be interpreted as the energy corrections)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vib_energies</span><span class="p">,</span> <span class="n">electronicenergy</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vib_energies</span> <span class="o">=</span> <span class="n">vib_energies</span>
+        <span class="c"># Check for imaginary frequencies.</span>
+        <span class="k">if</span> <span class="nb">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">iscomplex</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vib_energies</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Imaginary vibrational energies are present.&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">vib_energies</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vib_energies</span><span class="p">)</span>  <span class="c"># clear +0.j</span>
+
+        <span class="k">if</span> <span class="n">electronicenergy</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">electronicenergy</span> <span class="o">=</span> <span class="n">electronicenergy</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">electronicenergy</span> <span class="o">=</span> <span class="mf">0.</span>
+
+<div class="viewcode-block" id="HarmonicThermo.get_internal_energy"><a class="viewcode-back" href="../../ase/thermochemistry/thermochemistry.html#ase.thermochemistry.HarmonicThermo.get_internal_energy">[docs]</a>    <span class="k">def</span> <span class="nf">get_internal_energy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">temperature</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the internal energy, in eV, in the harmonic approximation</span>
+<span class="sd">        at a specified temperature (K).&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span>
+        <span class="n">write</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vprint</span>
+        <span class="n">fmt</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%-15s%13.3f</span><span class="s"> eV&#39;</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;Internal energy components at T = </span><span class="si">%.2f</span><span class="s"> K:&#39;</span> <span class="o">%</span> <span class="n">temperature</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">31</span><span class="p">)</span>
+
+        <span class="n">U</span> <span class="o">=</span> <span class="mf">0.</span>
+
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;E_elec&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">electronicenergy</span><span class="p">))</span>
+        <span class="n">U</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">electronicenergy</span>
+
+        <span class="n">zpe</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_ZPE_correction</span><span class="p">()</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;E_ZPE&#39;</span><span class="p">,</span> <span class="n">zpe</span><span class="p">))</span>
+        <span class="n">U</span> <span class="o">+=</span> <span class="n">zpe</span>
+
+        <span class="n">dU_v</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vibrational_energy_contribution</span><span class="p">(</span><span class="n">temperature</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;Cv_harm (0-&gt;T)&#39;</span><span class="p">,</span> <span class="n">dU_v</span><span class="p">))</span>
+        <span class="n">U</span> <span class="o">+=</span> <span class="n">dU_v</span>
+
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;-&#39;</span> <span class="o">*</span> <span class="mi">31</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;U&#39;</span><span class="p">,</span> <span class="n">U</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">31</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">U</span>
+</div>
+<div class="viewcode-block" id="HarmonicThermo.get_entropy"><a class="viewcode-back" href="../../ase/thermochemistry/thermochemistry.html#ase.thermochemistry.HarmonicThermo.get_entropy">[docs]</a>    <span class="k">def</span> <span class="nf">get_entropy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">temperature</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the entropy, in eV/K, in the harmonic approximation</span>
+<span class="sd">        at a specified temperature (K).&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span>
+        <span class="n">write</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vprint</span>
+        <span class="n">fmt</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%-15s%13.7f</span><span class="s"> eV/K</span><span class="si">%13.3f</span><span class="s"> eV&#39;</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;Entropy components at T = </span><span class="si">%.2f</span><span class="s"> K:&#39;</span> <span class="o">%</span> <span class="n">temperature</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">49</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%15s%13s</span><span class="s">     </span><span class="si">%13s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="s">&#39;T*S&#39;</span><span class="p">))</span>
+
+        <span class="n">S</span> <span class="o">=</span> <span class="mf">0.</span>
+
+        <span class="n">S_v</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vibrational_entropy_contribution</span><span class="p">(</span><span class="n">temperature</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;S_harm&#39;</span><span class="p">,</span> <span class="n">S_v</span><span class="p">,</span> <span class="n">S_v</span> <span class="o">*</span> <span class="n">temperature</span><span class="p">))</span>
+        <span class="n">S</span> <span class="o">+=</span> <span class="n">S_v</span>
+
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;-&#39;</span> <span class="o">*</span> <span class="mi">49</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="n">S</span><span class="p">,</span> <span class="n">S</span> <span class="o">*</span> <span class="n">temperature</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">49</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">S</span>
+</div>
+<div class="viewcode-block" id="HarmonicThermo.get_gibbs_energy"><a class="viewcode-back" href="../../ase/thermochemistry/thermochemistry.html#ase.thermochemistry.HarmonicThermo.get_gibbs_energy">[docs]</a>    <span class="k">def</span> <span class="nf">get_gibbs_energy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">temperature</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the Gibbs free energy, in eV, in the harmonic</span>
+<span class="sd">        approximation at a specified temperature (K).&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="n">write</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vprint</span>
+
+        <span class="n">U</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_internal_energy</span><span class="p">(</span><span class="n">temperature</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">)</span>
+        <span class="n">S</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_entropy</span><span class="p">(</span><span class="n">temperature</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+        <span class="n">G</span> <span class="o">=</span> <span class="n">U</span> <span class="o">-</span> <span class="n">temperature</span> <span class="o">*</span> <span class="n">S</span>
+
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;Free energy components at T = </span><span class="si">%.2f</span><span class="s"> K:&#39;</span> <span class="o">%</span> <span class="n">temperature</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">23</span><span class="p">)</span>
+        <span class="n">fmt</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%5s%15.3f</span><span class="s"> eV&#39;</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;U&#39;</span><span class="p">,</span> <span class="n">U</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;-T*S&#39;</span><span class="p">,</span> <span class="o">-</span><span class="n">temperature</span> <span class="o">*</span> <span class="n">S</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;-&#39;</span> <span class="o">*</span> <span class="mi">23</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;G&#39;</span><span class="p">,</span> <span class="n">G</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">23</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">G</span>
+</div></div>
+<div class="viewcode-block" id="IdealGasThermo"><a class="viewcode-back" href="../../ase/thermochemistry/thermochemistry.html#ase.thermochemistry.IdealGasThermo">[docs]</a><span class="k">class</span> <span class="nc">IdealGasThermo</span><span class="p">(</span><span class="n">ThermoChem</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Class for calculating thermodynamic properties of a molecule</span>
+<span class="sd">    based on statistical mechanical treatments in the ideal gas</span>
+<span class="sd">    approximation.</span>
+
+<span class="sd">    Inputs for enthalpy calculations:</span>
+
+<span class="sd">    vib_energies : list</span>
+<span class="sd">        a list of the vibrational energies of the molecule (e.g., from</span>
+<span class="sd">        ase.vibrations.Vibrations.get_energies). The number of vibrations</span>
+<span class="sd">        used is automatically calculated by the geometry and the number of</span>
+<span class="sd">        atoms. If more are specified than are needed, then the lowest</span>
+<span class="sd">        numbered vibrations are neglected. If either atoms or natoms is</span>
+<span class="sd">        unspecified, then uses the entire list. Units are eV.</span>
+<span class="sd">    geometry : &#39;monatomic&#39;, &#39;linear&#39;, or &#39;nonlinear&#39;</span>
+<span class="sd">        geometry of the molecule</span>
+<span class="sd">    electronicenergy : float</span>
+<span class="sd">        the electronic energy in eV</span>
+<span class="sd">        (if electronicenergy is unspecified, then the methods of this</span>
+<span class="sd">        class can be interpreted as the enthalpy and free energy</span>
+<span class="sd">        corrections)</span>
+<span class="sd">    natoms : integer</span>
+<span class="sd">        the number of atoms, used along with &#39;geometry&#39; to determine how</span>
+<span class="sd">        many vibrations to use. (Not needed if an atoms object is supplied</span>
+<span class="sd">        in &#39;atoms&#39; or if the user desires the entire list of vibrations</span>
+<span class="sd">        to be used.)</span>
+
+<span class="sd">    Extra inputs needed for for entropy / free energy calculations:</span>
+
+<span class="sd">    atoms : an ASE atoms object</span>
+<span class="sd">        used to calculate rotational moments of inertia and molecular mass</span>
+<span class="sd">    symmetrynumber : integer</span>
+<span class="sd">        symmetry number of the molecule. See, for example, Table 10.1 and</span>
+<span class="sd">        Appendix B of C. Cramer &quot;Essentials of Computational Chemistry&quot;,</span>
+<span class="sd">        2nd Ed.</span>
+<span class="sd">    spin : float</span>
+<span class="sd">        the total electronic spin. (0 for molecules in which all electrons</span>
+<span class="sd">        are paired, 0.5 for a free radical with a single unpaired electron,</span>
+<span class="sd">        1.0 for a triplet with two unpaired electrons, such as O_2.)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vib_energies</span><span class="p">,</span> <span class="n">geometry</span><span class="p">,</span> <span class="n">electronicenergy</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">atoms</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">symmetrynumber</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">spin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">natoms</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">electronicenergy</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">electronicenergy</span> <span class="o">=</span> <span class="mf">0.</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">electronicenergy</span> <span class="o">=</span> <span class="n">electronicenergy</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">geometry</span> <span class="o">=</span> <span class="n">geometry</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="n">atoms</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sigma</span> <span class="o">=</span> <span class="n">symmetrynumber</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">spin</span> <span class="o">=</span> <span class="n">spin</span>
+        <span class="k">if</span> <span class="n">natoms</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">atoms</span><span class="p">:</span>
+                <span class="n">natoms</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+        <span class="c"># Cut the vibrations to those needed from the geometry.</span>
+        <span class="k">if</span> <span class="n">natoms</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">geometry</span> <span class="o">==</span> <span class="s">&#39;nonlinear&#39;</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">vib_energies</span> <span class="o">=</span> <span class="n">vib_energies</span><span class="p">[</span><span class="o">-</span><span class="p">(</span><span class="mi">3</span> <span class="o">*</span> <span class="n">natoms</span> <span class="o">-</span> <span class="mi">6</span><span class="p">):]</span>
+            <span class="k">elif</span> <span class="n">geometry</span> <span class="o">==</span> <span class="s">&#39;linear&#39;</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">vib_energies</span> <span class="o">=</span> <span class="n">vib_energies</span><span class="p">[</span><span class="o">-</span><span class="p">(</span><span class="mi">3</span> <span class="o">*</span> <span class="n">natoms</span> <span class="o">-</span> <span class="mi">5</span><span class="p">):]</span>
+            <span class="k">elif</span> <span class="n">geometry</span> <span class="o">==</span> <span class="s">&#39;monatomic&#39;</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">vib_energies</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">vib_energies</span> <span class="o">=</span> <span class="n">vib_energies</span>
+        <span class="c"># Make sure no imaginary frequencies remain.</span>
+        <span class="k">if</span> <span class="nb">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">iscomplex</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vib_energies</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Imaginary frequencies are present.&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">vib_energies</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vib_energies</span><span class="p">)</span>  <span class="c"># clear +0.j</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">referencepressure</span> <span class="o">=</span> <span class="mf">101325.</span>  <span class="c"># Pa</span>
+
+<div class="viewcode-block" id="IdealGasThermo.get_enthalpy"><a class="viewcode-back" href="../../ase/thermochemistry/thermochemistry.html#ase.thermochemistry.IdealGasThermo.get_enthalpy">[docs]</a>    <span class="k">def</span> <span class="nf">get_enthalpy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">temperature</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the enthalpy, in eV, in the ideal gas approximation</span>
+<span class="sd">        at a specified temperature (K).&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span>
+        <span class="n">write</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vprint</span>
+        <span class="n">fmt</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%-15s%13.3f</span><span class="s"> eV&#39;</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;Enthalpy components at T = </span><span class="si">%.2f</span><span class="s"> K:&#39;</span> <span class="o">%</span> <span class="n">temperature</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">31</span><span class="p">)</span>
+
+        <span class="n">H</span> <span class="o">=</span> <span class="mf">0.</span>
+
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;E_elec&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">electronicenergy</span><span class="p">))</span>
+        <span class="n">H</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">electronicenergy</span>
+
+        <span class="n">zpe</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_ZPE_correction</span><span class="p">()</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;E_ZPE&#39;</span><span class="p">,</span> <span class="n">zpe</span><span class="p">))</span>
+        <span class="n">H</span> <span class="o">+=</span> <span class="n">zpe</span>
+
+        <span class="n">Cv_t</span> <span class="o">=</span> <span class="mf">3.</span> <span class="o">/</span> <span class="mf">2.</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span>  <span class="c"># translational heat capacity (3-d gas)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;Cv_trans (0-&gt;T)&#39;</span><span class="p">,</span> <span class="n">Cv_t</span> <span class="o">*</span> <span class="n">temperature</span><span class="p">))</span>
+        <span class="n">H</span> <span class="o">+=</span> <span class="n">Cv_t</span> <span class="o">*</span> <span class="n">temperature</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">geometry</span> <span class="o">==</span> <span class="s">&#39;nonlinear&#39;</span><span class="p">:</span>  <span class="c"># rotational heat capacity</span>
+            <span class="n">Cv_r</span> <span class="o">=</span> <span class="mf">3.</span> <span class="o">/</span> <span class="mf">2.</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">geometry</span> <span class="o">==</span> <span class="s">&#39;linear&#39;</span><span class="p">:</span>
+            <span class="n">Cv_r</span> <span class="o">=</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">geometry</span> <span class="o">==</span> <span class="s">&#39;monatomic&#39;</span><span class="p">:</span>
+            <span class="n">Cv_r</span> <span class="o">=</span> <span class="mf">0.</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;Cv_rot (0-&gt;T)&#39;</span><span class="p">,</span> <span class="n">Cv_r</span> <span class="o">*</span> <span class="n">temperature</span><span class="p">))</span>
+        <span class="n">H</span> <span class="o">+=</span> <span class="n">Cv_r</span> <span class="o">*</span> <span class="n">temperature</span>
+
+        <span class="n">dH_v</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vibrational_energy_contribution</span><span class="p">(</span><span class="n">temperature</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;Cv_vib (0-&gt;T)&#39;</span><span class="p">,</span> <span class="n">dH_v</span><span class="p">))</span>
+        <span class="n">H</span> <span class="o">+=</span> <span class="n">dH_v</span>
+
+        <span class="n">Cp_corr</span> <span class="o">=</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span> <span class="o">*</span> <span class="n">temperature</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;(C_v -&gt; C_p)&#39;</span><span class="p">,</span> <span class="n">Cp_corr</span><span class="p">))</span>
+        <span class="n">H</span> <span class="o">+=</span> <span class="n">Cp_corr</span>
+
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;-&#39;</span> <span class="o">*</span> <span class="mi">31</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;H&#39;</span><span class="p">,</span> <span class="n">H</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">31</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">H</span>
+</div>
+<div class="viewcode-block" id="IdealGasThermo.get_entropy"><a class="viewcode-back" href="../../ase/thermochemistry/thermochemistry.html#ase.thermochemistry.IdealGasThermo.get_entropy">[docs]</a>    <span class="k">def</span> <span class="nf">get_entropy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">temperature</span><span class="p">,</span> <span class="n">pressure</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the entropy, in eV/K, in the ideal gas approximation</span>
+<span class="sd">        at a specified temperature (K) and pressure (Pa).&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">==</span> <span class="bp">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigma</span> <span class="o">==</span> <span class="bp">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">spin</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&#39;atoms, symmetrynumber, and spin must be &#39;</span>
+                               <span class="s">&#39;specified for entropy and free energy &#39;</span>
+                               <span class="s">&#39;calculations.&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span>
+        <span class="n">write</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vprint</span>
+        <span class="n">fmt</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%-15s%13.7f</span><span class="s"> eV/K</span><span class="si">%13.3f</span><span class="s"> eV&#39;</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;Entropy components at T = </span><span class="si">%.2f</span><span class="s"> K and P = </span><span class="si">%.1f</span><span class="s"> Pa:&#39;</span> <span class="o">%</span>
+               <span class="p">(</span><span class="n">temperature</span><span class="p">,</span> <span class="n">pressure</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">49</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%15s%13s</span><span class="s">     </span><span class="si">%13s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="s">&#39;T*S&#39;</span><span class="p">))</span>
+
+        <span class="n">S</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+        <span class="c"># Translational entropy (term inside the log is in SI units).</span>
+        <span class="n">mass</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_masses</span><span class="p">())</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">_amu</span>  <span class="c"># kg/molecule</span>
+        <span class="n">S_t</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">mass</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">_k</span> <span class="o">*</span>
+               <span class="n">temperature</span> <span class="o">/</span> <span class="n">units</span><span class="o">.</span><span class="n">_hplanck</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="p">(</span><span class="mf">3.0</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">S_t</span> <span class="o">*=</span> <span class="n">units</span><span class="o">.</span><span class="n">_k</span> <span class="o">*</span> <span class="n">temperature</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">referencepressure</span>
+        <span class="n">S_t</span> <span class="o">=</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">S_t</span><span class="p">)</span> <span class="o">+</span> <span class="mf">5.0</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;S_trans (1 atm)&#39;</span><span class="p">,</span> <span class="n">S_t</span><span class="p">,</span> <span class="n">S_t</span> <span class="o">*</span> <span class="n">temperature</span><span class="p">))</span>
+        <span class="n">S</span> <span class="o">+=</span> <span class="n">S_t</span>
+
+        <span class="c"># Rotational entropy (term inside the log is in SI units).</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">geometry</span> <span class="o">==</span> <span class="s">&#39;monatomic&#39;</span><span class="p">:</span>
+            <span class="n">S_r</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">geometry</span> <span class="o">==</span> <span class="s">&#39;nonlinear&#39;</span><span class="p">:</span>
+            <span class="n">inertias</span> <span class="o">=</span> <span class="p">(</span><span class="n">rotationalinertia</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">_amu</span> <span class="o">/</span>
+                        <span class="p">(</span><span class="mf">10.0</span><span class="o">**</span><span class="mi">10</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>  <span class="c"># kg m^2</span>
+            <span class="n">S_r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">product</span><span class="p">(</span><span class="n">inertias</span><span class="p">))</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigma</span>
+            <span class="n">S_r</span> <span class="o">*=</span> <span class="p">(</span><span class="mf">8.0</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">_k</span> <span class="o">*</span> <span class="n">temperature</span> <span class="o">/</span>
+                    <span class="n">units</span><span class="o">.</span><span class="n">_hplanck</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="p">(</span><span class="mf">3.0</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">)</span>
+            <span class="n">S_r</span> <span class="o">=</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">S_r</span><span class="p">)</span> <span class="o">+</span> <span class="mf">3.0</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">geometry</span> <span class="o">==</span> <span class="s">&#39;linear&#39;</span><span class="p">:</span>
+            <span class="n">inertias</span> <span class="o">=</span> <span class="p">(</span><span class="n">rotationalinertia</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">_amu</span> <span class="o">/</span>
+                        <span class="p">(</span><span class="mf">10.0</span><span class="o">**</span><span class="mi">10</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>  <span class="c"># kg m^2</span>
+            <span class="n">inertia</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">inertias</span><span class="p">)</span>  <span class="c"># should be two identical and one zero</span>
+            <span class="n">S_r</span> <span class="o">=</span> <span class="p">(</span><span class="mi">8</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span> <span class="n">inertia</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">_k</span> <span class="o">*</span> <span class="n">temperature</span> <span class="o">/</span>
+                   <span class="bp">self</span><span class="o">.</span><span class="n">sigma</span> <span class="o">/</span> <span class="n">units</span><span class="o">.</span><span class="n">_hplanck</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+            <span class="n">S_r</span> <span class="o">=</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">S_r</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1.</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;S_rot&#39;</span><span class="p">,</span> <span class="n">S_r</span><span class="p">,</span> <span class="n">S_r</span> <span class="o">*</span> <span class="n">temperature</span><span class="p">))</span>
+        <span class="n">S</span> <span class="o">+=</span> <span class="n">S_r</span>
+
+        <span class="c"># Electronic entropy.</span>
+        <span class="n">S_e</span> <span class="o">=</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">spin</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;S_elec&#39;</span><span class="p">,</span> <span class="n">S_e</span><span class="p">,</span> <span class="n">S_e</span> <span class="o">*</span> <span class="n">temperature</span><span class="p">))</span>
+        <span class="n">S</span> <span class="o">+=</span> <span class="n">S_e</span>
+
+        <span class="c"># Vibrational entropy.</span>
+        <span class="n">S_v</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vibrational_entropy_contribution</span><span class="p">(</span><span class="n">temperature</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;S_vib&#39;</span><span class="p">,</span> <span class="n">S_v</span><span class="p">,</span> <span class="n">S_v</span> <span class="o">*</span> <span class="n">temperature</span><span class="p">))</span>
+        <span class="n">S</span> <span class="o">+=</span> <span class="n">S_v</span>
+
+        <span class="c"># Pressure correction to translational entropy.</span>
+        <span class="n">S_p</span> <span class="o">=</span> <span class="o">-</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">pressure</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">referencepressure</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;S (1 atm -&gt; P)&#39;</span><span class="p">,</span> <span class="n">S_p</span><span class="p">,</span> <span class="n">S_p</span> <span class="o">*</span> <span class="n">temperature</span><span class="p">))</span>
+        <span class="n">S</span> <span class="o">+=</span> <span class="n">S_p</span>
+
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;-&#39;</span> <span class="o">*</span> <span class="mi">49</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="n">S</span><span class="p">,</span> <span class="n">S</span> <span class="o">*</span> <span class="n">temperature</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">49</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">S</span>
+</div>
+<div class="viewcode-block" id="IdealGasThermo.get_gibbs_energy"><a class="viewcode-back" href="../../ase/thermochemistry/thermochemistry.html#ase.thermochemistry.IdealGasThermo.get_gibbs_energy">[docs]</a>    <span class="k">def</span> <span class="nf">get_gibbs_energy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">temperature</span><span class="p">,</span> <span class="n">pressure</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the Gibbs free energy, in eV, in the ideal gas</span>
+<span class="sd">        approximation at a specified temperature (K) and pressure (Pa).&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span>
+        <span class="n">write</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vprint</span>
+
+        <span class="n">H</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_enthalpy</span><span class="p">(</span><span class="n">temperature</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">)</span>
+        <span class="n">S</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_entropy</span><span class="p">(</span><span class="n">temperature</span><span class="p">,</span> <span class="n">pressure</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+        <span class="n">G</span> <span class="o">=</span> <span class="n">H</span> <span class="o">-</span> <span class="n">temperature</span> <span class="o">*</span> <span class="n">S</span>
+
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;Free energy components at T = </span><span class="si">%.2f</span><span class="s"> K and P = </span><span class="si">%.1f</span><span class="s"> Pa:&#39;</span> <span class="o">%</span>
+               <span class="p">(</span><span class="n">temperature</span><span class="p">,</span> <span class="n">pressure</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">23</span><span class="p">)</span>
+        <span class="n">fmt</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%5s%15.3f</span><span class="s"> eV&#39;</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;H&#39;</span><span class="p">,</span> <span class="n">H</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;-T*S&#39;</span><span class="p">,</span> <span class="o">-</span><span class="n">temperature</span> <span class="o">*</span> <span class="n">S</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;-&#39;</span> <span class="o">*</span> <span class="mi">23</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;G&#39;</span><span class="p">,</span> <span class="n">G</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">23</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">G</span>
+</div></div>
+<div class="viewcode-block" id="CrystalThermo"><a class="viewcode-back" href="../../ase/thermochemistry/thermochemistry.html#ase.thermochemistry.CrystalThermo">[docs]</a><span class="k">class</span> <span class="nc">CrystalThermo</span><span class="p">(</span><span class="n">ThermoChem</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Class for calculating thermodynamic properties of a crystalline</span>
+<span class="sd">    solid in the approximation that a lattice of N atoms behaves as a</span>
+<span class="sd">    system of 3N independent harmonic oscillators.</span>
+
+<span class="sd">    Inputs:</span>
+
+<span class="sd">    phonon_DOS : list</span>
+<span class="sd">        a list of the phonon density of states,</span>
+<span class="sd">        where each value represents the phonon DOS at the vibrational energy</span>
+<span class="sd">        value of the corresponding index in phonon_energies.</span>
+
+<span class="sd">    phonon_energies : list</span>
+<span class="sd">        a list of the range of vibrational energies (hbar*omega) over which</span>
+<span class="sd">        the phonon density of states has been evaluated. This list should be</span>
+<span class="sd">        the same length as phonon_DOS and integrating phonon_DOS over</span>
+<span class="sd">        phonon_energies should yield approximately 3N, where N is the number</span>
+<span class="sd">        of atoms per unit cell. If the first element of this list is</span>
+<span class="sd">        zero-valued it will be deleted along with the first element of</span>
+<span class="sd">        phonon_DOS. Units of vibrational energies are eV.</span>
+
+<span class="sd">    electronicenergy : float</span>
+<span class="sd">        the electronic energy in eV</span>
+<span class="sd">        (if electronicenergy is unspecified, then the methods of this</span>
+<span class="sd">        class can be interpreted as the phonon energy corrections.)</span>
+
+<span class="sd">    formula_units : int</span>
+<span class="sd">        the number of formula units per unit cell. If unspecified, the</span>
+<span class="sd">        thermodynamic quantities calculated will be listed on a</span>
+<span class="sd">        per-unit-cell basis.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">phonon_DOS</span><span class="p">,</span> <span class="n">phonon_energies</span><span class="p">,</span>
+                 <span class="n">formula_units</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">electronicenergy</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">phonon_energies</span> <span class="o">=</span> <span class="n">phonon_energies</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">phonon_DOS</span> <span class="o">=</span> <span class="n">phonon_DOS</span>
+
+        <span class="k">if</span> <span class="n">formula_units</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">formula_units</span> <span class="o">=</span> <span class="n">formula_units</span>
+            <span class="k">if</span> <span class="n">electronicenergy</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">electronicenergy</span> <span class="o">=</span> <span class="n">electronicenergy</span> <span class="o">/</span> <span class="n">formula_units</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span> <span class="n">electronicenergy</span> <span class="o">=</span> <span class="n">electronicenergy</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">formula_units</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">if</span> <span class="n">electronicenergy</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">electronicenergy</span> <span class="o">=</span> <span class="n">electronicenergy</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">electronicenergy</span> <span class="o">=</span> <span class="mi">0</span>
+
+<div class="viewcode-block" id="CrystalThermo.get_internal_energy"><a class="viewcode-back" href="../../ase/thermochemistry/thermochemistry.html#ase.thermochemistry.CrystalThermo.get_internal_energy">[docs]</a>    <span class="k">def</span> <span class="nf">get_internal_energy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">temperature</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the internal energy, in eV, of crystalline solid</span>
+<span class="sd">        at a specified temperature (K).&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span>
+        <span class="n">write</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vprint</span>
+        <span class="n">fmt</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%-15s%13.4f</span><span class="s"> eV&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">formula_units</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">write</span><span class="p">(</span><span class="s">&#39;Internal energy components at &#39;</span>
+                  <span class="s">&#39;T = </span><span class="si">%.2f</span><span class="s"> K,</span><span class="se">\n</span><span class="s">on a per-unit-cell basis:&#39;</span> <span class="o">%</span> <span class="n">temperature</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">write</span><span class="p">(</span><span class="s">&#39;Internal energy components at &#39;</span>
+                  <span class="s">&#39;T = </span><span class="si">%.2f</span><span class="s"> K,</span><span class="se">\n</span><span class="s">on a per-formula-unit basis:&#39;</span> <span class="o">%</span> <span class="n">temperature</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">31</span><span class="p">)</span>
+
+        <span class="n">U</span> <span class="o">=</span> <span class="mf">0.</span>
+
+        <span class="n">omega_e</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">phonon_energies</span>
+        <span class="n">dos_e</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">phonon_DOS</span>
+        <span class="k">if</span> <span class="n">omega_e</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mf">0.</span><span class="p">:</span>
+            <span class="n">omega_e</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">omega_e</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="n">dos_e</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">dos_e</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;E_elec&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">electronicenergy</span><span class="p">))</span>
+        <span class="n">U</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">electronicenergy</span>
+
+        <span class="n">zpe_list</span> <span class="o">=</span> <span class="n">omega_e</span> <span class="o">/</span> <span class="mf">2.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">formula_units</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">zpe</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trapz</span><span class="p">(</span><span class="n">zpe_list</span> <span class="o">*</span> <span class="n">dos_e</span><span class="p">,</span> <span class="n">omega_e</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">zpe</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trapz</span><span class="p">(</span><span class="n">zpe_list</span> <span class="o">*</span> <span class="n">dos_e</span><span class="p">,</span> <span class="n">omega_e</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">formula_units</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;E_ZPE&#39;</span><span class="p">,</span> <span class="n">zpe</span><span class="p">))</span>
+        <span class="n">U</span> <span class="o">+=</span> <span class="n">zpe</span>
+
+        <span class="n">B</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">/</span> <span class="p">(</span><span class="n">units</span><span class="o">.</span><span class="n">kB</span> <span class="o">*</span> <span class="n">temperature</span><span class="p">)</span>
+        <span class="n">E_vib</span> <span class="o">=</span> <span class="n">omega_e</span> <span class="o">/</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">omega_e</span> <span class="o">*</span> <span class="n">B</span><span class="p">)</span> <span class="o">-</span> <span class="mf">1.</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">formula_units</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">E_phonon</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trapz</span><span class="p">(</span><span class="n">E_vib</span> <span class="o">*</span> <span class="n">dos_e</span><span class="p">,</span> <span class="n">omega_e</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">E_phonon</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trapz</span><span class="p">(</span><span class="n">E_vib</span> <span class="o">*</span> <span class="n">dos_e</span><span class="p">,</span> <span class="n">omega_e</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">formula_units</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;E_phonon&#39;</span><span class="p">,</span> <span class="n">E_phonon</span><span class="p">))</span>
+        <span class="n">U</span> <span class="o">+=</span> <span class="n">E_phonon</span>
+
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;-&#39;</span> <span class="o">*</span> <span class="mi">31</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;U&#39;</span><span class="p">,</span> <span class="n">U</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">31</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">U</span>
+</div>
+<div class="viewcode-block" id="CrystalThermo.get_entropy"><a class="viewcode-back" href="../../ase/thermochemistry/thermochemistry.html#ase.thermochemistry.CrystalThermo.get_entropy">[docs]</a>    <span class="k">def</span> <span class="nf">get_entropy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">temperature</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the entropy, in eV/K, of crystalline solid</span>
+<span class="sd">        at a specified temperature (K).&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span>
+        <span class="n">write</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vprint</span>
+        <span class="n">fmt</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%-15s%13.7f</span><span class="s"> eV/K</span><span class="si">%13.4f</span><span class="s"> eV&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">formula_units</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">write</span><span class="p">(</span><span class="s">&#39;Entropy components at &#39;</span>
+                  <span class="s">&#39;T = </span><span class="si">%.2f</span><span class="s"> K,</span><span class="se">\n</span><span class="s">on a per-unit-cell basis:&#39;</span> <span class="o">%</span> <span class="n">temperature</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">write</span><span class="p">(</span><span class="s">&#39;Entropy components at &#39;</span>
+                  <span class="s">&#39;T = </span><span class="si">%.2f</span><span class="s"> K,</span><span class="se">\n</span><span class="s">on a per-formula-unit basis:&#39;</span> <span class="o">%</span> <span class="n">temperature</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">49</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%15s%13s</span><span class="s">     </span><span class="si">%13s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="s">&#39;T*S&#39;</span><span class="p">))</span>
+
+        <span class="n">omega_e</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">phonon_energies</span>
+        <span class="n">dos_e</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">phonon_DOS</span>
+        <span class="k">if</span> <span class="n">omega_e</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mf">0.</span><span class="p">:</span>
+            <span class="n">omega_e</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">omega_e</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="n">dos_e</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">dos_e</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+
+        <span class="n">B</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">/</span> <span class="p">(</span><span class="n">units</span><span class="o">.</span><span class="n">kB</span> <span class="o">*</span> <span class="n">temperature</span><span class="p">)</span>
+        <span class="n">S_vib</span> <span class="o">=</span> <span class="p">(</span><span class="n">omega_e</span> <span class="o">/</span> <span class="p">(</span><span class="n">temperature</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">omega_e</span> <span class="o">*</span> <span class="n">B</span><span class="p">)</span> <span class="o">-</span> <span class="mf">1.</span><span class="p">))</span>
+                 <span class="o">-</span> <span class="n">units</span><span class="o">.</span><span class="n">kB</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">1.</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">omega_e</span> <span class="o">*</span> <span class="n">B</span><span class="p">)))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">formula_units</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">S</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trapz</span><span class="p">(</span><span class="n">S_vib</span> <span class="o">*</span> <span class="n">dos_e</span><span class="p">,</span> <span class="n">omega_e</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">S</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trapz</span><span class="p">(</span><span class="n">S_vib</span> <span class="o">*</span> <span class="n">dos_e</span><span class="p">,</span> <span class="n">omega_e</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">formula_units</span>
+
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;-&#39;</span> <span class="o">*</span> <span class="mi">49</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;S&#39;</span><span class="p">,</span> <span class="n">S</span><span class="p">,</span> <span class="n">S</span> <span class="o">*</span> <span class="n">temperature</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">49</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">S</span>
+</div>
+<div class="viewcode-block" id="CrystalThermo.get_helmholtz_energy"><a class="viewcode-back" href="../../ase/thermochemistry/thermochemistry.html#ase.thermochemistry.CrystalThermo.get_helmholtz_energy">[docs]</a>    <span class="k">def</span> <span class="nf">get_helmholtz_energy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">temperature</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the Helmholtz free energy, in eV, of crystalline solid</span>
+<span class="sd">        at a specified temperature (K).&quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="n">write</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vprint</span>
+
+        <span class="n">U</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_internal_energy</span><span class="p">(</span><span class="n">temperature</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">)</span>
+        <span class="n">S</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_entropy</span><span class="p">(</span><span class="n">temperature</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">)</span>
+        <span class="n">F</span> <span class="o">=</span> <span class="n">U</span> <span class="o">-</span> <span class="n">temperature</span> <span class="o">*</span> <span class="n">S</span>
+
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">formula_units</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">write</span><span class="p">(</span><span class="s">&#39;Helmholtz free energy components at &#39;</span>
+                  <span class="s">&#39;T = </span><span class="si">%.2f</span><span class="s"> K,</span><span class="se">\n</span><span class="s">on a per-unit-cell basis:&#39;</span> <span class="o">%</span> <span class="n">temperature</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">write</span><span class="p">(</span><span class="s">&#39;Helmholtz free energy components at &#39;</span>
+                  <span class="s">&#39;T = </span><span class="si">%.2f</span><span class="s"> K,</span><span class="se">\n</span><span class="s">on a per-formula-unit basis:&#39;</span> <span class="o">%</span> <span class="n">temperature</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">23</span><span class="p">)</span>
+        <span class="n">fmt</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%5s%15.4f</span><span class="s"> eV&#39;</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;U&#39;</span><span class="p">,</span> <span class="n">U</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;-T*S&#39;</span><span class="p">,</span> <span class="o">-</span><span class="n">temperature</span> <span class="o">*</span> <span class="n">S</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;-&#39;</span> <span class="o">*</span> <span class="mi">23</span><span class="p">)</span>
+        <span class="n">write</span><span class="p">(</span><span class="n">fmt</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;F&#39;</span><span class="p">,</span> <span class="n">F</span><span class="p">))</span>
+        <span class="n">write</span><span class="p">(</span><span class="s">&#39;=&#39;</span> <span class="o">*</span> <span class="mi">23</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">F</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

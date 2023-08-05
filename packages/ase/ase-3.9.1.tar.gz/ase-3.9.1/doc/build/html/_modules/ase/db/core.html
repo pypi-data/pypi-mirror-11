@@ -1,0 +1,605 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.db.core &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../../contents.html" />
+    <link rel="index" title="Global index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.db.core</h1><div class="highlight"><pre>
+<span class="kn">import</span> <span class="nn">collections</span>
+<span class="kn">import</span> <span class="nn">functools</span>
+<span class="kn">import</span> <span class="nn">operator</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">from</span> <span class="nn">time</span> <span class="kn">import</span> <span class="n">time</span>
+
+<span class="kn">from</span> <span class="nn">ase.atoms</span> <span class="kn">import</span> <span class="n">Atoms</span><span class="p">,</span> <span class="n">symbols2numbers</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.calculator</span> <span class="kn">import</span> <span class="n">all_properties</span><span class="p">,</span> <span class="n">all_changes</span>
+<span class="kn">from</span> <span class="nn">ase.data</span> <span class="kn">import</span> <span class="n">atomic_numbers</span>
+<span class="kn">from</span> <span class="nn">ase.parallel</span> <span class="kn">import</span> <span class="n">world</span><span class="p">,</span> <span class="n">broadcast</span><span class="p">,</span> <span class="n">DummyMPI</span>
+<span class="kn">from</span> <span class="nn">ase.utils</span> <span class="kn">import</span> <span class="n">Lock</span><span class="p">,</span> <span class="nb">basestring</span>
+
+
+<span class="n">T2000</span> <span class="o">=</span> <span class="mf">946681200.0</span>  <span class="c"># January 1. 2000</span>
+<span class="n">YEAR</span> <span class="o">=</span> <span class="mf">31557600.0</span>  <span class="c"># 365.25 days</span>
+
+
+<span class="k">def</span> <span class="nf">now</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;Return time since January 1. 2000 in years.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">T2000</span><span class="p">)</span> <span class="o">/</span> <span class="n">YEAR</span>
+        
+
+<span class="n">seconds</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;s&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+           <span class="s">&#39;m&#39;</span><span class="p">:</span> <span class="mi">60</span><span class="p">,</span>
+           <span class="s">&#39;h&#39;</span><span class="p">:</span> <span class="mi">3600</span><span class="p">,</span>
+           <span class="s">&#39;d&#39;</span><span class="p">:</span> <span class="mi">86400</span><span class="p">,</span>
+           <span class="s">&#39;w&#39;</span><span class="p">:</span> <span class="mi">604800</span><span class="p">,</span>
+           <span class="s">&#39;M&#39;</span><span class="p">:</span> <span class="mi">2629800</span><span class="p">,</span>
+           <span class="s">&#39;y&#39;</span><span class="p">:</span> <span class="n">YEAR</span><span class="p">}</span>
+
+<span class="n">longwords</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;s&#39;</span><span class="p">:</span> <span class="s">&#39;second&#39;</span><span class="p">,</span>
+             <span class="s">&#39;m&#39;</span><span class="p">:</span> <span class="s">&#39;minute&#39;</span><span class="p">,</span>
+             <span class="s">&#39;h&#39;</span><span class="p">:</span> <span class="s">&#39;hour&#39;</span><span class="p">,</span>
+             <span class="s">&#39;d&#39;</span><span class="p">:</span> <span class="s">&#39;day&#39;</span><span class="p">,</span>
+             <span class="s">&#39;w&#39;</span><span class="p">:</span> <span class="s">&#39;week&#39;</span><span class="p">,</span>
+             <span class="s">&#39;M&#39;</span><span class="p">:</span> <span class="s">&#39;month&#39;</span><span class="p">,</span>
+             <span class="s">&#39;y&#39;</span><span class="p">:</span> <span class="s">&#39;year&#39;</span><span class="p">}</span>
+
+<span class="n">ops</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;&lt;&#39;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">lt</span><span class="p">,</span>
+       <span class="s">&#39;&lt;=&#39;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">le</span><span class="p">,</span>
+       <span class="s">&#39;=&#39;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">eq</span><span class="p">,</span>
+       <span class="s">&#39;&gt;=&#39;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">ge</span><span class="p">,</span>
+       <span class="s">&#39;&gt;&#39;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">gt</span><span class="p">,</span>
+       <span class="s">&#39;!=&#39;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">ne</span><span class="p">}</span>
+
+<span class="n">invop</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;&lt;&#39;</span><span class="p">:</span> <span class="s">&#39;&gt;=&#39;</span><span class="p">,</span> <span class="s">&#39;&lt;=&#39;</span><span class="p">:</span> <span class="s">&#39;&gt;&#39;</span><span class="p">,</span> <span class="s">&#39;&gt;=&#39;</span><span class="p">:</span> <span class="s">&#39;&lt;&#39;</span><span class="p">,</span> <span class="s">&#39;&gt;&#39;</span><span class="p">:</span> <span class="s">&#39;&lt;=&#39;</span><span class="p">,</span> <span class="s">&#39;=&#39;</span><span class="p">:</span> <span class="s">&#39;!=&#39;</span><span class="p">,</span> <span class="s">&#39;!=&#39;</span><span class="p">:</span> <span class="s">&#39;=&#39;</span><span class="p">}</span>
+
+<span class="n">word</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&#39;[_a-zA-Z][_0-9a-zA-Z]*$&#39;</span><span class="p">)</span>
+
+<span class="n">reserved_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">all_properties</span> <span class="o">+</span> <span class="n">all_changes</span> <span class="o">+</span>
+                    <span class="p">[</span><span class="s">&#39;id&#39;</span><span class="p">,</span> <span class="s">&#39;unique_id&#39;</span><span class="p">,</span> <span class="s">&#39;ctime&#39;</span><span class="p">,</span> <span class="s">&#39;mtime&#39;</span><span class="p">,</span> <span class="s">&#39;user&#39;</span><span class="p">,</span>
+                     <span class="s">&#39;momenta&#39;</span><span class="p">,</span> <span class="s">&#39;constraints&#39;</span><span class="p">,</span>
+                     <span class="s">&#39;calculator&#39;</span><span class="p">,</span> <span class="s">&#39;calculator_parameters&#39;</span><span class="p">,</span>
+                     <span class="s">&#39;key_value_pairs&#39;</span><span class="p">,</span> <span class="s">&#39;data&#39;</span><span class="p">])</span>
+
+<span class="n">numeric_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([</span><span class="s">&#39;id&#39;</span><span class="p">,</span> <span class="s">&#39;energy&#39;</span><span class="p">,</span> <span class="s">&#39;magmom&#39;</span><span class="p">,</span> <span class="s">&#39;charge&#39;</span><span class="p">,</span> <span class="s">&#39;natoms&#39;</span><span class="p">])</span>
+
+
+<span class="k">def</span> <span class="nf">check</span><span class="p">(</span><span class="n">key_value_pairs</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">key_value_pairs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">word</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="ow">or</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">reserved_keys</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Bad key: {0}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">key</span><span class="p">))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Bad value: {0}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">value</span><span class="p">))</span>
+
+            
+<div class="viewcode-block" id="connect"><a class="viewcode-back" href="../../../ase/db/db.html#ase.db.core.connect">[docs]</a><span class="k">def</span> <span class="nf">connect</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="s">&#39;extract_from_name&#39;</span><span class="p">,</span> <span class="n">create_indices</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+            <span class="n">use_lock_file</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">append</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Create connection to database.</span>
+<span class="sd">    </span>
+<span class="sd">    name: str</span>
+<span class="sd">        Filename or address of database.</span>
+<span class="sd">    type: str</span>
+<span class="sd">        One of &#39;json&#39;, &#39;db&#39;, &#39;postgresql&#39;, &#39;mysql&#39;</span>
+<span class="sd">        (JSON, SQLite, PostgreSQL, MySQL/MariaDB).</span>
+<span class="sd">        Default is &#39;extract_from_name&#39;, which will ... guess the type</span>
+<span class="sd">        from the name.</span>
+<span class="sd">    use_lock_file: bool</span>
+<span class="sd">        You can turn this off if you know what you are doing ...</span>
+<span class="sd">    append: bool</span>
+<span class="sd">        Use append=False to start a new database.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="k">if</span> <span class="nb">type</span> <span class="o">==</span> <span class="s">&#39;extract_from_name&#39;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">name</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="nb">type</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">elif</span> <span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;pg://&#39;</span><span class="p">):</span>
+            <span class="nb">type</span> <span class="o">=</span> <span class="s">&#39;postgresql&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">type</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">name</span><span class="p">)[</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">:]</span>
+
+    <span class="k">if</span> <span class="nb">type</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">Database</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">append</span> <span class="ow">and</span> <span class="n">world</span><span class="o">.</span><span class="n">rank</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        
+    <span class="k">if</span> <span class="nb">type</span> <span class="o">==</span> <span class="s">&#39;json&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.db.jsondb</span> <span class="kn">import</span> <span class="n">JSONDatabase</span>
+        <span class="k">return</span> <span class="n">JSONDatabase</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">use_lock_file</span><span class="o">=</span><span class="n">use_lock_file</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">type</span> <span class="o">==</span> <span class="s">&#39;db&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.db.sqlite</span> <span class="kn">import</span> <span class="n">SQLite3Database</span>
+        <span class="k">return</span> <span class="n">SQLite3Database</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">create_indices</span><span class="p">,</span> <span class="n">use_lock_file</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">type</span> <span class="o">==</span> <span class="s">&#39;postgresql&#39;</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">ase.db.postgresql</span> <span class="kn">import</span> <span class="n">PostgreSQLDatabase</span>
+        <span class="k">return</span> <span class="n">PostgreSQLDatabase</span><span class="p">(</span><span class="n">name</span><span class="p">[</span><span class="mi">5</span><span class="p">:])</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Unknown database type: &#39;</span> <span class="o">+</span> <span class="nb">type</span><span class="p">)</span>
+
+</div>
+<span class="k">def</span> <span class="nf">lock</span><span class="p">(</span><span class="n">method</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Decorator for using a lock-file.&quot;&quot;&quot;</span>
+    <span class="nd">@functools.wraps</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">new_method</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">lock</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">method</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">lock</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">method</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">new_method</span>
+
+
+<span class="k">def</span> <span class="nf">parallel</span><span class="p">(</span><span class="n">method</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Decorator for broadcasting from master to slaves using MPI.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">world</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">method</span>
+        
+    <span class="nd">@functools.wraps</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">new_method</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">ex</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">if</span> <span class="n">world</span><span class="o">.</span><span class="n">rank</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">result</span> <span class="o">=</span> <span class="n">method</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">ex</span><span class="p">:</span>
+                <span class="k">pass</span>
+        <span class="n">ex</span><span class="p">,</span> <span class="n">result</span> <span class="o">=</span> <span class="n">broadcast</span><span class="p">((</span><span class="n">ex</span><span class="p">,</span> <span class="n">result</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">ex</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ex</span>
+        <span class="k">return</span> <span class="n">result</span>
+    <span class="k">return</span> <span class="n">new_method</span>
+
+
+<span class="k">def</span> <span class="nf">parallel_generator</span><span class="p">(</span><span class="n">generator</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Decorator for broadcasting yields from master to slaves using MPI.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">world</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">generator</span>
+        
+    <span class="nd">@functools.wraps</span><span class="p">(</span><span class="n">generator</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">new_generator</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">world</span><span class="o">.</span><span class="n">rank</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">generator</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+                <span class="n">result</span> <span class="o">=</span> <span class="n">broadcast</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+                <span class="k">yield</span> <span class="n">result</span>
+            <span class="n">broadcast</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">broadcast</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+            <span class="k">while</span> <span class="n">result</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="n">result</span>
+                <span class="n">result</span> <span class="o">=</span> <span class="n">broadcast</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">new_generator</span>
+
+    
+<span class="k">def</span> <span class="nf">convert_str_to_float_or_str</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Safe eval()&quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;True&#39;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s">&#39;False&#39;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">}</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">value</span>
+    
+
+<div class="viewcode-block" id="Database"><a class="viewcode-back" href="../../../ase/db/db.html#ase.db.core.Database">[docs]</a><span class="k">class</span> <span class="nc">Database</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Base class for all databases.&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">create_indices</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                 <span class="n">use_lock_file</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">filename</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">filename</span> <span class="o">=</span> <span class="n">filename</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">create_indices</span> <span class="o">=</span> <span class="n">create_indices</span>
+        <span class="k">if</span> <span class="n">use_lock_file</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">lock</span> <span class="o">=</span> <span class="n">Lock</span><span class="p">(</span><span class="n">filename</span> <span class="o">+</span> <span class="s">&#39;.lock&#39;</span><span class="p">,</span> <span class="n">world</span><span class="o">=</span><span class="n">DummyMPI</span><span class="p">())</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">lock</span> <span class="o">=</span> <span class="bp">None</span>
+            
+    <span class="nd">@parallel</span>
+    <span class="nd">@lock</span>
+<div class="viewcode-block" id="Database.write"><a class="viewcode-back" href="../../../ase/db/db.html#ase.db.core.Database.write">[docs]</a>    <span class="k">def</span> <span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">key_value_pairs</span><span class="o">=</span><span class="p">{},</span> <span class="n">data</span><span class="o">=</span><span class="p">{},</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Write atoms to database with key-value pairs.</span>
+<span class="sd">        </span>
+<span class="sd">        atoms: Atoms object</span>
+<span class="sd">            Write atomic numbers, positions, unit cell and boundary</span>
+<span class="sd">            conditions.  If a calculator is attached, write also already</span>
+<span class="sd">            calculated properties such as the energy and forces.</span>
+<span class="sd">        key_value_pairs: dict</span>
+<span class="sd">            Dictionary of key-value pairs.  Values must be strings or numbers.</span>
+<span class="sd">        data: dict</span>
+<span class="sd">            Extra stuff (not for searching).</span>
+<span class="sd">            </span>
+<span class="sd">        Key-value pairs can also be set using keyword arguments::</span>
+<span class="sd">            </span>
+<span class="sd">            connection.write(atoms, name=&#39;ABC&#39;, frequency=42.0)</span>
+<span class="sd">            </span>
+<span class="sd">        Returns integer id of the new row.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        
+        <span class="k">if</span> <span class="n">atoms</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">atoms</span> <span class="o">=</span> <span class="n">Atoms</span><span class="p">()</span>
+        
+        <span class="n">kvp</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">key_value_pairs</span><span class="p">)</span>  <span class="c"># modify a copy</span>
+        <span class="n">kvp</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+        
+        <span class="nb">id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_write</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">kvp</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">id</span>
+        </div>
+    <span class="k">def</span> <span class="nf">_write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">key_value_pairs</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">key_value_pairs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span>
+
+    <span class="nd">@parallel</span>
+    <span class="nd">@lock</span>
+<div class="viewcode-block" id="Database.reserve"><a class="viewcode-back" href="../../../ase/db/db.html#ase.db.core.Database.reserve">[docs]</a>    <span class="k">def</span> <span class="nf">reserve</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">key_value_pairs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Write empty row if not already present.</span>
+<span class="sd">        </span>
+<span class="sd">        Usage::</span>
+<span class="sd">            </span>
+<span class="sd">            id = conn.reserve(key1=value1, key2=value2, ...)</span>
+<span class="sd">        </span>
+<span class="sd">        Write an empty row with the given key-value pairs and</span>
+<span class="sd">        return the integer id.  If such a row already exists, don&#39;t write</span>
+<span class="sd">        anything and return None.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        
+        <span class="k">for</span> <span class="n">dct</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_select</span><span class="p">([],</span>
+                                <span class="p">[(</span><span class="n">key</span><span class="p">,</span> <span class="s">&#39;=&#39;</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+                                 <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">key_value_pairs</span><span class="o">.</span><span class="n">items</span><span class="p">()]):</span>
+            <span class="k">return</span> <span class="bp">None</span>
+
+        <span class="n">atoms</span> <span class="o">=</span> <span class="n">Atoms</span><span class="p">()</span>
+        
+        <span class="n">calc_name</span> <span class="o">=</span> <span class="n">key_value_pairs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;calculator&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="n">calc_name</span><span class="p">:</span>
+            <span class="c"># Allow use of calculator key</span>
+            <span class="k">assert</span> <span class="n">calc_name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="n">calc_name</span>
+            
+            <span class="c"># Fake calculator class:</span>
+            <span class="k">class</span> <span class="nc">Fake</span><span class="p">:</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="n">calc_name</span>
+                
+                <span class="k">def</span> <span class="nf">todict</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="p">{}</span>
+                
+                <span class="k">def</span> <span class="nf">check_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="p">[</span><span class="s">&#39;positions&#39;</span><span class="p">]</span>
+            
+            <span class="n">atoms</span><span class="o">.</span><span class="n">calc</span> <span class="o">=</span> <span class="n">Fake</span><span class="p">()</span>
+            
+        <span class="nb">id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_write</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">key_value_pairs</span><span class="p">,</span> <span class="p">{})</span>
+        
+        <span class="k">return</span> <span class="nb">id</span>
+        </div>
+    <span class="k">def</span> <span class="nf">__delitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">id</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">delete</span><span class="p">([</span><span class="nb">id</span><span class="p">])</span>
+        
+<div class="viewcode-block" id="Database.get_atoms"><a class="viewcode-back" href="../../../ase/db/db.html#ase.db.core.Database.get_atoms">[docs]</a>    <span class="k">def</span> <span class="nf">get_atoms</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">selection</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">attach_calculator</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                  <span class="n">add_additional_information</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Get Atoms object.</span>
+<span class="sd">        </span>
+<span class="sd">        selection: int, str or list</span>
+<span class="sd">            See the select() method.</span>
+<span class="sd">        attach_calculator: bool</span>
+<span class="sd">            Attach calculator object to Atoms object (default value is</span>
+<span class="sd">            False).</span>
+<span class="sd">        add_additional_information: bool</span>
+<span class="sd">            Put key-value pairs and data into Atoms.info dictionary.</span>
+<span class="sd">        </span>
+<span class="sd">        In addition, one can use keyword arguments to select specific</span>
+<span class="sd">        key-value pairs.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+            
+        <span class="n">row</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">selection</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">row</span><span class="o">.</span><span class="n">toatoms</span><span class="p">(</span><span class="n">attach_calculator</span><span class="p">,</span> <span class="n">add_additional_information</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">selection</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">selection</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Database.get"><a class="viewcode-back" href="../../../ase/db/db.html#ase.db.core.Database.get">[docs]</a>    <span class="k">def</span> <span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">selection</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Select a single row and return it as a dictionary.</span>
+<span class="sd">        </span>
+<span class="sd">        selection: int, str or list</span>
+<span class="sd">            See the select() method.</span>
+<span class="sd">        fancy: bool</span>
+<span class="sd">            return fancy dictionary with keys as attributes (this is the</span>
+<span class="sd">            default).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">rows</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">selection</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">rows</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="s">&#39;no match&#39;</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="s">&#39;more than one row matched&#39;</span>
+        <span class="k">return</span> <span class="n">rows</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+</div>
+    <span class="k">def</span> <span class="nf">parse_selection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">selection</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">selection</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="n">selection</span> <span class="o">==</span> <span class="s">&#39;&#39;</span><span class="p">:</span>
+            <span class="n">expressions</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">selection</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="n">expressions</span> <span class="o">=</span> <span class="p">[(</span><span class="s">&#39;id&#39;</span><span class="p">,</span> <span class="s">&#39;=&#39;</span><span class="p">,</span> <span class="n">selection</span><span class="p">)]</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">selection</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">expressions</span> <span class="o">=</span> <span class="n">selection</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">expressions</span> <span class="o">=</span> <span class="p">[</span><span class="n">w</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">selection</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;,&#39;</span><span class="p">)]</span>
+        <span class="n">keys</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">comparisons</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">expression</span> <span class="ow">in</span> <span class="n">expressions</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expression</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+                <span class="n">comparisons</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">expression</span><span class="p">)</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="n">expression</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s">&#39;&lt;&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">value</span><span class="p">,</span> <span class="n">expression</span> <span class="o">=</span> <span class="n">expression</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;&lt;&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">expression</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;=&#39;</span><span class="p">:</span>
+                    <span class="n">op</span> <span class="o">=</span> <span class="s">&#39;&gt;=&#39;</span>
+                    <span class="n">expression</span> <span class="o">=</span> <span class="n">expression</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">op</span> <span class="o">=</span> <span class="s">&#39;&gt;&#39;</span>
+                <span class="n">key</span> <span class="o">=</span> <span class="n">expression</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;&lt;&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">comparisons</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">key</span><span class="p">,</span> <span class="n">op</span><span class="p">,</span> <span class="n">value</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;!=&#39;</span><span class="p">,</span> <span class="s">&#39;&lt;=&#39;</span><span class="p">,</span> <span class="s">&#39;&gt;=&#39;</span><span class="p">,</span> <span class="s">&#39;&lt;&#39;</span><span class="p">,</span> <span class="s">&#39;&gt;&#39;</span><span class="p">,</span> <span class="s">&#39;=&#39;</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">op</span> <span class="ow">in</span> <span class="n">expression</span><span class="p">:</span>
+                    <span class="k">break</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">expression</span> <span class="ow">in</span> <span class="n">atomic_numbers</span><span class="p">:</span>
+                    <span class="n">comparisons</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">expression</span><span class="p">,</span> <span class="s">&#39;&gt;&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">expression</span><span class="p">)</span>
+                <span class="k">continue</span>
+            <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="o">=</span> <span class="n">expression</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">op</span><span class="p">)</span>
+            <span class="n">comparisons</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">key</span><span class="p">,</span> <span class="n">op</span><span class="p">,</span> <span class="n">value</span><span class="p">))</span>
+
+        <span class="n">cmps</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">comparisons</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">key</span><span class="p">,</span> <span class="s">&#39;=&#39;</span><span class="p">,</span> <span class="n">value</span><span class="p">))</span>
+            
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">op</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">comparisons</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s">&#39;age&#39;</span><span class="p">:</span>
+                <span class="n">key</span> <span class="o">=</span> <span class="s">&#39;ctime&#39;</span>
+                <span class="n">op</span> <span class="o">=</span> <span class="n">invop</span><span class="p">[</span><span class="n">op</span><span class="p">]</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">now</span><span class="p">()</span> <span class="o">-</span> <span class="n">time_string_to_float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">key</span> <span class="o">==</span> <span class="s">&#39;formula&#39;</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="n">op</span> <span class="o">==</span> <span class="s">&#39;=&#39;</span>
+                <span class="n">numbers</span> <span class="o">=</span> <span class="n">symbols2numbers</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+                <span class="n">count</span> <span class="o">=</span> <span class="n">collections</span><span class="o">.</span><span class="n">defaultdict</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">Z</span> <span class="ow">in</span> <span class="n">numbers</span><span class="p">:</span>
+                    <span class="n">count</span><span class="p">[</span><span class="n">Z</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">cmps</span><span class="o">.</span><span class="n">extend</span><span class="p">((</span><span class="n">Z</span><span class="p">,</span> <span class="s">&#39;=&#39;</span><span class="p">,</span> <span class="n">count</span><span class="p">[</span><span class="n">Z</span><span class="p">])</span> <span class="k">for</span> <span class="n">Z</span> <span class="ow">in</span> <span class="n">count</span><span class="p">)</span>
+                <span class="n">key</span> <span class="o">=</span> <span class="s">&#39;natoms&#39;</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">numbers</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">atomic_numbers</span><span class="p">:</span>
+                <span class="n">key</span> <span class="o">=</span> <span class="n">atomic_numbers</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="n">convert_str_to_float_or_str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">numeric_keys</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)):</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;Wrong type for &quot;{0}{1}{2}&quot; - must be a number&#39;</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">op</span><span class="p">,</span> <span class="n">value</span><span class="p">))</span>
+            <span class="n">cmps</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">key</span><span class="p">,</span> <span class="n">op</span><span class="p">,</span> <span class="n">value</span><span class="p">))</span>
+            
+        <span class="k">return</span> <span class="n">keys</span><span class="p">,</span> <span class="n">cmps</span>
+
+    <span class="nd">@parallel_generator</span>
+<div class="viewcode-block" id="Database.select"><a class="viewcode-back" href="../../../ase/db/db.html#ase.db.core.Database.select">[docs]</a>    <span class="k">def</span> <span class="nf">select</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">selection</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="nb">filter</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">explain</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+               <span class="n">verbosity</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Select rows.</span>
+<span class="sd">        </span>
+<span class="sd">        Return AtomsRow iterator with results.  Selection is done</span>
+<span class="sd">        using key-value pairs and the special keys:</span>
+<span class="sd">            </span>
+<span class="sd">            formula, age, user, calculator, natoms, energy, magmom</span>
+<span class="sd">            and/or charge.</span>
+<span class="sd">        </span>
+<span class="sd">        selection: int, str or list</span>
+<span class="sd">            Can be:</span>
+<span class="sd">            </span>
+<span class="sd">            * an integer id</span>
+<span class="sd">            * a string like &#39;key=value&#39;, where &#39;=&#39; can also be one of</span>
+<span class="sd">              &#39;&lt;=&#39;, &#39;&lt;&#39;, &#39;&gt;&#39;, &#39;&gt;=&#39; or &#39;!=&#39;.</span>
+<span class="sd">            * a string like &#39;key&#39;</span>
+<span class="sd">            * comma separated strings like &#39;key1&lt;value1,key2=value2,key&#39;</span>
+<span class="sd">            * list of strings or tuples: [(&#39;charge&#39;, &#39;=&#39;, 1)].</span>
+<span class="sd">        filter: function</span>
+<span class="sd">            A function that takes as input a row and returns True or False.</span>
+<span class="sd">        explain: bool</span>
+<span class="sd">            Explain query plan.</span>
+<span class="sd">        verbosity: int</span>
+<span class="sd">            Possible values: 0, 1 or 2.</span>
+<span class="sd">        limit: int or None</span>
+<span class="sd">            Limit selection.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        
+        <span class="k">if</span> <span class="n">sort</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">sort</span> <span class="o">==</span> <span class="s">&#39;age&#39;</span><span class="p">:</span>
+                <span class="n">sort</span> <span class="o">=</span> <span class="s">&#39;-ctime&#39;</span>
+            <span class="k">elif</span> <span class="n">sort</span> <span class="o">==</span> <span class="s">&#39;-age&#39;</span><span class="p">:</span>
+                <span class="n">sort</span> <span class="o">=</span> <span class="s">&#39;ctime&#39;</span>
+            <span class="k">elif</span> <span class="n">sort</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s">&#39;-&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s">&#39;user&#39;</span><span class="p">:</span>
+                <span class="n">sort</span> <span class="o">+=</span> <span class="s">&#39;name&#39;</span>
+            
+        <span class="n">keys</span><span class="p">,</span> <span class="n">cmps</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_selection</span><span class="p">(</span><span class="n">selection</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_select</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span> <span class="n">cmps</span><span class="p">,</span> <span class="n">explain</span><span class="o">=</span><span class="n">explain</span><span class="p">,</span>
+                                <span class="n">verbosity</span><span class="o">=</span><span class="n">verbosity</span><span class="p">,</span>
+                                <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="n">offset</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="n">sort</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">filter</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="nb">filter</span><span class="p">(</span><span class="n">row</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">row</span>
+                </div>
+    <span class="k">def</span> <span class="nf">count</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">selection</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">selection</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+            <span class="n">n</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">n</span>
+        
+    <span class="nd">@parallel</span>
+    <span class="nd">@lock</span>
+<div class="viewcode-block" id="Database.update"><a class="viewcode-back" href="../../../ase/db/db.html#ase.db.core.Database.update">[docs]</a>    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ids</span><span class="p">,</span> <span class="n">delete_keys</span><span class="o">=</span><span class="p">[],</span> <span class="n">block_size</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+               <span class="o">**</span><span class="n">add_key_value_pairs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Update row(s).</span>
+<span class="sd">        </span>
+<span class="sd">        ids: int or list of int</span>
+<span class="sd">            ID&#39;s of rows to update.</span>
+<span class="sd">        delete_keys: list of str</span>
+<span class="sd">            Keys to remove.</span>
+<span class="sd">            </span>
+<span class="sd">        Use keyword argumnts to add new keys-value pairs.</span>
+<span class="sd">            </span>
+<span class="sd">        Returns number of key-value pairs added and removed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">add_key_value_pairs</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ids</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="n">ids</span> <span class="o">=</span> <span class="p">[</span><span class="n">ids</span><span class="p">]</span>
+            
+        <span class="n">B</span> <span class="o">=</span> <span class="n">block_size</span>
+        <span class="n">nblocks</span> <span class="o">=</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">ids</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">//</span> <span class="n">B</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="n">M</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">N</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nblocks</span><span class="p">):</span>
+            <span class="n">m</span><span class="p">,</span> <span class="n">n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_update</span><span class="p">(</span><span class="n">ids</span><span class="p">[</span><span class="n">b</span> <span class="o">*</span> <span class="n">B</span><span class="p">:(</span><span class="n">b</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">B</span><span class="p">],</span> <span class="n">delete_keys</span><span class="p">,</span>
+                                <span class="n">add_key_value_pairs</span><span class="p">)</span>
+            <span class="n">M</span> <span class="o">+=</span> <span class="n">m</span>
+            <span class="n">N</span> <span class="o">+=</span> <span class="n">n</span>
+        <span class="k">return</span> <span class="n">M</span><span class="p">,</span> <span class="n">N</span>
+</div>
+<div class="viewcode-block" id="Database.delete"><a class="viewcode-back" href="../../../ase/db/db.html#ase.db.core.Database.delete">[docs]</a>    <span class="k">def</span> <span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ids</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Delete rows.&quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+        </div></div>
+<span class="k">def</span> <span class="nf">time_string_to_float</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="p">(</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="n">s</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s">&#39; &#39;</span><span class="p">,</span> <span class="s">&#39;&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="s">&#39;+&#39;</span> <span class="ow">in</span> <span class="n">s</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="n">time_string_to_float</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">s</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;+&#39;</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">s</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">isalpha</span><span class="p">()</span> <span class="ow">and</span> <span class="n">s</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;s&#39;</span><span class="p">:</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">s</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">i</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">while</span> <span class="n">s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">isdigit</span><span class="p">():</span>
+        <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">seconds</span><span class="p">[</span><span class="n">s</span><span class="p">[</span><span class="n">i</span><span class="p">:]]</span> <span class="o">*</span> <span class="nb">int</span><span class="p">(</span><span class="n">s</span><span class="p">[:</span><span class="n">i</span><span class="p">])</span> <span class="o">/</span> <span class="n">YEAR</span>
+
+
+<span class="k">def</span> <span class="nf">float_to_time_string</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="nb">long</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="n">t</span> <span class="o">*=</span> <span class="n">YEAR</span>
+    <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="s">&#39;yMwdhms&#39;</span><span class="p">:</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">t</span> <span class="o">/</span> <span class="n">seconds</span><span class="p">[</span><span class="n">s</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">x</span> <span class="o">&gt;</span> <span class="mi">5</span><span class="p">:</span>
+            <span class="k">break</span>
+    <span class="k">if</span> <span class="nb">long</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#39;{0:.3f} {1}s&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">longwords</span><span class="p">[</span><span class="n">s</span><span class="p">])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&#39;{0:.0f}{1}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">s</span><span class="p">)</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../../overview.html">
+              Overview</a></li>
+            <li><a href="../../../download.html">
+              Installation</a></li>
+            <li><a href="../../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../../faq.html">FAQ</a></li>
+            <li><a href="../../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

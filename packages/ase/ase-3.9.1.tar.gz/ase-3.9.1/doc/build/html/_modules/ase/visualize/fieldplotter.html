@@ -1,0 +1,400 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.visualize.fieldplotter &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../../contents.html" />
+    <link rel="index" title="Global index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../../index.html" />
+    <link rel="up" title="ase.visualize" href="../visualize.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../visualize.html" accesskey="U">ase.visualize</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.visualize.fieldplotter</h1><div class="highlight"><pre>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+<span class="sd">&quot;&quot;&quot;plotting fields defined on atoms during a simulation.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">ase.visualize.primiplotter</span> <span class="kn">import</span> <span class="n">PostScriptFile</span><span class="p">,</span> <span class="n">PnmFile</span><span class="p">,</span> <span class="n">GifFile</span><span class="p">,</span> <span class="n">JpegFile</span><span class="p">,</span> <span class="n">X11Window</span>
+<span class="kn">from</span> <span class="nn">ase.visualize.primiplotter</span> <span class="kn">import</span> <span class="n">PrimiPlotter</span> <span class="k">as</span> <span class="n">_PrimiPlotter</span>
+<span class="kn">import</span> <span class="nn">numpy</span>
+<span class="kn">import</span> <span class="nn">time</span>
+
+<div class="viewcode-block" id="FieldPlotter"><a class="viewcode-back" href="../../../ase/visualize/visualize.html#ase.visualize.fieldplotter.FieldPlotter">[docs]</a><span class="k">class</span> <span class="nc">FieldPlotter</span><span class="p">(</span><span class="n">_PrimiPlotter</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">datasource</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">timing</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                 <span class="n">interval</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">initframe</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="n">_PrimiPlotter</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span> <span class="n">timing</span><span class="o">=</span><span class="n">timing</span><span class="p">,</span>
+                               <span class="n">interval</span><span class="o">=</span><span class="n">interval</span><span class="p">,</span> <span class="n">initframe</span><span class="o">=</span><span class="n">initframe</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">datasource</span> <span class="o">=</span> <span class="n">datasource</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dims</span> <span class="o">=</span> <span class="p">(</span><span class="mi">100</span><span class="p">,</span><span class="mi">100</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_plot_plane</span><span class="p">(</span><span class="s">&quot;xy&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_data_range</span><span class="p">(</span><span class="s">&quot;plot&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_background</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_red_yellow_colors</span><span class="p">()</span>
+        
+<div class="viewcode-block" id="FieldPlotter.set_plot_plane"><a class="viewcode-back" href="../../../ase/visualize/visualize.html#ase.visualize.fieldplotter.FieldPlotter.set_plot_plane">[docs]</a>    <span class="k">def</span> <span class="nf">set_plot_plane</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plane</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set the plotting plane to xy, xz or yz (default: xy)&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">plane</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&quot;xy&quot;</span><span class="p">,</span> <span class="s">&quot;xz&quot;</span><span class="p">,</span> <span class="s">&quot;yz&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">plane</span> <span class="o">=</span> <span class="n">plane</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;The argument to plotPlane must be &#39;xy&#39;, &#39;xz&#39; or &#39;yz&#39;.&quot;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="FieldPlotter.set_data_range"><a class="viewcode-back" href="../../../ase/visualize/visualize.html#ase.visualize.fieldplotter.FieldPlotter.set_data_range">[docs]</a>    <span class="k">def</span> <span class="nf">set_data_range</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">range1</span><span class="p">,</span> <span class="n">range2</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set the range of the data used when coloring.</span>
+
+<span class="sd">        This function sets the range of data values mapped unto colors</span>
+<span class="sd">        in the final plot.</span>
+<span class="sd">        </span>
+<span class="sd">        Three possibilities:</span>
+
+<span class="sd">        &#39;data&#39;:        Autoscale using the data on visible atoms.</span>
+<span class="sd">                       The range goes from the lowest to the highest</span>
+<span class="sd">                       value present on the atoms.  If only a few atoms</span>
+<span class="sd">                       have extreme values, the entire color range may not</span>
+<span class="sd">                       be used on the plot, as many values may be averaged</span>
+<span class="sd">                       on each point in the plot.</span>
+
+<span class="sd">        &#39;plot&#39;:        Autoscale using the data on the plot.  Unlike &#39;data&#39;</span>
+<span class="sd">                       this guarantees that the entire color range is used.</span>
+
+<span class="sd">        min, max:      Use the range [min, max]</span>
+<span class="sd">                       </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">range1</span> <span class="o">==</span> <span class="s">&quot;data&quot;</span> <span class="ow">or</span> <span class="n">range1</span> <span class="o">==</span> <span class="s">&quot;plot&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">range2</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">autorange</span> <span class="o">=</span> <span class="n">range1</span>
+        <span class="k">elif</span> <span class="n">range2</span> <span class="o">!=</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">autorange</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">range</span> <span class="o">=</span> <span class="p">(</span><span class="n">range1</span><span class="p">,</span> <span class="n">range2</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Illegal argument(s) to set_data_range&quot;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="FieldPlotter.set_background"><a class="viewcode-back" href="../../../ase/visualize/visualize.html#ase.visualize.fieldplotter.FieldPlotter.set_background">[docs]</a>    <span class="k">def</span> <span class="nf">set_background</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set the data value of the background.  See also set_background_color</span>
+
+<span class="sd">        Set the value of the background (parts of the plot without atoms) to</span>
+<span class="sd">        a specific value, or to &#39;min&#39; or &#39;max&#39; representing the minimal or</span>
+<span class="sd">        maximal data values on the atoms.</span>
+
+<span class="sd">        Calling set_background cancels previous calls to set_background_color.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">background</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">backgroundcolor</span> <span class="o">=</span> <span class="bp">None</span>
+</div>
+<div class="viewcode-block" id="FieldPlotter.set_background_color"><a class="viewcode-back" href="../../../ase/visualize/visualize.html#ase.visualize.fieldplotter.FieldPlotter.set_background_color">[docs]</a>    <span class="k">def</span> <span class="nf">set_background_color</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">color</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set the background color.  See also set_background.</span>
+
+<span class="sd">        Set the background color.  Use a single value in the range [0, 1[</span>
+<span class="sd">        for gray values, or a tuple of three such values as an RGB color.</span>
+
+<span class="sd">        Calling set_background_color cancels previous calls to set_background.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">background</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">backgroundcolor</span> <span class="o">=</span> <span class="n">color</span>
+</div>
+<div class="viewcode-block" id="FieldPlotter.set_red_yellow_colors"><a class="viewcode-back" href="../../../ase/visualize/visualize.html#ase.visualize.fieldplotter.FieldPlotter.set_red_yellow_colors">[docs]</a>    <span class="k">def</span> <span class="nf">set_red_yellow_colors</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set colors to Black-Red-Yellow-White (a.k.a. STM colors)&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_colors</span><span class="p">([(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+                        <span class="p">(</span><span class="mf">0.33</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+                        <span class="p">(</span><span class="mf">0.66</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+                        <span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)],</span>
+                       <span class="n">reverse</span><span class="p">)</span>
+        </div>
+<div class="viewcode-block" id="FieldPlotter.set_black_white_colors"><a class="viewcode-back" href="../../../ase/visualize/visualize.html#ase.visualize.fieldplotter.FieldPlotter.set_black_white_colors">[docs]</a>    <span class="k">def</span> <span class="nf">set_black_white_colors</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set the color to Black-White (greyscale)&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_colors</span><span class="p">([(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>  <span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)],</span> <span class="n">reverse</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">set_colors</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">colors</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="n">colors</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">colors</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">float</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">colors</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Colors must be a 2D array.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">reverse</span><span class="p">:</span>
+            <span class="n">colors</span><span class="p">[:,</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">colors</span><span class="p">[:,</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">colors</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">colors</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">,:])</span>
+            <span class="c">#print colors</span>
+        <span class="k">if</span> <span class="n">colors</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="mf">0.0</span> <span class="ow">or</span> <span class="n">colors</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="mf">1.0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;First row must define the value 0 and last row must define the value 1&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">colors</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">colormode</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">elif</span> <span class="n">colors</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">colormode</span> <span class="o">=</span> <span class="mi">3</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Color specification must be Nx2 (grey) or Nx4 (rgb) matrix.&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">colorfunction</span> <span class="o">=</span> <span class="n">InterpolatingFunction</span><span class="p">(</span><span class="n">colors</span><span class="p">[:,</span><span class="mi">0</span><span class="p">],</span> <span class="n">colors</span><span class="p">[:,</span><span class="mi">1</span><span class="p">:])</span>
+        
+<div class="viewcode-block" id="FieldPlotter.plot"><a class="viewcode-back" href="../../../ase/visualize/visualize.html#ase.visualize.fieldplotter.FieldPlotter.plot">[docs]</a>    <span class="k">def</span> <span class="nf">plot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Create a plot now.  Does not respect the interval timer.</span>
+
+<span class="sd">        This method makes a plot unconditionally.  It does not look at</span>
+<span class="sd">        the interval variable, nor is this plot taken into account in</span>
+<span class="sd">        the counting done by the update() method if an interval</span>
+<span class="sd">        variable was specified.</span>
+
+<span class="sd">        If data is specified, it must be an array of numbers with the</span>
+<span class="sd">        same length as the atoms.  That data will then be plotted.  If</span>
+<span class="sd">        no data is given, the data source specified when creating the</span>
+<span class="sd">        plotter is used.</span>
+<span class="sd">        </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">timing</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_starttimer</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;FieldPlotter: Starting plot at &quot;</span>
+                 <span class="o">+</span> <span class="n">time</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s">&quot;%a, </span><span class="si">%d</span><span class="s"> %b %Y %H:%M:%S&quot;</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">data</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">datasource</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Data has wrong length: </span><span class="si">%d</span><span class="s"> instead of </span><span class="si">%d</span><span class="s">.&quot;</span>
+                               <span class="o">%</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">)))</span>
+        
+        <span class="n">invisible</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_getinvisible</span><span class="p">()</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rotate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_getpositions</span><span class="p">())</span>
+        <span class="n">radii</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_getradii</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">autoscale</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_autoscale</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span><span class="n">radii</span><span class="p">)</span>
+        <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">relativescale</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="n">scale</span> <span class="o">*</span> <span class="n">coords</span>
+        <span class="n">center</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_getcenter</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span>
+        <span class="n">offset</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span> <span class="o">+</span> <span class="p">(</span><span class="mf">0.0</span><span class="p">,))</span><span class="o">/</span><span class="mf">2.0</span> <span class="o">-</span> <span class="n">center</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="n">coords</span> <span class="o">+</span> <span class="n">offset</span>
+        <span class="n">radii</span> <span class="o">=</span> <span class="n">radii</span> <span class="o">*</span> <span class="n">scale</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Scale is </span><span class="si">%f</span><span class="s"> and size is (</span><span class="si">%d</span><span class="s">, </span><span class="si">%d</span><span class="s">)&quot;</span>
+                 <span class="o">%</span> <span class="p">(</span><span class="n">scale</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Physical size of plot is </span><span class="si">%f</span><span class="s"> Angstrom times </span><span class="si">%f</span><span class="s"> Angstrom&quot;</span>
+                 <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="n">scale</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="n">scale</span><span class="p">))</span>
+
+        <span class="c"># Remove invisible atoms</span>
+        <span class="n">selector</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">logical_not</span><span class="p">(</span><span class="n">invisible</span><span class="p">)</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">compress</span><span class="p">(</span><span class="n">selector</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">radii</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">compress</span><span class="p">(</span><span class="n">selector</span><span class="p">,</span> <span class="n">radii</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">compress</span><span class="p">(</span><span class="n">selector</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;plotting data in the range [</span><span class="si">%f</span><span class="s">,</span><span class="si">%f</span><span class="s">]&quot;</span> <span class="o">%</span>
+                   <span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">data</span><span class="o">.</span><span class="n">max</span><span class="p">()))</span>
+        <span class="c"># Now create the output array</span>
+        <span class="n">sumarray</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">float</span><span class="p">)</span>
+        <span class="n">weight</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span>
+
+        <span class="c"># Loop over all atoms, and plot them</span>
+        <span class="n">nmiss</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">plane</span> <span class="o">==</span> <span class="s">&quot;xy&quot;</span><span class="p">:</span>
+            <span class="n">xy</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[:,:</span><span class="mi">2</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">plane</span> <span class="o">==</span> <span class="s">&quot;xz&quot;</span><span class="p">:</span>
+            <span class="n">xy</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[:,::</span><span class="mi">2</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">plane</span> <span class="o">==</span> <span class="s">&quot;yz&quot;</span><span class="p">:</span>
+            <span class="n">xy</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[:,</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&quot;self.plane is bogus: &quot;</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">plane</span><span class="p">))</span>
+        <span class="k">assert</span> <span class="n">xy</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">2</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;plotting </span><span class="si">%d</span><span class="s"> atoms on </span><span class="si">%d</span><span class="s"> * </span><span class="si">%d</span><span class="s"> (= </span><span class="si">%d</span><span class="s">) grid&quot;</span> <span class="o">%</span>
+                   <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">xy</span><span class="p">),</span> <span class="n">sumarray</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">sumarray</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+                    <span class="nb">len</span><span class="p">(</span><span class="n">sumarray</span><span class="o">.</span><span class="n">flat</span><span class="p">)))</span>
+                                                            
+        <span class="n">xy</span> <span class="o">=</span> <span class="n">xy</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">numpy</span><span class="o">.</span><span class="n">int</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">xy</span><span class="p">)):</span>
+            <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="o">=</span> <span class="n">xy</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">d</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">x</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">and</span> <span class="n">y</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">y</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>
+                <span class="n">sumarray</span><span class="p">[</span><span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">]</span> <span class="o">+=</span> <span class="n">d</span>
+                <span class="n">weight</span><span class="p">[</span><span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">nmiss</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&quot;... </span><span class="si">%d</span><span class="s"> atoms fell outside plot.&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">nmiss</span><span class="p">,))</span>
+
+        <span class="n">datamap</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_makedatamap</span><span class="p">(</span><span class="n">sumarray</span><span class="p">,</span> <span class="n">weight</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">data</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Range of data map: [</span><span class="si">%f</span><span class="s">, </span><span class="si">%f</span><span class="s">]&quot;</span> <span class="o">%</span>
+                   <span class="p">(</span><span class="n">datamap</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">datamap</span><span class="o">.</span><span class="n">max</span><span class="p">()))</span>
+        <span class="n">plot</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_makeplotmap</span><span class="p">(</span><span class="n">datamap</span><span class="p">,</span> <span class="n">weight</span><span class="p">)</span>
+        <span class="c">#self.log(&quot;Range of plot: [%f, %f]&quot; %</span>
+        <span class="c">#           (min(plot.flat), max(plot.flat)))</span>
+        <span class="n">examinplot</span> <span class="o">=</span> <span class="n">plot</span><span class="p">[:]</span>
+        <span class="n">examinplot</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">plot</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">plot</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],)</span> <span class="o">+</span> <span class="n">plot</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">:]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Range of plot: </span><span class="si">%s</span><span class="s"> -&gt; </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span>
+                 <span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">examinplot</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="mi">0</span><span class="p">)),</span> <span class="nb">str</span><span class="p">(</span><span class="n">examinplot</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="mi">0</span><span class="p">))))</span>
+        <span class="k">del</span> <span class="n">examinplot</span>
+        <span class="k">for</span> <span class="n">device</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">outputdevice</span><span class="p">:</span>
+            <span class="n">device</span><span class="o">.</span><span class="n">inform_about_scale</span><span class="p">(</span><span class="n">scale</span><span class="p">)</span>
+            <span class="n">device</span><span class="o">.</span><span class="n">plotArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">swapaxes</span><span class="p">(</span><span class="n">plot</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;FieldPlotter: Finished plotting at &quot;</span>
+                 <span class="o">+</span> <span class="n">time</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s">&quot;%a, </span><span class="si">%d</span><span class="s"> %b %Y %H:%M:%S&quot;</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n\n</span><span class="s">&quot;</span><span class="p">)</span>
+
+        </div>
+    <span class="k">def</span> <span class="nf">_makedatamap</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sumarray</span><span class="p">,</span> <span class="n">weight</span><span class="p">,</span> <span class="n">minimum</span><span class="p">,</span> <span class="n">maximum</span><span class="p">):</span>
+        <span class="n">background</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">equal</span><span class="p">(</span><span class="n">weight</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&quot;Number of background points:&quot;</span><span class="p">,</span> <span class="nb">sum</span><span class="p">(</span><span class="n">background</span><span class="o">.</span><span class="n">flat</span><span class="p">))</span>
+        <span class="n">datamap</span> <span class="o">=</span> <span class="n">sumarray</span> <span class="o">/</span> <span class="n">numpy</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">background</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">weight</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">background</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">background</span> <span class="o">==</span> <span class="s">&quot;min&quot;</span><span class="p">:</span>
+                <span class="n">bg</span> <span class="o">=</span> <span class="n">minimum</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">background</span> <span class="o">==</span> <span class="s">&quot;max&quot;</span><span class="p">:</span>
+                <span class="n">bg</span> <span class="o">=</span> <span class="n">maximum</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">bg</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">background</span>
+            <span class="n">datamap</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">background</span><span class="p">,</span> <span class="n">bg</span><span class="p">,</span> <span class="n">datamap</span><span class="p">)</span>
+            
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">autorange</span> <span class="o">==</span> <span class="s">&quot;data&quot;</span><span class="p">:</span>
+            <span class="n">datamap</span> <span class="o">=</span> <span class="p">(</span><span class="n">datamap</span> <span class="o">-</span> <span class="n">minimum</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">maximum</span> <span class="o">-</span> <span class="n">minimum</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Autorange using data.  Data range is [</span><span class="si">%f</span><span class="s">, </span><span class="si">%f</span><span class="s">]&quot;</span>
+                     <span class="o">%</span> <span class="p">(</span><span class="n">minimum</span><span class="p">,</span> <span class="n">maximum</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">autorange</span> <span class="o">==</span> <span class="s">&quot;plot&quot;</span><span class="p">:</span>
+            <span class="n">ma</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">background</span><span class="p">,</span> <span class="n">minimum</span><span class="p">,</span> <span class="n">datamap</span><span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+            <span class="n">mi</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">background</span><span class="p">,</span> <span class="n">maximum</span><span class="p">,</span> <span class="n">datamap</span><span class="p">)</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
+            <span class="n">datamap</span> <span class="o">=</span> <span class="p">(</span><span class="n">datamap</span> <span class="o">-</span> <span class="n">mi</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">ma</span> <span class="o">-</span> <span class="n">mi</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Autorange using plot.  Data range is [</span><span class="si">%f</span><span class="s">, </span><span class="si">%f</span><span class="s">]&quot;</span>
+                     <span class="o">%</span> <span class="p">(</span><span class="n">mi</span><span class="p">,</span> <span class="n">ma</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">autorange</span> <span class="o">==</span> <span class="bp">None</span>
+            <span class="n">datamap</span> <span class="o">=</span> <span class="p">(</span><span class="n">datamap</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">range</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">range</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                                                   <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">range</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="n">datamap</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">datamap</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s">&quot;Data range specified by user: [</span><span class="si">%f</span><span class="s">, </span><span class="si">%f</span><span class="s">]&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">range</span><span class="p">)</span>
+        <span class="n">datamap</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">background</span><span class="p">,</span> <span class="n">bg</span><span class="p">,</span> <span class="n">datamap</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">datamap</span><span class="o">.</span><span class="n">min</span><span class="p">()</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">datamap</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">&lt;=</span> <span class="mf">1.0</span>
+        
+        <span class="k">return</span> <span class="n">datamap</span>
+
+    <span class="k">def</span> <span class="nf">_makeplotmap</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">datamap</span><span class="p">,</span> <span class="n">weight</span><span class="p">):</span>
+        <span class="n">plot</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span> <span class="o">+</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">colormode</span><span class="p">,),</span> <span class="n">numpy</span><span class="o">.</span><span class="n">float</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">backgroundcolor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">weight</span><span class="p">[</span><span class="n">i</span><span class="p">,</span><span class="n">j</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">plot</span><span class="p">[</span><span class="n">i</span><span class="p">,</span><span class="n">j</span><span class="p">,:]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">backgroundcolor</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">x</span> <span class="o">=</span> <span class="n">datamap</span><span class="p">[</span><span class="n">i</span><span class="p">,</span><span class="n">j</span><span class="p">]</span>
+                    <span class="n">plot</span><span class="p">[</span><span class="n">i</span><span class="p">,</span><span class="n">j</span><span class="p">,:]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">colorfunction</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">plot</span>
+    </div>
+<span class="k">class</span> <span class="nc">InterpolatingFunction</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">xpoints</span><span class="p">,</span> <span class="n">ypoints</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">xpoints</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ypoints</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Length of x and y arrays should be the same.&quot;</span><span class="p">)</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">xpoints</span><span class="o">.</span><span class="n">argsort</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">xpoints</span> <span class="o">=</span> <span class="n">xpoints</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ypoints</span> <span class="o">=</span> <span class="n">ypoints</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+    <span class="k">def</span> <span class="nf">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">xpoints</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">ypoints</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">xpoints</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">xpoints</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">x0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">xpoints</span><span class="p">[</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">x1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">xpoints</span><span class="p">[</span><span class="n">n</span><span class="p">]</span>
+        <span class="n">y0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ypoints</span><span class="p">[</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">y1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ypoints</span><span class="p">[</span><span class="n">n</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">y0</span> <span class="o">+</span> <span class="p">(</span><span class="n">y1</span> <span class="o">-</span> <span class="n">y0</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">x1</span> <span class="o">-</span> <span class="n">x0</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">x0</span><span class="p">)</span>
+    
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../../overview.html">
+              Overview</a></li>
+            <li><a href="../../../download.html">
+              Installation</a></li>
+            <li><a href="../../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../../faq.html">FAQ</a></li>
+            <li><a href="../../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../visualize.html" accesskey="U">ase.visualize</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

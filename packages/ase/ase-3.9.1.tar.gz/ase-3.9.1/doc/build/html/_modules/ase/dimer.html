@@ -1,0 +1,1290 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.dimer &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.dimer</h1><div class="highlight"><pre>
+<span class="sd">&quot;&quot;&quot;Minimum mode follower for finding saddle points in an unbiased way.</span>
+
+<span class="sd">There is, currently, only one implemented method: The Dimer method.</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">ase.optimize.optimize</span> <span class="kn">import</span> <span class="n">Optimizer</span>
+<span class="kn">from</span> <span class="nn">math</span> <span class="kn">import</span> <span class="n">cos</span><span class="p">,</span> <span class="n">sin</span><span class="p">,</span> <span class="n">atan</span><span class="p">,</span> <span class="n">tan</span><span class="p">,</span> <span class="n">degrees</span><span class="p">,</span> <span class="n">pi</span><span class="p">,</span> <span class="n">sqrt</span>
+<span class="kn">from</span> <span class="nn">ase.parallel</span> <span class="kn">import</span> <span class="n">rank</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">world</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.singlepoint</span> <span class="kn">import</span> <span class="n">SinglePointCalculator</span>
+
+<span class="c"># Handy vector methods</span>
+<span class="n">norm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span>
+
+
+<span class="k">def</span> <span class="nf">normalize</span><span class="p">(</span><span class="n">vector</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Create a unit vector along *vector*&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">vector</span> <span class="o">/</span> <span class="n">norm</span><span class="p">(</span><span class="n">vector</span><span class="p">)</span>
+
+    
+<span class="k">def</span> <span class="nf">parallel_vector</span><span class="p">(</span><span class="n">vector</span><span class="p">,</span> <span class="n">base</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Extract the components of *vector* that are parallel to *base*&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">vdot</span><span class="p">(</span><span class="n">vector</span><span class="p">,</span> <span class="n">base</span><span class="p">)</span> <span class="o">*</span> <span class="n">base</span>
+
+    
+<span class="k">def</span> <span class="nf">perpendicular_vector</span><span class="p">(</span><span class="n">vector</span><span class="p">,</span> <span class="n">base</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Remove the components of *vector* that are parallel to *base*&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">vector</span> <span class="o">-</span> <span class="n">parallel_vector</span><span class="p">(</span><span class="n">vector</span><span class="p">,</span> <span class="n">base</span><span class="p">)</span>
+
+    
+<span class="k">def</span> <span class="nf">rotate_vectors</span><span class="p">(</span><span class="n">v1i</span><span class="p">,</span> <span class="n">v2i</span><span class="p">,</span> <span class="n">angle</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Rotate vectors *v1i* and *v2i* by *angle*&quot;&quot;&quot;</span>
+    <span class="n">cAng</span> <span class="o">=</span> <span class="n">cos</span><span class="p">(</span><span class="n">angle</span><span class="p">)</span>
+    <span class="n">sAng</span> <span class="o">=</span> <span class="n">sin</span><span class="p">(</span><span class="n">angle</span><span class="p">)</span>
+    <span class="n">v1o</span> <span class="o">=</span> <span class="n">v1i</span> <span class="o">*</span> <span class="n">cAng</span> <span class="o">+</span> <span class="n">v2i</span> <span class="o">*</span> <span class="n">sAng</span>
+    <span class="n">v2o</span> <span class="o">=</span> <span class="n">v2i</span> <span class="o">*</span> <span class="n">cAng</span> <span class="o">-</span> <span class="n">v1i</span> <span class="o">*</span> <span class="n">sAng</span>
+    <span class="c"># Ensure the length of the input and output vectors is equal</span>
+    <span class="k">return</span> <span class="n">normalize</span><span class="p">(</span><span class="n">v1o</span><span class="p">)</span> <span class="o">*</span> <span class="n">norm</span><span class="p">(</span><span class="n">v1i</span><span class="p">),</span> <span class="n">normalize</span><span class="p">(</span><span class="n">v2o</span><span class="p">)</span> <span class="o">*</span> <span class="n">norm</span><span class="p">(</span><span class="n">v2i</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="DimerEigenmodeSearch"><a class="viewcode-back" href="../../ase/dimermethod.html#ase.dimer.DimerEigenmodeSearch">[docs]</a><span class="k">class</span> <span class="nc">DimerEigenmodeSearch</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;An implementation of the Dimer&#39;s minimum eigenvalue mode search.</span>
+
+<span class="sd">    This class implements the rotational part of the dimer saddle point</span>
+<span class="sd">    searching method.</span>
+
+<span class="sd">    Parameters:</span>
+
+<span class="sd">    atoms: MinModeAtoms object</span>
+<span class="sd">        MinModeAtoms is an extension to the Atoms object, which includes</span>
+<span class="sd">        information about the lowest eigenvalue mode.</span>
+<span class="sd">    control: DimerControl object</span>
+<span class="sd">        Contains the parameters necessary for the eigenmode search.</span>
+<span class="sd">        If no control object is supplied a default DimerControl</span>
+<span class="sd">        will be created and used.</span>
+<span class="sd">    basis: list of xyz-values</span>
+<span class="sd">        Eigenmode. Must be an ndarray of shape (n, 3).</span>
+<span class="sd">        It is possible to constrain the eigenmodes to be orthogonal</span>
+<span class="sd">        to this given eigenmode.</span>
+
+<span class="sd">    Notes:</span>
+
+<span class="sd">    The code is inspired, with permission, by code written by the Henkelman</span>
+<span class="sd">    group, which can be found at http://theory.cm.utexas.edu/vtsttools/code/</span>
+
+<span class="sd">    References:</span>
+
+<span class="sd">    * Henkelman and Jonsson, JCP 111, 7010 (1999)</span>
+<span class="sd">    * Olsen, Kroes, Henkelman, Arnaldsson, and Jonsson, JCP 121,</span>
+<span class="sd">      9776 (2004).</span>
+<span class="sd">    * Heyden, Bell, and Keil, JCP 123, 224101 (2005).</span>
+<span class="sd">    * Kastner and Sherwood, JCP 128, 014106 (2008).</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">control</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">eigenmode</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">basis</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="s">&#39;get_eigenmode&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="n">atoms</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">e</span> <span class="o">=</span> <span class="s">&#39;The atoms object must be a MinModeAtoms object&#39;</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">basis</span> <span class="o">=</span> <span class="n">basis</span>
+
+        <span class="k">if</span> <span class="n">eigenmode</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">eigenmode</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_eigenmode</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">eigenmode</span> <span class="o">=</span> <span class="n">eigenmode</span>
+
+        <span class="k">if</span> <span class="n">control</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">control</span> <span class="o">=</span> <span class="n">DimerControl</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+            <span class="n">w</span> <span class="o">=</span> <span class="s">&#39;Missing control object in &#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span> <span class="o">+</span> \
+                <span class="s">&#39;. Using default: DimerControl()&#39;</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="ne">UserWarning</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">logfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;DIM:WARN: &#39;</span> <span class="o">+</span> <span class="n">w</span> <span class="o">+</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">control</span> <span class="o">=</span> <span class="n">control</span>
+            <span class="c"># kwargs must be empty if a control object is supplied</span>
+            <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+                <span class="n">e</span> <span class="o">=</span> <span class="s">&#39;__init__() got an unexpected keyword argument </span><span class="se">\&#39;</span><span class="si">%s</span><span class="se">\&#39;</span><span class="s">&#39;</span> <span class="o">%</span> \
+                    <span class="p">(</span><span class="n">key</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">dR</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;dimer_separation&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_logfile</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">converge_to_eigenmode</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Perform an eigenmode search.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_up_for_eigenmode_search</span><span class="p">()</span>
+        <span class="n">stoprot</span> <span class="o">=</span> <span class="bp">False</span>
+
+        <span class="c"># Load the relevant parameters from control</span>
+        <span class="n">f_rot_min</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;f_rot_min&#39;</span><span class="p">)</span>
+        <span class="n">f_rot_max</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;f_rot_max&#39;</span><span class="p">)</span>
+        <span class="n">trial_angle</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;trial_angle&#39;</span><span class="p">)</span>
+        <span class="n">max_num_rot</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;max_num_rot&#39;</span><span class="p">)</span>
+        <span class="n">extrapolate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;extrapolate_forces&#39;</span><span class="p">)</span>
+
+        <span class="k">while</span> <span class="ow">not</span> <span class="n">stoprot</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">forces1E</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">update_virtual_forces</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">update_virtual_forces</span><span class="p">(</span><span class="n">extrapolated_forces</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">forces1A</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forces1</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">update_curvature</span><span class="p">()</span>
+            <span class="n">f_rot_A</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_rotational_force</span><span class="p">()</span>
+
+            <span class="c"># Pre rotation stop criteria</span>
+            <span class="k">if</span> <span class="n">norm</span><span class="p">(</span><span class="n">f_rot_A</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">f_rot_min</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">f_rot_A</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+                <span class="n">stoprot</span> <span class="o">=</span> <span class="bp">True</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">n_A</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenmode</span>
+                <span class="n">rot_unit_A</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">f_rot_A</span><span class="p">)</span>
+
+                <span class="c"># Get the curvature and its derivative</span>
+                <span class="n">c0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_curvature</span><span class="p">()</span>
+                <span class="n">c0d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vdot</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">forces2</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">forces1</span><span class="p">),</span> <span class="n">rot_unit_A</span><span class="p">)</span> <span class="o">/</span> \
+                      <span class="bp">self</span><span class="o">.</span><span class="n">dR</span>
+
+                <span class="c"># Trial rotation (no need to store the curvature)</span>
+                <span class="c"># NYI variable trial angles from [3]</span>
+                <span class="n">n_B</span><span class="p">,</span> <span class="n">rot_unit_B</span> <span class="o">=</span> <span class="n">rotate_vectors</span><span class="p">(</span><span class="n">n_A</span><span class="p">,</span> <span class="n">rot_unit_A</span><span class="p">,</span> <span class="n">trial_angle</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">eigenmode</span> <span class="o">=</span> <span class="n">n_B</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">update_virtual_forces</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">forces1B</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forces1</span>
+
+                <span class="c"># Get the curvature&#39;s derivative</span>
+                <span class="n">c1d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vdot</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">forces2</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">forces1</span><span class="p">),</span> <span class="n">rot_unit_B</span><span class="p">)</span> <span class="o">/</span> \
+                      <span class="bp">self</span><span class="o">.</span><span class="n">dR</span>
+
+                <span class="c"># Calculate the Fourier coefficients</span>
+                <span class="n">a1</span> <span class="o">=</span> <span class="n">c0d</span> <span class="o">*</span> <span class="n">cos</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">trial_angle</span><span class="p">)</span> <span class="o">-</span> <span class="n">c1d</span> <span class="o">/</span> \
+                     <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">sin</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">trial_angle</span><span class="p">))</span>
+                <span class="n">b1</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">c0d</span>
+                <span class="n">a0</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">c0</span> <span class="o">-</span> <span class="n">a1</span><span class="p">)</span>
+
+                <span class="c"># Estimate the rotational angle</span>
+                <span class="n">rotangle</span> <span class="o">=</span> <span class="n">atan</span><span class="p">(</span><span class="n">b1</span> <span class="o">/</span> <span class="n">a1</span><span class="p">)</span> <span class="o">/</span> <span class="mf">2.0</span>
+
+                <span class="c"># Make sure that you didn&#39;t find a maximum</span>
+                <span class="n">cmin</span> <span class="o">=</span> <span class="n">a0</span> <span class="o">/</span> <span class="mf">2.0</span> <span class="o">+</span> <span class="n">a1</span> <span class="o">*</span> <span class="n">cos</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">rotangle</span><span class="p">)</span> <span class="o">+</span> \
+                       <span class="n">b1</span> <span class="o">*</span> <span class="n">sin</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">rotangle</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">c0</span> <span class="o">&lt;</span> <span class="n">cmin</span><span class="p">:</span>
+                    <span class="n">rotangle</span> <span class="o">+=</span> <span class="n">pi</span> <span class="o">/</span> <span class="mf">2.0</span>
+
+                <span class="c"># Rotate into the (hopefully) lowest eigenmode</span>
+                <span class="c"># NYI Conjugate gradient rotation</span>
+                <span class="n">n_min</span><span class="p">,</span> <span class="n">dummy</span> <span class="o">=</span> <span class="n">rotate_vectors</span><span class="p">(</span><span class="n">n_A</span><span class="p">,</span> <span class="n">rot_unit_A</span><span class="p">,</span> <span class="n">rotangle</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">update_eigenmode</span><span class="p">(</span><span class="n">n_min</span><span class="p">)</span>
+
+                <span class="c"># Store the curvature estimate instead of the old curvature</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">update_curvature</span><span class="p">(</span><span class="n">cmin</span><span class="p">)</span>
+
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">f_rot_A</span><span class="p">,</span> <span class="n">rotangle</span><span class="p">)</span>
+
+                <span class="c"># Force extrapolation scheme from [4]</span>
+                <span class="k">if</span> <span class="n">extrapolate</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">forces1E</span> <span class="o">=</span> <span class="n">sin</span><span class="p">(</span><span class="n">trial_angle</span> <span class="o">-</span> <span class="n">rotangle</span><span class="p">)</span> <span class="o">/</span> \
+                        <span class="n">sin</span><span class="p">(</span><span class="n">trial_angle</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">forces1A</span> <span class="o">+</span> <span class="n">sin</span><span class="p">(</span><span class="n">rotangle</span><span class="p">)</span> <span class="o">/</span> \
+                        <span class="n">sin</span><span class="p">(</span><span class="n">trial_angle</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">forces1B</span> <span class="o">+</span> \
+                        <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">cos</span><span class="p">(</span><span class="n">rotangle</span><span class="p">)</span> <span class="o">-</span> <span class="n">sin</span><span class="p">(</span><span class="n">rotangle</span><span class="p">)</span> <span class="o">*</span> \
+                        <span class="n">tan</span><span class="p">(</span><span class="n">trial_angle</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">))</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">forces0</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">forces1E</span> <span class="o">=</span> <span class="bp">None</span>
+
+            <span class="c"># Post rotation stop criteria</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">stoprot</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_counter</span><span class="p">(</span><span class="s">&#39;rotcount&#39;</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">max_num_rot</span><span class="p">:</span>
+                    <span class="n">stoprot</span> <span class="o">=</span> <span class="bp">True</span>
+                <span class="k">elif</span> <span class="n">norm</span><span class="p">(</span><span class="n">f_rot_A</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">f_rot_max</span><span class="p">:</span>
+                    <span class="n">stoprot</span> <span class="o">=</span> <span class="bp">True</span>
+
+    <span class="k">def</span> <span class="nf">log</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f_rot_A</span><span class="p">,</span> <span class="n">angle</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Log each rotational step.&quot;&quot;&quot;</span>
+        <span class="c"># NYI Log for the trial angle</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">angle</span><span class="p">:</span>
+                <span class="n">l</span> <span class="o">=</span> <span class="s">&#39;DIM:ROT: </span><span class="si">%7d</span><span class="s"> </span><span class="si">%9d</span><span class="s"> </span><span class="si">%9.4f</span><span class="s"> </span><span class="si">%9.4f</span><span class="s"> </span><span class="si">%9.4f</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> \
+                    <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_counter</span><span class="p">(</span><span class="s">&#39;optcount&#39;</span><span class="p">),</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_counter</span><span class="p">(</span><span class="s">&#39;rotcount&#39;</span><span class="p">),</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">get_curvature</span><span class="p">(),</span> <span class="n">degrees</span><span class="p">(</span><span class="n">angle</span><span class="p">),</span> <span class="n">norm</span><span class="p">(</span><span class="n">f_rot_A</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">l</span> <span class="o">=</span> <span class="s">&#39;DIM:ROT: </span><span class="si">%7d</span><span class="s"> </span><span class="si">%9d</span><span class="s"> </span><span class="si">%9.4f</span><span class="s"> </span><span class="si">%9s</span><span class="s"> </span><span class="si">%9.4f</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> \
+                    <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_counter</span><span class="p">(</span><span class="s">&#39;optcount&#39;</span><span class="p">),</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_counter</span><span class="p">(</span><span class="s">&#39;rotcount&#39;</span><span class="p">),</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">get_curvature</span><span class="p">(),</span> <span class="s">&#39;---------&#39;</span><span class="p">,</span> <span class="n">norm</span><span class="p">(</span><span class="n">f_rot_A</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">l</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">get_rotational_force</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculate the rotational force that acts on the dimer.&quot;&quot;&quot;</span>
+        <span class="n">rot_force</span> <span class="o">=</span> <span class="n">perpendicular_vector</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">forces1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">forces2</span><span class="p">),</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">eigenmode</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">dR</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">basis</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">basis</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">basis</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">==</span> \
+               <span class="mi">3</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">basis</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="nb">float</span><span class="p">):</span>
+                <span class="n">rot_force</span> <span class="o">=</span> <span class="n">perpendicular_vector</span><span class="p">(</span><span class="n">rot_force</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">basis</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">base</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">basis</span><span class="p">:</span>
+                    <span class="n">rot_force</span> <span class="o">=</span> <span class="n">perpendicular_vector</span><span class="p">(</span><span class="n">rot_force</span><span class="p">,</span> <span class="n">base</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">rot_force</span>
+
+    <span class="k">def</span> <span class="nf">update_curvature</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">curv</span> <span class="o">=</span> <span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Update the curvature in the MinModeAtoms object.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">curv</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">curvature</span> <span class="o">=</span> <span class="n">curv</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">curvature</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vdot</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">forces2</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">forces1</span><span class="p">),</span>
+                             <span class="bp">self</span><span class="o">.</span><span class="n">eigenmode</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">dR</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">update_eigenmode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">eigenmode</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Update the eigenmode in the MinModeAtoms object.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenmode</span> <span class="o">=</span> <span class="n">eigenmode</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update_virtual_positions</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">increment_counter</span><span class="p">(</span><span class="s">&#39;rotcount&#39;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">get_eigenmode</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the current eigenmode.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenmode</span>
+
+    <span class="k">def</span> <span class="nf">get_curvature</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the curvature along the current eigenmode.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">curvature</span>
+
+    <span class="k">def</span> <span class="nf">get_control</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the control object.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span>
+
+    <span class="k">def</span> <span class="nf">update_center_forces</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Get the forces at the center of the dimer.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pos0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">forces0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_forces</span><span class="p">(</span><span class="n">real</span> <span class="o">=</span> <span class="bp">True</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">energy0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">update_virtual_forces</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">extrapolated_forces</span> <span class="o">=</span> <span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Get the forces at the endpoints of the dimer.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update_virtual_positions</span><span class="p">()</span>
+
+        <span class="c"># Estimate / Calculate the forces at pos1</span>
+        <span class="k">if</span> <span class="n">extrapolated_forces</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">forces1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forces1E</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">forces1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_forces</span><span class="p">(</span><span class="n">real</span> <span class="o">=</span> <span class="bp">True</span><span class="p">,</span> <span class="n">pos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pos1</span><span class="p">)</span>
+
+        <span class="c"># Estimate / Calculate the forces at pos2</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;use_central_forces&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">forces2</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">forces0</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">forces1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">forces2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_forces</span><span class="p">(</span><span class="n">real</span> <span class="o">=</span> <span class="bp">True</span><span class="p">,</span> <span class="n">pos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pos2</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">update_virtual_positions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Update the end point positions.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pos1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pos0</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenmode</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">dR</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pos2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pos0</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenmode</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">dR</span>
+
+    <span class="k">def</span> <span class="nf">set_up_for_eigenmode_search</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Before eigenmode search, prepare for rotation.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pos0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update_center_forces</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update_virtual_positions</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">reset_counter</span><span class="p">(</span><span class="s">&#39;rotcount&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">forces1E</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">set_up_for_optimization_step</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;At the end of rotation, prepare for displacement of the dimer.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pos0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">forces1E</span> <span class="o">=</span> <span class="bp">None</span>
+</div>
+<span class="k">class</span> <span class="nc">MinModeControl</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;A parent class for controlling minimum mode saddle point searches.</span>
+
+<span class="sd">    Method specific control classes inherit this one. The only thing</span>
+<span class="sd">    inheriting classes need to implement are the log() method and</span>
+<span class="sd">    the *parameters* class variable with default values for ALL</span>
+<span class="sd">    parameters needed by the method in question.</span>
+<span class="sd">    When instantiating control classes default parameter values can</span>
+<span class="sd">    be overwritten.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">parameters</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">logfile</span> <span class="o">=</span> <span class="s">&#39;-&#39;</span><span class="p">,</span> <span class="n">eigenmode_logfile</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c"># Overwrite the defaults with the input parameters given</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+                <span class="n">e</span> <span class="o">=</span> <span class="s">&#39;Invalid parameter &gt;&gt;</span><span class="si">%s</span><span class="s">&lt;&lt; with value &gt;&gt;</span><span class="si">%s</span><span class="s">&lt;&lt; in </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> \
+                    <span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">kwargs</span><span class="p">[</span><span class="n">key</span><span class="p">]),</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">set_parameter</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">[</span><span class="n">key</span><span class="p">],</span> <span class="n">log</span> <span class="o">=</span> <span class="bp">False</span><span class="p">)</span>
+
+        <span class="c"># Initialize the log files</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialize_logfiles</span><span class="p">(</span><span class="n">logfile</span><span class="p">,</span> <span class="n">eigenmode_logfile</span><span class="p">)</span>
+
+        <span class="c"># Initialize the counters</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">counters</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;forcecalls&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s">&#39;rotcount&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s">&#39;optcount&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">}</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">initialize_logfiles</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">logfile</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">eigenmode_logfile</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set up the log files.&quot;&quot;&quot;</span>
+        <span class="c"># Set up the regular logfile</span>
+        <span class="k">if</span> <span class="n">rank</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">logfile</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">logfile</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">logfile</span> <span class="o">==</span> <span class="s">&#39;-&#39;</span><span class="p">:</span>
+                <span class="n">logfile</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">logfile</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">logfile</span><span class="p">,</span> <span class="s">&#39;a&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="o">=</span> <span class="n">logfile</span>
+
+        <span class="c"># Set up the eigenmode logfile</span>
+        <span class="k">if</span> <span class="n">eigenmode_logfile</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">rank</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">eigenmode_logfile</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">eigenmode_logfile</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">eigenmode_logfile</span> <span class="o">==</span> <span class="s">&#39;-&#39;</span><span class="p">:</span>
+                    <span class="n">eigenmode_logfile</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">eigenmode_logfile</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">eigenmode_logfile</span><span class="p">,</span> <span class="s">&#39;a&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenmode_logfile</span> <span class="o">=</span> <span class="n">eigenmode_logfile</span>
+
+    <span class="k">def</span> <span class="nf">log</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parameter</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Log the parameters of the eigenmode search.&quot;&quot;&quot;</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">set_parameter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parameter</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">log</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Change a parameter&#39;s value.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">parameter</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+            <span class="n">e</span> <span class="o">=</span> <span class="s">&#39;Invalid parameter &gt;&gt;</span><span class="si">%s</span><span class="s">&lt;&lt; with value &gt;&gt;</span><span class="si">%s</span><span class="s">&lt;&lt;&#39;</span> <span class="o">%</span> \
+                <span class="p">(</span><span class="n">parameter</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">))</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="p">[</span><span class="n">parameter</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="k">if</span> <span class="n">log</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">parameter</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">get_parameter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parameter</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the value of a parameter.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">parameter</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+            <span class="n">e</span> <span class="o">=</span> <span class="s">&#39;Invalid parameter &gt;&gt;</span><span class="si">%s</span><span class="s">&lt;&lt;&#39;</span> <span class="o">%</span> \
+                <span class="p">(</span><span class="n">parameter</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="p">[</span><span class="n">parameter</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">get_logfile</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the log file.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span>
+
+    <span class="k">def</span> <span class="nf">get_eigenmode_logfile</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns the eigenmode log file.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenmode_logfile</span>
+
+    <span class="k">def</span> <span class="nf">get_counter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">counter</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns a given counter.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">counters</span><span class="p">[</span><span class="n">counter</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">increment_counter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">counter</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Increment a given counter.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">counters</span><span class="p">[</span><span class="n">counter</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">reset_counter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">counter</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Reset a given counter.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">counters</span><span class="p">[</span><span class="n">counter</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">def</span> <span class="nf">reset_all_counters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Reset all counters.&quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">counters</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">counters</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+<div class="viewcode-block" id="DimerControl"><a class="viewcode-back" href="../../ase/dimermethod.html#ase.dimer.DimerControl">[docs]</a><span class="k">class</span> <span class="nc">DimerControl</span><span class="p">(</span><span class="n">MinModeControl</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;A class that takes care of the parameters needed for a Dimer search.</span>
+
+<span class="sd">    Parameters:</span>
+
+<span class="sd">    eigenmode_method: str</span>
+<span class="sd">        The name of the eigenmode search method.</span>
+<span class="sd">    f_rot_min: float</span>
+<span class="sd">        Size of the rotational force under which no rotation will be</span>
+<span class="sd">        performed.</span>
+<span class="sd">    f_rot_max: float</span>
+<span class="sd">        Size of the rotational force under which only one rotation will be</span>
+<span class="sd">        performed.</span>
+<span class="sd">    max_num_rot: int</span>
+<span class="sd">        Maximum number of rotations per optimizer step.</span>
+<span class="sd">    trial_angle: float</span>
+<span class="sd">        Trial angle for the finite difference estimate of the rotational</span>
+<span class="sd">        angle in radians.</span>
+<span class="sd">    trial_trans_step: float</span>
+<span class="sd">        Trial step size for the MinModeTranslate optimizer.</span>
+<span class="sd">    maximum_translation: float</span>
+<span class="sd">        Maximum step size and forced step size when the curvature is still</span>
+<span class="sd">        positive for the MinModeTranslate optimizer.</span>
+<span class="sd">    cg_translation: bool</span>
+<span class="sd">        Conjugate Gradient for the MinModeTranslate optimizer.</span>
+<span class="sd">    use_central_forces: bool</span>
+<span class="sd">        Only calculate the forces at one end of the dimer and extrapolate</span>
+<span class="sd">        the forces to the other.</span>
+<span class="sd">    dimer_separation: float</span>
+<span class="sd">        Separation of the dimer&#39;s images.</span>
+<span class="sd">    initial_eigenmode_method: str</span>
+<span class="sd">        How to construct the initial eigenmode of the dimer. If an eigenmode</span>
+<span class="sd">        is given when creating the MinModeAtoms object, this will be ignored.</span>
+<span class="sd">        Possible choices are: &#39;gauss&#39; and &#39;displacement&#39;</span>
+<span class="sd">    extrapolate_forces: bool</span>
+<span class="sd">        When more than one rotation is performed, an extrapolation scheme can</span>
+<span class="sd">        be used to reduce the number of force evaluations.</span>
+<span class="sd">    displacement_method: str</span>
+<span class="sd">        How to displace the atoms. Possible choices are &#39;gauss&#39; and &#39;vector&#39;.</span>
+<span class="sd">    gauss_std: float</span>
+<span class="sd">        The standard deviation of the gauss curve used when doing random</span>
+<span class="sd">        displacement.</span>
+<span class="sd">    order: int</span>
+<span class="sd">        How many lowest eigenmodes will be inverted.</span>
+<span class="sd">    mask: list of bool</span>
+<span class="sd">        Which atoms will be moved during displacement.</span>
+<span class="sd">    displacement_center: int or [float, float, float]</span>
+<span class="sd">        The center of displacement, nearby atoms will be displaced.</span>
+<span class="sd">    displacement_radius: float</span>
+<span class="sd">        When choosing which atoms to displace with the *displacement_center*</span>
+<span class="sd">        keyword, this decides how many nearby atoms to displace.</span>
+<span class="sd">    number_of_displacement_atoms: int</span>
+<span class="sd">        The amount of atoms near *displacement_center* to displace.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c"># Default parameters for the Dimer eigenmode search</span>
+    <span class="n">parameters</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;eigenmode_method&#39;</span><span class="p">:</span> <span class="s">&#39;dimer&#39;</span><span class="p">,</span>
+                  <span class="s">&#39;f_rot_min&#39;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">,</span>
+                  <span class="s">&#39;f_rot_max&#39;</span><span class="p">:</span> <span class="mf">1.00</span><span class="p">,</span>
+                  <span class="s">&#39;max_num_rot&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+                  <span class="s">&#39;trial_angle&#39;</span><span class="p">:</span> <span class="n">pi</span> <span class="o">/</span> <span class="mf">4.0</span><span class="p">,</span>
+                  <span class="s">&#39;trial_trans_step&#39;</span><span class="p">:</span> <span class="mf">0.001</span><span class="p">,</span>
+                  <span class="s">&#39;maximum_translation&#39;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">,</span>
+                  <span class="s">&#39;cg_translation&#39;</span><span class="p">:</span> <span class="bp">True</span><span class="p">,</span>
+                  <span class="s">&#39;use_central_forces&#39;</span><span class="p">:</span> <span class="bp">True</span><span class="p">,</span>
+                  <span class="s">&#39;dimer_separation&#39;</span><span class="p">:</span> <span class="mf">0.0001</span><span class="p">,</span>
+                  <span class="s">&#39;initial_eigenmode_method&#39;</span><span class="p">:</span> <span class="s">&#39;gauss&#39;</span><span class="p">,</span>
+                  <span class="s">&#39;extrapolate_forces&#39;</span><span class="p">:</span> <span class="bp">False</span><span class="p">,</span>
+                  <span class="s">&#39;displacement_method&#39;</span><span class="p">:</span> <span class="s">&#39;gauss&#39;</span><span class="p">,</span>
+                  <span class="s">&#39;gauss_std&#39;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">,</span>
+                  <span class="s">&#39;order&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+                  <span class="s">&#39;mask&#39;</span><span class="p">:</span> <span class="bp">None</span><span class="p">,</span> <span class="c"># NB mask should not be a &quot;parameter&quot;</span>
+                  <span class="s">&#39;displacement_center&#39;</span><span class="p">:</span> <span class="bp">None</span><span class="p">,</span>
+                  <span class="s">&#39;displacement_radius&#39;</span><span class="p">:</span> <span class="bp">None</span><span class="p">,</span>
+                  <span class="s">&#39;number_of_displacement_atoms&#39;</span><span class="p">:</span> <span class="bp">None</span><span class="p">}</span>
+
+    <span class="c"># NB: Can maybe put this in EigenmodeSearch and MinModeControl</span>
+    <span class="k">def</span> <span class="nf">log</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parameter</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Log the parameters of the eigenmode search.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">parameter</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">l</span> <span class="o">=</span> <span class="s">&#39;DIM:CONTROL: Updated Parameter: </span><span class="si">%s</span><span class="s"> = </span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">parameter</span><span class="p">,</span>
+                     <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="n">parameter</span><span class="p">)))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">l</span> <span class="o">=</span> <span class="s">&#39;MINMODE:METHOD: Dimer</span><span class="se">\n</span><span class="s">&#39;</span>
+                <span class="n">l</span> <span class="o">+=</span> <span class="s">&#39;DIM:CONTROL: Search Parameters:</span><span class="se">\n</span><span class="s">&#39;</span>
+                <span class="n">l</span> <span class="o">+=</span> <span class="s">&#39;DIM:CONTROL: ------------------</span><span class="se">\n</span><span class="s">&#39;</span>
+                <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="p">:</span>
+                    <span class="n">l</span> <span class="o">+=</span> <span class="s">&#39;DIM:CONTROL: </span><span class="si">%s</span><span class="s"> = </span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">key</span><span class="p">,</span>
+                         <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="n">key</span><span class="p">)))</span>
+                <span class="n">l</span> <span class="o">+=</span> <span class="s">&#39;DIM:CONTROL: ------------------</span><span class="se">\n</span><span class="s">&#39;</span>
+                <span class="n">l</span> <span class="o">+=</span> <span class="s">&#39;DIM:ROT: OPT-STEP ROT-STEP CURVATURE ROT-ANGLE &#39;</span> <span class="o">+</span> \
+                     <span class="s">&#39;ROT-FORCE</span><span class="se">\n</span><span class="s">&#39;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">l</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="MinModeAtoms"><a class="viewcode-back" href="../../ase/dimermethod.html#ase.dimer.MinModeAtoms">[docs]</a><span class="k">class</span> <span class="nc">MinModeAtoms</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Wrapper for Atoms with information related to minimum mode searching.</span>
+
+<span class="sd">    Contains an Atoms object and pipes all unknown function calls to that</span>
+<span class="sd">    object.</span>
+<span class="sd">    Other information that is stored in this object are the estimate for</span>
+<span class="sd">    the lowest eigenvalue, *curvature*, and its corresponding eigenmode,</span>
+<span class="sd">    *eigenmode*. Furthermore, the original configuration of the Atoms</span>
+<span class="sd">    object is stored for use in multiple minimum mode searches.</span>
+<span class="sd">    The forces on the system are modified by inverting the component</span>
+<span class="sd">    along the eigenmode estimate. This eventually brings the system to</span>
+<span class="sd">    a saddle point.</span>
+
+<span class="sd">    Parameters:</span>
+
+<span class="sd">    atoms : Atoms object</span>
+<span class="sd">        A regular Atoms object</span>
+<span class="sd">    control : MinModeControl object</span>
+<span class="sd">        Contains the parameters necessary for the eigenmode search.</span>
+<span class="sd">        If no control object is supplied a default DimerControl</span>
+<span class="sd">        will be created and used.</span>
+<span class="sd">    mask: list of bool</span>
+<span class="sd">        Determines which atoms will be moved when calling displace()</span>
+<span class="sd">    random_seed: int</span>
+<span class="sd">        The seed used for the random number generator. Defaults to</span>
+<span class="sd">        modified version the current time.</span>
+
+<span class="sd">    References:</span>
+
+<span class="sd">    .. [1] Henkelman and Jonsson, JCP 111, 7010 (1999)</span>
+<span class="sd">    .. [2] Olsen, Kroes, Henkelman, Arnaldsson, and Jonsson, JCP 121,</span>
+<span class="sd">           9776 (2004).</span>
+<span class="sd">    .. [3] Heyden, Bell, and Keil, JCP 123, 224101 (2005).</span>
+<span class="sd">    .. [4] Kastner and Sherwood, JCP 128, 014106 (2008).</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">control</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">eigenmodes</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">random_seed</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">minmode_init</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="n">atoms</span>
+
+        <span class="c"># Initialize to None to avoid strange behaviour due to __getattr__</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenmodes</span> <span class="o">=</span> <span class="n">eigenmodes</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">curvatures</span> <span class="o">=</span> <span class="bp">None</span>
+
+        <span class="k">if</span> <span class="n">control</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">control</span> <span class="o">=</span> <span class="n">DimerControl</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+            <span class="n">w</span> <span class="o">=</span> <span class="s">&#39;Missing control object in &#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span> <span class="o">+</span> \
+                <span class="s">&#39;. Using default: DimerControl()&#39;</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="ne">UserWarning</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">logfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;DIM:WARN: &#39;</span> <span class="o">+</span> <span class="n">w</span> <span class="o">+</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">control</span> <span class="o">=</span> <span class="n">control</span>
+            <span class="n">logfile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_logfile</span><span class="p">()</span>
+            <span class="n">mlogfile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_eigenmode_logfile</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s">&#39;logfile&#39;</span><span class="p">:</span>
+                    <span class="n">logfile</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+                <span class="k">elif</span> <span class="n">key</span> <span class="o">==</span> <span class="s">&#39;eigenmode_logfile&#39;</span><span class="p">:</span>
+                    <span class="n">mlogfile</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">set_parameter</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">[</span><span class="n">key</span><span class="p">])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">initialize_logfiles</span><span class="p">(</span><span class="n">logfile</span> <span class="o">=</span> <span class="n">logfile</span><span class="p">,</span>
+                                             <span class="n">eigenmode_logfile</span> <span class="o">=</span> <span class="n">mlogfile</span><span class="p">)</span>
+
+        <span class="c"># Seed the randomness</span>
+        <span class="k">if</span> <span class="n">random_seed</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">t</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">size</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">t</span> <span class="o">=</span> <span class="n">world</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">size</span><span class="p">)</span>
+            <span class="c"># Harvest the latter part of the current time</span>
+            <span class="n">random_seed</span> <span class="o">=</span> <span class="nb">int</span><span class="p">((</span><span class="s">&#39;</span><span class="si">%30.9f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">t</span><span class="p">)[</span><span class="o">-</span><span class="mi">9</span><span class="p">:])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">random_state</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">RandomState</span><span class="p">(</span><span class="n">random_seed</span><span class="p">)</span>
+
+        <span class="c"># Check the order</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">order</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;order&#39;</span><span class="p">)</span>
+
+        <span class="c"># Construct the curvatures list</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">curvatures</span> <span class="o">=</span> <span class="p">[</span><span class="mf">100.0</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">order</span>
+
+        <span class="c"># Save the original state of the atoms.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_original_forces</span><span class="p">()</span>
+
+        <span class="c"># Get a reference to the log files</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_logfile</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mlogfile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_eigenmode_logfile</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">save_original_forces</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">force_calculation</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Store the forces (and energy) of the original state.&quot;&quot;&quot;</span>
+        <span class="c"># NB: Would be nice if atoms.copy() took care of this.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="c"># Hack because some calculators do not have calculation_required</span>
+            <span class="k">if</span> <span class="p">(</span><span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">calc</span><span class="p">,</span> <span class="s">&#39;calculation_required&#39;</span><span class="p">)</span> \
+               <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">calculation_required</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">,</span>
+               <span class="p">[</span><span class="s">&#39;energy&#39;</span><span class="p">,</span> <span class="s">&#39;forces&#39;</span><span class="p">]))</span> <span class="ow">or</span> <span class="n">force_calculation</span><span class="p">:</span>
+                <span class="n">calc</span> <span class="o">=</span> <span class="n">SinglePointCalculator</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">atoms0</span><span class="p">,</span>
+                    <span class="n">energy</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">(),</span>
+                    <span class="n">forces</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_forces</span><span class="p">())</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">atoms0</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">calc</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">initialize_eigenmodes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">eigenmodes</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> \
+                              <span class="n">gauss_std</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Make an initial guess for the eigenmode.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">eigenmodes</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">pos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+            <span class="n">old_pos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_original_positions</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">method</span> <span class="o">=</span> \
+                     <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;initial_eigenmode_method&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;displacement&#39;</span> <span class="ow">and</span> <span class="p">(</span><span class="n">pos</span> <span class="o">-</span> <span class="n">old_pos</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+                <span class="n">eigenmode</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">pos</span> <span class="o">-</span> <span class="n">old_pos</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;gauss&#39;</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">displace</span><span class="p">(</span><span class="n">log</span> <span class="o">=</span> <span class="bp">False</span><span class="p">,</span> <span class="n">gauss_std</span> <span class="o">=</span> <span class="n">gauss_std</span><span class="p">,</span>
+                              <span class="n">method</span> <span class="o">=</span> <span class="n">method</span><span class="p">)</span>
+                <span class="n">new_pos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+                <span class="n">eigenmode</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">new_pos</span> <span class="o">-</span> <span class="n">pos</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">pos</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">e</span> <span class="o">=</span> <span class="s">&#39;initial_eigenmode must use either </span><span class="se">\&#39;</span><span class="s">gauss</span><span class="se">\&#39;</span><span class="s"> or &#39;</span> <span class="o">+</span> \
+                    <span class="s">&#39;</span><span class="se">\&#39;</span><span class="s">displacement</span><span class="se">\&#39;</span><span class="s">, if the latter is used the atoms &#39;</span> <span class="o">+</span> \
+                    <span class="s">&#39;must have moved away from the original positions.&#39;</span> <span class="o">+</span> \
+                    <span class="s">&#39;You have requested </span><span class="se">\&#39;</span><span class="si">%s</span><span class="se">\&#39;</span><span class="s">.&#39;</span> <span class="o">%</span> <span class="n">method</span>
+                <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="c"># NYI</span>
+            <span class="n">eigenmodes</span> <span class="o">=</span> <span class="p">[</span><span class="n">eigenmode</span><span class="p">]</span>
+
+        <span class="c"># Create random higher order mode guesses</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">order</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">eigenmodes</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">order</span><span class="p">):</span>
+                    <span class="n">pos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">displace</span><span class="p">(</span><span class="n">log</span> <span class="o">=</span> <span class="bp">False</span><span class="p">,</span> <span class="n">gauss_std</span> <span class="o">=</span> <span class="n">gauss_std</span><span class="p">,</span>
+                                  <span class="n">method</span> <span class="o">=</span> <span class="n">method</span><span class="p">)</span>
+                    <span class="n">new_pos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+                    <span class="n">eigenmode</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">new_pos</span> <span class="o">-</span> <span class="n">pos</span><span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">pos</span><span class="p">)</span>
+                    <span class="n">eigenmodes</span> <span class="o">+=</span> <span class="p">[</span><span class="n">eigenmode</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenmodes</span> <span class="o">=</span> <span class="n">eigenmodes</span>
+        <span class="c"># Ensure that the higher order mode guesses are all orthogonal</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">order</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">order</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">ensure_eigenmode_orthogonality</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenmode_log</span><span class="p">()</span>
+
+    <span class="c"># NB maybe this name might be confusing in context to</span>
+    <span class="c"># calc.calculation_required()</span>
+    <span class="k">def</span> <span class="nf">calculation_required</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Check if a calculation is required.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">minmode_init</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">check_atoms</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span>
+
+    <span class="k">def</span> <span class="nf">calculate_real_forces_and_energies</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calculate and store the potential energy and forces.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">minmode_init</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">minmode_init</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">initialize_eigenmodes</span><span class="p">(</span><span class="n">eigenmodes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenmodes</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rotation_required</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">forces0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_forces</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">energy0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">increment_counter</span><span class="p">(</span><span class="s">&#39;forcecalls&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">check_atoms</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">get_potential_energy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the potential energy.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">calculation_required</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">calculate_real_forces_and_energies</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">energy0</span>
+
+    <span class="k">def</span> <span class="nf">get_forces</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">real</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the forces, projected or real.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">calculation_required</span><span class="p">()</span> <span class="ow">and</span> <span class="n">pos</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">calculate_real_forces_and_energies</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">real</span> <span class="ow">and</span> <span class="n">pos</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">forces0</span>
+        <span class="k">elif</span> <span class="n">real</span> <span class="ow">and</span> <span class="n">pos</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">old_pos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">pos</span><span class="p">)</span>
+            <span class="n">forces</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_forces</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">increment_counter</span><span class="p">(</span><span class="s">&#39;forcecalls&#39;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">old_pos</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">forces</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">rotation_required</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">find_eigenmodes</span><span class="p">(</span><span class="n">order</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">order</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">eigenmode_log</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">rotation_required</span> <span class="o">=</span> <span class="bp">False</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">increment_counter</span><span class="p">(</span><span class="s">&#39;optcount&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_projected_forces</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">ensure_eigenmode_orthogonality</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">order</span><span class="p">):</span>
+        <span class="n">mode</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenmodes</span><span class="p">[</span><span class="n">order</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">order</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">mode</span> <span class="o">=</span> <span class="n">perpendicular_vector</span><span class="p">(</span><span class="n">mode</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenmodes</span><span class="p">[</span><span class="n">k</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenmodes</span><span class="p">[</span><span class="n">order</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">mode</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">find_eigenmodes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Launch eigenmode searches.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;eigenmode_method&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">!=</span> <span class="s">&#39;dimer&#39;</span><span class="p">:</span>
+            <span class="n">e</span> <span class="o">=</span> <span class="s">&#39;Only the Dimer control object has been implemented.&#39;</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="c"># NYI</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">order</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">k</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">ensure_eigenmode_orthogonality</span><span class="p">(</span><span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">search</span> <span class="o">=</span> <span class="n">DimerEigenmodeSearch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="p">,</span> \
+                <span class="n">eigenmode</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenmodes</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">basis</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenmodes</span><span class="p">[:</span><span class="n">k</span><span class="p">])</span>
+            <span class="n">search</span><span class="o">.</span><span class="n">converge_to_eigenmode</span><span class="p">()</span>
+            <span class="n">search</span><span class="o">.</span><span class="n">set_up_for_optimization_step</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">eigenmodes</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">search</span><span class="o">.</span><span class="n">get_eigenmode</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">curvatures</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">search</span><span class="o">.</span><span class="n">get_curvature</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">get_projected_forces</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the projected forces.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">pos</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">forces</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_forces</span><span class="p">(</span><span class="n">real</span> <span class="o">=</span> <span class="bp">True</span><span class="p">,</span> <span class="n">pos</span> <span class="o">=</span> <span class="n">pos</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">forces</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forces0</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="c"># Loop through all the eigenmodes</span>
+        <span class="c"># NB: Can this be done with a linear combination, instead?</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">mode</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">eigenmodes</span><span class="p">):</span>
+            <span class="c"># NYI This If statement needs to be overridable in the control</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_curvature</span><span class="p">(</span><span class="n">order</span> <span class="o">=</span> <span class="n">k</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mf">0.0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">order</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">forces</span> <span class="o">=</span> <span class="o">-</span><span class="n">parallel_vector</span><span class="p">(</span><span class="n">forces</span><span class="p">,</span> <span class="n">mode</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">forces</span> <span class="o">-=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">parallel_vector</span><span class="p">(</span><span class="n">forces</span><span class="p">,</span> <span class="n">mode</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">forces</span>
+
+    <span class="k">def</span> <span class="nf">restore_original_positions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Restore the MinModeAtoms object positions to the original state.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_original_positions</span><span class="p">())</span>
+
+    <span class="k">def</span> <span class="nf">get_barrier_energy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;The energy difference between the current and original states&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">original_energy</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_original_potential_energy</span><span class="p">()</span>
+            <span class="n">dimer_energy</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+            <span class="k">return</span> <span class="n">dimer_energy</span> <span class="o">-</span> <span class="n">original_energy</span>
+        <span class="k">except</span> <span class="ne">RuntimeError</span><span class="p">:</span>
+            <span class="n">w</span> <span class="o">=</span> <span class="s">&#39;The potential energy is not available, without further &#39;</span> <span class="o">+</span> \
+                <span class="s">&#39;calculations, most likely at the original state.&#39;</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="ne">UserWarning</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+    <span class="k">def</span> <span class="nf">get_control</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the control object.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span>
+
+    <span class="k">def</span> <span class="nf">get_curvature</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="s">&#39;max&#39;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the eigenvalue estimate.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">order</span> <span class="o">==</span> <span class="s">&#39;max&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">curvatures</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">curvatures</span><span class="p">[</span><span class="n">order</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">get_eigenmode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the current eigenmode guess.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenmodes</span><span class="p">[</span><span class="n">order</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">get_atoms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the unextended Atoms object.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span>
+
+    <span class="k">def</span> <span class="nf">set_atoms</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set a new Atoms object&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="n">atoms</span>
+
+    <span class="k">def</span> <span class="nf">set_eigenmode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">eigenmode</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set the eigenmode guess.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenmodes</span><span class="p">[</span><span class="n">order</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">eigenmode</span>
+
+    <span class="k">def</span> <span class="nf">set_curvature</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">curvature</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set the eigenvalue estimate.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">curvatures</span><span class="p">[</span><span class="n">order</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">curvature</span>
+
+    <span class="c"># Pipe all the stuff from Atoms that is not overwritten.</span>
+    <span class="c"># Pipe all requests for get_original_* to self.atoms0.</span>
+    <span class="k">def</span> <span class="nf">__getattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attr</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return any value of the Atoms object&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="s">&#39;original&#39;</span> <span class="ow">in</span> <span class="n">attr</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;_&#39;</span><span class="p">):</span>
+            <span class="n">attr</span> <span class="o">=</span> <span class="n">attr</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s">&#39;_original_&#39;</span><span class="p">,</span> <span class="s">&#39;_&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms0</span><span class="p">,</span> <span class="n">attr</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">,</span> <span class="n">attr</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span>
+        
+    <span class="k">def</span> <span class="nf">displace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">displacement_vector</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">displacement_center</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">radius</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">number_of_atoms</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">gauss_std</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">mic</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">log</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Move the atoms away from their current position.</span>
+
+<span class="sd">        This is one of the essential parts of minimum mode searches.</span>
+<span class="sd">        The parameters can all be set in the control object and overwritten</span>
+<span class="sd">        when this method is run, apart from *displacement_vector*.</span>
+<span class="sd">        It is preferred to modify the control values rather than those here</span>
+<span class="sd">        in order for the correct ones to show up in the log file.</span>
+
+<span class="sd">        *method* can be either &#39;gauss&#39; for random displacement or &#39;vector&#39;</span>
+<span class="sd">        to perform a predefined displacement.</span>
+
+<span class="sd">        *gauss_std* is the standard deviation of the gauss curve that is</span>
+<span class="sd">        used for random displacement.</span>
+
+<span class="sd">        *displacement_center* can be either the number of an atom or a 3D</span>
+<span class="sd">        position. It must be accompanied by a *radius* (all atoms within it</span>
+<span class="sd">        will be displaced) or a *number_of_atoms* which decides how many of</span>
+<span class="sd">        the closest atoms will be displaced.</span>
+
+<span class="sd">        *mic* controls the usage of the Minimum Image Convention.</span>
+
+<span class="sd">        If both *mask* and *displacement_center* are used, the atoms marked</span>
+<span class="sd">        as False in the *mask* will not be affected even though they are</span>
+<span class="sd">        within reach of the *displacement_center*.</span>
+
+<span class="sd">        The parameters priority order:</span>
+<span class="sd">        1) displacement_vector</span>
+<span class="sd">        2) mask</span>
+<span class="sd">        3) displacement_center (with radius and/or number_of_atoms)</span>
+
+<span class="sd">        If both *radius* and *number_of_atoms* are supplied with</span>
+<span class="sd">        *displacement_center*, only atoms that fulfill both criteria will</span>
+<span class="sd">        be displaced.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c"># Fetch the default values from the control</span>
+        <span class="k">if</span> <span class="n">mask</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;mask&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">method</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">method</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;displacement_method&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">gauss_std</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">gauss_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;gauss_std&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">displacement_center</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">displacement_center</span> <span class="o">=</span> \
+                    <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;displacement_center&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">radius</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">radius</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;displacement_radius&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">number_of_atoms</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">number_of_atoms</span> <span class="o">=</span> \
+                    <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;number_of_displacement_atoms&#39;</span><span class="p">)</span>
+
+        <span class="c"># Check for conflicts</span>
+        <span class="k">if</span> <span class="n">displacement_vector</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">!=</span> <span class="s">&#39;vector&#39;</span><span class="p">:</span>
+            <span class="n">e</span> <span class="o">=</span> <span class="s">&#39;displacement_vector was supplied but a different method &#39;</span> <span class="o">+</span> \
+                <span class="s">&#39;(</span><span class="se">\&#39;</span><span class="si">%s</span><span class="se">\&#39;</span><span class="s">) was chosen.</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="nb">str</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">displacement_vector</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;vector&#39;</span><span class="p">:</span>
+            <span class="n">e</span> <span class="o">=</span> <span class="s">&#39;A displacement_vector must be supplied when using &#39;</span> <span class="o">+</span> \
+                <span class="s">&#39;method = </span><span class="se">\&#39;</span><span class="si">%s</span><span class="se">\&#39;</span><span class="s">.</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="nb">str</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">displacement_center</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">radius</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">and</span> \
+           <span class="n">number_of_atoms</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">e</span> <span class="o">=</span> <span class="s">&#39;When displacement_center is chosen, either radius or &#39;</span> <span class="o">+</span> \
+                <span class="s">&#39;number_of_atoms must be supplied.</span><span class="se">\n</span><span class="s">&#39;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+
+        <span class="c"># Set up the center of displacement mask (c_mask)</span>
+        <span class="k">if</span> <span class="n">displacement_center</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="n">displacement_center</span>
+            <span class="c"># Construct a distance list</span>
+            <span class="c"># The center is an atom</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+                <span class="c"># Parse negative indexes</span>
+                <span class="n">c</span> <span class="o">=</span> <span class="n">displacement_center</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+                <span class="n">d</span> <span class="o">=</span> <span class="p">[(</span><span class="n">k</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_distance</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">mic</span> <span class="o">=</span> <span class="n">mic</span><span class="p">))</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> \
+                     <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">))]</span>
+            <span class="c"># The center is a position in 3D space</span>
+            <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span> <span class="ow">and</span> <span class="p">[</span><span class="nb">type</span><span class="p">(</span><span class="n">c_k</span><span class="p">)</span> <span class="k">for</span> <span class="n">c_k</span> <span class="ow">in</span> <span class="n">c</span><span class="p">]</span> <span class="o">==</span> <span class="p">[</span><span class="nb">float</span><span class="p">]</span><span class="o">*</span><span class="mi">3</span><span class="p">:</span>
+                <span class="c"># NB: MIC is not considered.</span>
+                <span class="n">d</span> <span class="o">=</span> <span class="p">[(</span><span class="n">k</span><span class="p">,</span> <span class="n">norm</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()[</span><span class="n">k</span><span class="p">]</span> <span class="o">-</span> <span class="n">c</span><span class="p">))</span> \
+                     <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">))]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">e</span> <span class="o">=</span> <span class="s">&#39;displacement_center must be either the number of an &#39;</span> <span class="o">+</span> \
+                    <span class="s">&#39;atom in MinModeAtoms object or a 3D position &#39;</span> <span class="o">+</span> \
+                    <span class="s">&#39;(3-tuple of floats).&#39;</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+
+            <span class="c"># Set up the mask</span>
+            <span class="k">if</span> <span class="n">radius</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">r_mask</span> <span class="o">=</span> <span class="p">[</span><span class="n">dist</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">radius</span> <span class="k">for</span> <span class="n">dist</span> <span class="ow">in</span> <span class="n">d</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">r_mask</span> <span class="o">=</span> <span class="p">[</span><span class="bp">True</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span>
+
+            <span class="k">if</span> <span class="n">number_of_atoms</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">d_sorted</span> <span class="o">=</span> <span class="p">[</span><span class="n">n</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">key</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">k</span><span class="p">:</span> <span class="n">k</span><span class="p">[</span><span class="mi">1</span><span class="p">])]</span>
+                <span class="n">n_nearest</span> <span class="o">=</span> <span class="n">d_sorted</span><span class="p">[:</span><span class="n">number_of_atoms</span><span class="p">]</span>
+                <span class="n">n_mask</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="ow">in</span> <span class="n">n_nearest</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">))]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">n_mask</span> <span class="o">=</span> <span class="p">[</span><span class="bp">True</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span>
+
+            <span class="c"># Resolve n_mask / r_mask conflicts</span>
+            <span class="n">c_mask</span> <span class="o">=</span> <span class="p">[</span><span class="n">n_mask</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="ow">and</span> <span class="n">r_mask</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">))]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">c_mask</span> <span class="o">=</span> <span class="bp">None</span>
+
+        <span class="c"># Set up a True mask if there is no mask supplied</span>
+        <span class="k">if</span> <span class="n">mask</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">mask</span> <span class="o">=</span> <span class="p">[</span><span class="bp">True</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="bp">self</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">c_mask</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">w</span> <span class="o">=</span> <span class="s">&#39;It was not possible to figure out which atoms to &#39;</span> <span class="o">+</span> \
+                    <span class="s">&#39;displace, Will try to displace all atoms.</span><span class="se">\n</span><span class="s">&#39;</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="ne">UserWarning</span><span class="p">)</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;MINMODE:WARN: &#39;</span> <span class="o">+</span> <span class="n">w</span> <span class="o">+</span> <span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
+        <span class="c"># Resolve mask / c_mask conflicts</span>
+        <span class="k">if</span> <span class="n">c_mask</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">mask</span> <span class="o">=</span> <span class="p">[</span><span class="n">mask</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="ow">and</span> <span class="n">c_mask</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">))]</span>
+
+        <span class="k">if</span> <span class="n">displacement_vector</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">displacement_vector</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)):</span>
+                <span class="k">if</span> <span class="n">mask</span><span class="p">[</span><span class="n">k</span><span class="p">]:</span>
+                    <span class="n">diff_line</span> <span class="o">=</span> <span class="p">[]</span>
+                    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+                        <span class="k">if</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;gauss&#39;</span><span class="p">:</span>
+                            <span class="k">if</span> <span class="ow">not</span> <span class="n">gauss_std</span><span class="p">:</span>
+                                <span class="n">gauss_std</span> <span class="o">=</span> \
+                                <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;gauss_std&#39;</span><span class="p">)</span>
+                            <span class="n">diff</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">random_state</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">gauss_std</span><span class="p">)</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="n">e</span> <span class="o">=</span> <span class="s">&#39;Invalid displacement method &gt;&gt;</span><span class="si">%s</span><span class="s">&lt;&lt;&#39;</span> <span class="o">%</span> \
+                                 <span class="nb">str</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
+                            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+                        <span class="n">diff_line</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">diff</span><span class="p">)</span>
+                    <span class="n">displacement_vector</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">diff_line</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">displacement_vector</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="mf">0.0</span><span class="p">]</span><span class="o">*</span><span class="mi">3</span><span class="p">)</span>
+
+        <span class="c"># Remove displacement of masked atoms</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">mask</span><span class="p">)):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">mask</span><span class="p">[</span><span class="n">k</span><span class="p">]:</span>
+                <span class="n">displacement_vector</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span><span class="o">*</span><span class="mi">3</span>
+
+        <span class="c"># Perform the displacement and log it</span>
+        <span class="k">if</span> <span class="n">log</span><span class="p">:</span>
+            <span class="n">pos0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span> <span class="o">+</span> <span class="n">displacement_vector</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">log</span><span class="p">:</span>
+            <span class="n">parameters</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;mask&#39;</span><span class="p">:</span> <span class="n">mask</span><span class="p">,</span>
+                          <span class="s">&#39;displacement_method&#39;</span><span class="p">:</span> <span class="n">method</span><span class="p">,</span>
+                          <span class="s">&#39;gauss_std&#39;</span><span class="p">:</span> <span class="n">gauss_std</span><span class="p">,</span>
+                          <span class="s">&#39;displacement_center&#39;</span><span class="p">:</span> <span class="n">displacement_center</span><span class="p">,</span>
+                          <span class="s">&#39;displacement_radius&#39;</span><span class="p">:</span> <span class="n">radius</span><span class="p">,</span>
+                          <span class="s">&#39;number_of_displacement_atoms&#39;</span><span class="p">:</span> <span class="n">number_of_atoms</span><span class="p">}</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">displacement_log</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span> <span class="o">-</span> <span class="n">pos0</span><span class="p">,</span> <span class="n">parameters</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">eigenmode_log</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Log the eigenmodes (eigenmode estimates)&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mlogfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">l</span> <span class="o">=</span> <span class="s">&#39;MINMODE:MODE: Optimization Step: </span><span class="si">%i</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> \
+                   <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_counter</span><span class="p">(</span><span class="s">&#39;optcount&#39;</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">m_num</span><span class="p">,</span> <span class="n">mode</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">eigenmodes</span><span class="p">):</span>
+                <span class="n">l</span> <span class="o">+=</span> <span class="s">&#39;MINMODE:MODE: Order: </span><span class="si">%i</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">m_num</span>
+                <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">mode</span><span class="p">)):</span>
+                    <span class="n">l</span> <span class="o">+=</span> <span class="s">&#39;MINMODE:MODE: </span><span class="si">%7i</span><span class="s"> </span><span class="si">%15.8f</span><span class="s"> </span><span class="si">%15.8f</span><span class="s"> </span><span class="si">%15.8f</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span>
+                         <span class="n">mode</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">mode</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="mi">1</span><span class="p">],</span> <span class="n">mode</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="mi">2</span><span class="p">])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mlogfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">l</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mlogfile</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">displacement_log</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">displacement_vector</span><span class="p">,</span> <span class="n">parameters</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Log the displacement&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">lp</span> <span class="o">=</span> <span class="s">&#39;MINMODE:DISP: Parameters, different from the control:</span><span class="se">\n</span><span class="s">&#39;</span>
+            <span class="n">mod_para</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">parameters</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">parameters</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="n">key</span><span class="p">):</span>
+                    <span class="n">lp</span> <span class="o">+=</span> <span class="s">&#39;MINMODE:DISP: </span><span class="si">%s</span><span class="s"> = </span><span class="si">%s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">key</span><span class="p">),</span>
+                                                       <span class="nb">str</span><span class="p">(</span><span class="n">parameters</span><span class="p">[</span><span class="n">key</span><span class="p">]))</span>
+                    <span class="n">mod_para</span> <span class="o">=</span> <span class="bp">True</span>
+            <span class="k">if</span> <span class="n">mod_para</span><span class="p">:</span>
+                <span class="n">l</span> <span class="o">=</span> <span class="n">lp</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">l</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">displacement_vector</span><span class="p">)):</span>
+                <span class="n">l</span> <span class="o">+=</span> <span class="s">&#39;MINMODE:DISP: </span><span class="si">%7i</span><span class="s"> </span><span class="si">%15.8f</span><span class="s"> </span><span class="si">%15.8f</span><span class="s"> </span><span class="si">%15.8f</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span>
+                     <span class="n">displacement_vector</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">displacement_vector</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="mi">1</span><span class="p">],</span>
+                     <span class="n">displacement_vector</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="mi">2</span><span class="p">])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">l</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">summarize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Summarize the Minimum mode search.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">logfile</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logfile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span>
+
+        <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span>
+        <span class="n">label</span> <span class="o">=</span> <span class="s">&#39;MINMODE:SUMMARY: &#39;</span>
+
+        <span class="n">l</span> <span class="o">=</span> <span class="n">label</span> <span class="o">+</span> <span class="s">&#39;-------------------------</span><span class="se">\n</span><span class="s">&#39;</span>
+        <span class="n">l</span> <span class="o">+=</span> <span class="n">label</span> <span class="o">+</span> <span class="s">&#39;Barrier: </span><span class="si">%16.4f</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_barrier_energy</span><span class="p">()</span>
+        <span class="n">l</span> <span class="o">+=</span> <span class="n">label</span> <span class="o">+</span> <span class="s">&#39;Curvature: </span><span class="si">%14.4f</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_curvature</span><span class="p">()</span>
+        <span class="n">l</span> <span class="o">+=</span> <span class="n">label</span> <span class="o">+</span> <span class="s">&#39;Optimizer steps: </span><span class="si">%8i</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">c</span><span class="o">.</span><span class="n">get_counter</span><span class="p">(</span><span class="s">&#39;optcount&#39;</span><span class="p">)</span>
+        <span class="n">l</span> <span class="o">+=</span> <span class="n">label</span> <span class="o">+</span> <span class="s">&#39;Forcecalls: </span><span class="si">%13i</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">c</span><span class="o">.</span><span class="n">get_counter</span><span class="p">(</span><span class="s">&#39;forcecalls&#39;</span><span class="p">)</span>
+        <span class="n">l</span> <span class="o">+=</span> <span class="n">label</span> <span class="o">+</span> <span class="s">&#39;-------------------------</span><span class="se">\n</span><span class="s">&#39;</span>
+
+        <span class="n">logfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">l</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="MinModeTranslate"><a class="viewcode-back" href="../../ase/dimermethod.html#ase.dimer.MinModeTranslate">[docs]</a><span class="k">class</span> <span class="nc">MinModeTranslate</span><span class="p">(</span><span class="n">Optimizer</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;An Optimizer specifically tailored to minimum mode following.&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">logfile</span><span class="o">=</span><span class="s">&#39;-&#39;</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">Optimizer</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="bp">None</span><span class="p">,</span> <span class="n">logfile</span><span class="p">,</span> <span class="n">trajectory</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">control</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_control</span><span class="p">()</span>
+
+        <span class="c"># Make a header for the log</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">l</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="p">,</span> <span class="n">DimerControl</span><span class="p">):</span>
+                <span class="n">l</span> <span class="o">=</span> <span class="s">&#39;MinModeTranslate: STEP      TIME          ENERGY    &#39;</span> <span class="o">+</span> \
+                    <span class="s">&#39;MAX-FORCE     STEPSIZE    CURVATURE  ROT-STEPS</span><span class="se">\n</span><span class="s">&#39;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">l</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
+        <span class="c"># Load the relevant parameters from control</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cg_on</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;cg_translation&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trial_step</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;trial_trans_step&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_step</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_parameter</span><span class="p">(</span><span class="s">&#39;maximum_translation&#39;</span><span class="p">)</span>
+
+        <span class="c"># Start conjugate gradient</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cg_on</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cg_init</span> <span class="o">=</span> <span class="bp">True</span>
+
+    <span class="k">def</span> <span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set initial values.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">r0</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">f0</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">steps</span><span class="o">=</span><span class="mi">100000000</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Run structure optimization algorithm.</span>
+
+<span class="sd">        This method will return when the forces on all individual</span>
+<span class="sd">        atoms are less than *fmax* or when the number of steps exceeds</span>
+<span class="sd">        *steps*.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">fmax</span> <span class="o">=</span> <span class="n">fmax</span>
+        <span class="n">step</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">while</span> <span class="n">step</span> <span class="o">&lt;</span> <span class="n">steps</span><span class="p">:</span>
+            <span class="n">f</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_forces</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">call_observers</span><span class="p">()</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">converged</span><span class="p">(</span><span class="n">f</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+                <span class="k">return</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">nsteps</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">step</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Perform the optimization step.&quot;&quot;&quot;</span>
+        <span class="n">atoms</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+        <span class="n">curv</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_curvature</span><span class="p">()</span>
+        <span class="n">f0p</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">r0</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">direction</span> <span class="o">=</span> <span class="n">f0p</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cg_on</span><span class="p">:</span>
+            <span class="n">direction</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_cg_direction</span><span class="p">(</span><span class="n">direction</span><span class="p">)</span>
+        <span class="n">direction</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">direction</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">curv</span> <span class="o">&gt;</span> <span class="mf">0.0</span><span class="p">:</span>
+            <span class="n">step</span> <span class="o">=</span> <span class="n">direction</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_step</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">r0t</span> <span class="o">=</span> <span class="n">r0</span> <span class="o">+</span> <span class="n">direction</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">trial_step</span>
+            <span class="n">f0tp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_projected_forces</span><span class="p">(</span><span class="n">r0t</span><span class="p">)</span>
+            <span class="n">F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vdot</span><span class="p">((</span><span class="n">f0tp</span> <span class="o">+</span> <span class="n">f0p</span><span class="p">),</span> <span class="n">direction</span><span class="p">)</span> <span class="o">/</span> <span class="mf">2.0</span>
+            <span class="n">C</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vdot</span><span class="p">((</span><span class="n">f0tp</span> <span class="o">-</span> <span class="n">f0p</span><span class="p">),</span> <span class="n">direction</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">trial_step</span>
+            <span class="n">step</span> <span class="o">=</span> <span class="p">(</span> <span class="o">-</span><span class="n">F</span> <span class="o">/</span> <span class="n">C</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">trial_step</span> <span class="o">/</span> <span class="mf">2.0</span> <span class="p">)</span> <span class="o">*</span> <span class="n">direction</span>
+            <span class="k">if</span> <span class="n">norm</span><span class="p">(</span><span class="n">step</span><span class="p">)</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_step</span><span class="p">:</span>
+                <span class="n">step</span> <span class="o">=</span> <span class="n">direction</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_step</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">f0p</span><span class="p">,</span> <span class="n">norm</span><span class="p">(</span><span class="n">step</span><span class="p">))</span>
+
+        <span class="n">atoms</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">r</span> <span class="o">+</span> <span class="n">step</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">f0</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">flat</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">r0</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">flat</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">get_cg_direction</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">direction</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Apply the Conjugate Gradient algorithm to the step direction.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cg_init</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cg_init</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">direction_old</span> <span class="o">=</span> <span class="n">direction</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cg_direction</span> <span class="o">=</span> <span class="n">direction</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">old_norm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vdot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">direction_old</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">direction_old</span><span class="p">)</span>
+        <span class="c"># Polak-Ribiere Conjugate Gradient</span>
+        <span class="k">if</span> <span class="n">old_norm</span> <span class="o">!=</span> <span class="mf">0.0</span><span class="p">:</span>
+            <span class="n">betaPR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vdot</span><span class="p">(</span><span class="n">direction</span><span class="p">,</span> <span class="p">(</span><span class="n">direction</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">direction_old</span><span class="p">))</span> <span class="o">/</span> \
+                     <span class="n">old_norm</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">betaPR</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="k">if</span> <span class="n">betaPR</span> <span class="o">&lt;</span> <span class="mf">0.0</span><span class="p">:</span>
+            <span class="n">betaPR</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cg_direction</span> <span class="o">=</span> <span class="n">direction</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">cg_direction</span> <span class="o">*</span> <span class="n">betaPR</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">direction_old</span> <span class="o">=</span> <span class="n">direction</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cg_direction</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">log</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">stepsize</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Log each step of the optimization.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">T</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">localtime</span><span class="p">()</span>
+            <span class="n">e</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+            <span class="n">fmax</span> <span class="o">=</span> <span class="n">sqrt</span><span class="p">((</span><span class="n">f</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span> <span class="o">=</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>
+            <span class="n">rotsteps</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">control</span><span class="o">.</span><span class="n">get_counter</span><span class="p">(</span><span class="s">&#39;rotcount&#39;</span><span class="p">)</span>
+            <span class="n">curvature</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_curvature</span><span class="p">()</span>
+            <span class="n">l</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+            <span class="k">if</span> <span class="n">stepsize</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="p">,</span> <span class="n">DimerControl</span><span class="p">):</span>
+                    <span class="n">l</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">: </span><span class="si">%4d</span><span class="s">  </span><span class="si">%02d</span><span class="s">:</span><span class="si">%02d</span><span class="s">:</span><span class="si">%02d</span><span class="s"> </span><span class="si">%15.6f</span><span class="s"> </span><span class="si">%12.4f</span><span class="s"> </span><span class="si">%12.6f</span><span class="s"> &#39;</span> \
+                        <span class="s">&#39;</span><span class="si">%12.6f</span><span class="s"> </span><span class="si">%10d</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;MinModeTranslate&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nsteps</span><span class="p">,</span>
+                         <span class="n">T</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">T</span><span class="p">[</span><span class="mi">4</span><span class="p">],</span> <span class="n">T</span><span class="p">[</span><span class="mi">5</span><span class="p">],</span> <span class="n">e</span><span class="p">,</span> <span class="n">fmax</span><span class="p">,</span> <span class="n">stepsize</span><span class="p">,</span> <span class="n">curvature</span><span class="p">,</span>
+                         <span class="n">rotsteps</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">control</span><span class="p">,</span> <span class="n">DimerControl</span><span class="p">):</span>
+                    <span class="n">l</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">: </span><span class="si">%4d</span><span class="s">  </span><span class="si">%02d</span><span class="s">:</span><span class="si">%02d</span><span class="s">:</span><span class="si">%02d</span><span class="s"> </span><span class="si">%15.6f</span><span class="s"> </span><span class="si">%12.4f</span><span class="s"> </span><span class="si">%s</span><span class="s"> &#39;</span> \
+                        <span class="s">&#39;</span><span class="si">%12.6f</span><span class="s"> </span><span class="si">%10d</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;MinModeTranslate&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nsteps</span><span class="p">,</span>
+                         <span class="n">T</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">T</span><span class="p">[</span><span class="mi">4</span><span class="p">],</span> <span class="n">T</span><span class="p">[</span><span class="mi">5</span><span class="p">],</span> <span class="n">e</span><span class="p">,</span> <span class="n">fmax</span><span class="p">,</span> <span class="s">&#39;    --------&#39;</span><span class="p">,</span>
+                         <span class="n">curvature</span><span class="p">,</span> <span class="n">rotsteps</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">l</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logfile</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+</div>
+<span class="k">def</span> <span class="nf">read_eigenmode</span><span class="p">(</span><span class="n">mlog</span><span class="p">,</span> <span class="n">index</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Read an eigenmode.</span>
+<span class="sd">    To access the pre optimization eigenmode set index = &#39;null&#39;.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mlog</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">mlog</span><span class="p">,</span> <span class="s">&#39;r&#39;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="n">mlog</span>
+
+    <span class="n">lines</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
+
+    <span class="c"># Detect the amount of atoms and iterations</span>
+    <span class="n">k</span> <span class="o">=</span> <span class="mi">2</span>
+    <span class="k">while</span> <span class="n">lines</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;optimization&#39;</span><span class="p">,</span> <span class="s">&#39;order&#39;</span><span class="p">]:</span>
+        <span class="n">k</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">k</span> <span class="o">-</span> <span class="mi">2</span>
+    <span class="n">n_itr</span> <span class="o">=</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">-</span> <span class="mi">2</span>
+
+    <span class="c"># Locate the correct image.</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">index</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;null&#39;</span><span class="p">:</span>
+            <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">i</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">index</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">index</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">i</span> <span class="o">=</span> <span class="n">index</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">index</span> <span class="o">&lt;</span> <span class="o">-</span><span class="n">n_itr</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s">&#39;list index out of range&#39;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">i</span> <span class="o">=</span> <span class="n">index</span>
+
+    <span class="n">mode</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">(</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">dtype</span> <span class="o">=</span> <span class="nb">float</span><span class="p">)</span>
+    <span class="n">k_atom</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">lines</span><span class="p">[</span><span class="n">i</span> <span class="o">*</span> <span class="p">(</span><span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">k_dim</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+            <span class="n">mode</span><span class="p">[</span><span class="n">k_atom</span><span class="p">][</span><span class="n">k_dim</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">line</span><span class="p">[</span><span class="n">k_dim</span> <span class="o">+</span> <span class="mi">2</span><span class="p">])</span>
+        <span class="n">k_atom</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="k">return</span> <span class="n">mode</span>
+
+<span class="c"># Aliases</span>
+<span class="n">DimerAtoms</span> <span class="o">=</span> <span class="n">MinModeAtoms</span>
+<span class="n">DimerTranslate</span> <span class="o">=</span> <span class="n">MinModeTranslate</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,257 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.md.langevin &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../../contents.html" />
+    <link rel="index" title="Global index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.md.langevin</h1><div class="highlight"><pre>
+<span class="sd">&quot;&quot;&quot;Langevin dynamics class.&quot;&quot;&quot;</span>
+
+
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">numpy.random</span> <span class="kn">import</span> <span class="n">standard_normal</span>
+<span class="kn">from</span> <span class="nn">ase.md.md</span> <span class="kn">import</span> <span class="n">MolecularDynamics</span>
+<span class="kn">from</span> <span class="nn">ase.parallel</span> <span class="kn">import</span> <span class="n">world</span>
+
+
+<div class="viewcode-block" id="Langevin"><a class="viewcode-back" href="../../../ase/md.html#ase.md.langevin.Langevin">[docs]</a><span class="k">class</span> <span class="nc">Langevin</span><span class="p">(</span><span class="n">MolecularDynamics</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Langevin (constant N, V, T) molecular dynamics.</span>
+
+<span class="sd">    Usage: Langevin(atoms, dt, temperature, friction)</span>
+
+<span class="sd">    atoms</span>
+<span class="sd">        The list of atoms.</span>
+<span class="sd">        </span>
+<span class="sd">    dt</span>
+<span class="sd">        The time step.</span>
+
+<span class="sd">    temperature</span>
+<span class="sd">        The desired temperature, in energy units.</span>
+
+<span class="sd">    friction</span>
+<span class="sd">        A friction coefficient, typically 1e-4 to 1e-2.</span>
+
+<span class="sd">    fixcm</span>
+<span class="sd">        If True, the position and momentum of the center of mass is</span>
+<span class="sd">        kept unperturbed.  Default: True.</span>
+
+<span class="sd">    The temperature and friction are normally scalars, but in principle one</span>
+<span class="sd">    quantity per atom could be specified by giving an array.</span>
+
+<span class="sd">    This dynamics accesses the atoms using Cartesian coordinates.&quot;&quot;&quot;</span>
+    
+    <span class="n">_lgv_version</span> <span class="o">=</span> <span class="mi">2</span>  <span class="c"># Helps Asap doing the right thing.  Increment when changing stuff.</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">timestep</span><span class="p">,</span> <span class="n">temperature</span><span class="p">,</span> <span class="n">friction</span><span class="p">,</span> <span class="n">fixcm</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                 <span class="n">trajectory</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">logfile</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">loginterval</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                 <span class="n">communicator</span><span class="o">=</span><span class="n">world</span><span class="p">):</span>
+        <span class="n">MolecularDynamics</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">timestep</span><span class="p">,</span> <span class="n">trajectory</span><span class="p">,</span>
+                                   <span class="n">logfile</span><span class="p">,</span> <span class="n">loginterval</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">temp</span> <span class="o">=</span> <span class="n">temperature</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">frict</span> <span class="o">=</span> <span class="n">friction</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fixcm</span> <span class="o">=</span> <span class="n">fixcm</span>  <span class="c"># will the center of mass be held fixed?</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">communicator</span> <span class="o">=</span> <span class="n">communicator</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">updatevars</span><span class="p">()</span>
+        
+    <span class="k">def</span> <span class="nf">set_temperature</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">temperature</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">temp</span> <span class="o">=</span> <span class="n">temperature</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">updatevars</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">set_friction</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">friction</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">frict</span> <span class="o">=</span> <span class="n">friction</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">updatevars</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">set_timestep</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timestep</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dt</span> <span class="o">=</span> <span class="n">timestep</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">updatevars</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">updatevars</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">dt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dt</span>
+        <span class="c"># If the friction is an array some other constants must be arrays too.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_localfrict</span> <span class="o">=</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">frict</span><span class="p">,</span> <span class="s">&#39;shape&#39;</span><span class="p">)</span>
+        <span class="n">lt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">frict</span> <span class="o">*</span> <span class="n">dt</span>
+        <span class="n">masses</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">masses</span>
+        <span class="n">sdpos</span> <span class="o">=</span> <span class="n">dt</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">temp</span> <span class="o">/</span> <span class="n">masses</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mf">2.0</span><span class="o">/</span><span class="mf">3.0</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">lt</span><span class="p">)</span> <span class="o">*</span> <span class="n">lt</span><span class="p">)</span>
+        <span class="n">sdpos</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">sdmom</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">temp</span> <span class="o">*</span> <span class="n">masses</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">lt</span><span class="p">)</span> <span class="o">*</span> <span class="n">lt</span><span class="p">)</span>
+        <span class="n">sdmom</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">pmcor</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mf">3.0</span><span class="p">)</span><span class="o">/</span><span class="mf">2.0</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="mf">0.125</span> <span class="o">*</span> <span class="n">lt</span><span class="p">)</span>
+        <span class="n">cnst</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">((</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">pmcor</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="n">pmcor</span><span class="p">))</span>
+
+        <span class="n">act0</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="n">lt</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">lt</span> <span class="o">*</span> <span class="n">lt</span>
+        <span class="n">act1</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">lt</span> <span class="o">+</span> <span class="p">(</span><span class="mf">1.0</span><span class="o">/</span><span class="mf">6.0</span><span class="p">)</span> <span class="o">*</span> <span class="n">lt</span> <span class="o">*</span> <span class="n">lt</span><span class="p">)</span>
+        <span class="n">act2</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">-</span> <span class="p">(</span><span class="mf">1.0</span><span class="o">/</span><span class="mf">6.0</span><span class="p">)</span> <span class="o">*</span> <span class="n">lt</span> <span class="o">+</span> <span class="p">(</span><span class="mf">1.0</span><span class="o">/</span><span class="mf">24.0</span><span class="p">)</span> <span class="o">*</span> <span class="n">lt</span> <span class="o">*</span> <span class="n">lt</span>
+        <span class="n">c1</span> <span class="o">=</span> <span class="n">act1</span> <span class="o">*</span> <span class="n">dt</span> <span class="o">/</span> <span class="n">masses</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">c1</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="n">act2</span> <span class="o">*</span> <span class="n">dt</span> <span class="o">*</span> <span class="n">dt</span> <span class="o">/</span> <span class="n">masses</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">c2</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">c3</span> <span class="o">=</span> <span class="p">(</span><span class="n">act1</span> <span class="o">-</span> <span class="n">act2</span><span class="p">)</span> <span class="o">*</span> <span class="n">dt</span>
+        <span class="n">c4</span> <span class="o">=</span> <span class="n">act2</span> <span class="o">*</span> <span class="n">dt</span>
+        <span class="k">del</span> <span class="n">act1</span><span class="p">,</span> <span class="n">act2</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_localfrict</span><span class="p">:</span>
+            <span class="c"># If the friction is an array, so are these</span>
+            <span class="n">act0</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">c3</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">c4</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">pmcor</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">cnst</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sdpos</span> <span class="o">=</span> <span class="n">sdpos</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sdmom</span> <span class="o">=</span> <span class="n">sdmom</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">c1</span> <span class="o">=</span> <span class="n">c1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">c2</span> <span class="o">=</span> <span class="n">c2</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">act0</span> <span class="o">=</span> <span class="n">act0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">c3</span> <span class="o">=</span> <span class="n">c3</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">c4</span> <span class="o">=</span> <span class="n">c4</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pmcor</span> <span class="o">=</span> <span class="n">pmcor</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cnst</span> <span class="o">=</span> <span class="n">cnst</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">natoms</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_number_of_atoms</span><span class="p">()</span> <span class="c"># Also works in parallel Asap.</span>
+
+    <span class="k">def</span> <span class="nf">step</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="p">):</span>
+        <span class="n">atoms</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_momenta</span><span class="p">()</span>
+
+        <span class="n">random1</span> <span class="o">=</span> <span class="n">standard_normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">),</span> <span class="mi">3</span><span class="p">))</span>
+        <span class="n">random2</span> <span class="o">=</span> <span class="n">standard_normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">),</span> <span class="mi">3</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">communicator</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">communicator</span><span class="o">.</span><span class="n">broadcast</span><span class="p">(</span><span class="n">random1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">communicator</span><span class="o">.</span><span class="n">broadcast</span><span class="p">(</span><span class="n">random2</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        
+        <span class="n">rrnd</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sdpos</span> <span class="o">*</span> <span class="n">random1</span>
+        <span class="n">prnd</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sdmom</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">pmcor</span> <span class="o">*</span> <span class="n">random1</span> <span class="o">+</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">sdmom</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">cnst</span> <span class="o">*</span> <span class="n">random2</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fixcm</span><span class="p">:</span>
+            <span class="n">rrnd</span> <span class="o">=</span> <span class="n">rrnd</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">rrnd</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+            <span class="n">prnd</span> <span class="o">=</span> <span class="n">prnd</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">prnd</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
+            <span class="n">rrnd</span> <span class="o">*=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">natoms</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">natoms</span> <span class="o">-</span> <span class="mf">1.0</span><span class="p">))</span>
+            <span class="n">prnd</span> <span class="o">*=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">natoms</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">natoms</span> <span class="o">-</span> <span class="mf">1.0</span><span class="p">))</span>
+
+        <span class="n">atoms</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span> <span class="o">+</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">c1</span> <span class="o">*</span> <span class="n">p</span> <span class="o">+</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">c2</span> <span class="o">*</span> <span class="n">f</span> <span class="o">+</span> <span class="n">rrnd</span><span class="p">)</span>
+        <span class="n">p</span> <span class="o">*=</span> <span class="bp">self</span><span class="o">.</span><span class="n">act0</span>
+        <span class="n">p</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">c3</span> <span class="o">*</span> <span class="n">f</span> <span class="o">+</span> <span class="n">prnd</span>
+        <span class="n">atoms</span><span class="o">.</span><span class="n">set_momenta</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+                      
+        <span class="n">f</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_forces</span><span class="p">()</span>
+        <span class="n">atoms</span><span class="o">.</span><span class="n">set_momenta</span><span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_momenta</span><span class="p">()</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">c4</span> <span class="o">*</span> <span class="n">f</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">f</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../../overview.html">
+              Overview</a></li>
+            <li><a href="../../../download.html">
+              Installation</a></li>
+            <li><a href="../../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../../faq.html">FAQ</a></li>
+            <li><a href="../../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

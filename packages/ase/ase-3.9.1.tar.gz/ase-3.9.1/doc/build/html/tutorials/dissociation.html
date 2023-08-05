@@ -1,0 +1,235 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Dissociation tutorial &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../contents.html" />
+    <link rel="index" title="Global index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="top" title="ASE  documentation" href="../index.html" />
+    <link rel="up" title="Tutorials" href="tutorials.html" />
+    <link rel="next" title="Using the spacegroup subpackage" href="spacegroup/spacegroup.html" />
+    <link rel="prev" title="Image Dependent Pair Potential for improved interpolation of NEB initial guess" href="neb/idpp.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="tutorials.html" accesskey="U">Tutorials</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="dissociation-tutorial">
+<span id="mep2"></span><span id="neb2"></span><h1>Dissociation tutorial<a class="headerlink" href="#dissociation-tutorial" title="Permalink to this headline">¶</a></h1>
+<p>In this tutorial we provide an illustrative
+example of a nudged-elastic band (NEB) calculation.
+For more information on the NEB technique, see <a class="reference internal" href="../ase/neb.html#module-ase.neb" title="ase.neb: Nudged Elastic Band method."><tt class="xref py py-mod docutils literal"><span class="pre">ase.neb</span></tt></a>.
+We consider the dissociation of a nitrogen molecule
+on the Cu (111) surface.</p>
+<p>The first step is to find the relaxed structures
+of the initial and final states.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">Atoms</span>
+<span class="kn">from</span> <span class="nn">ase.lattice.surface</span> <span class="kn">import</span> <span class="n">fcc111</span><span class="p">,</span> <span class="n">add_adsorbate</span>
+
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="kn">from</span> <span class="nn">ase.constraints</span> <span class="kn">import</span> <span class="n">FixAtoms</span>
+
+<span class="kn">from</span> <span class="nn">ase.optimize</span> <span class="kn">import</span> <span class="n">QuasiNewton</span>
+
+<span class="kn">from</span> <span class="nn">ase.io</span> <span class="kn">import</span> <span class="n">write</span>
+
+<span class="c"># Find the initial and final states for the reaction.</span>
+
+<span class="c"># Set up a (4 x 4) two layer slab of Cu:</span>
+<span class="n">slab</span> <span class="o">=</span> <span class="n">fcc111</span><span class="p">(</span><span class="s">&#39;Cu&#39;</span><span class="p">,</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">2</span><span class="p">))</span>
+<span class="n">slab</span><span class="o">.</span><span class="n">set_pbc</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">))</span>
+
+<span class="c"># Initial state.</span>
+<span class="c"># Add the N2 molecule oriented at 60 degrees:</span>
+<span class="n">d</span> <span class="o">=</span> <span class="mf">1.10</span> <span class="c"># N2 bond length</span>
+<span class="n">N2mol</span> <span class="o">=</span> <span class="n">Atoms</span><span class="p">(</span><span class="s">&#39;N2&#39;</span><span class="p">,</span><span class="n">positions</span><span class="o">=</span><span class="p">[[</span><span class="mf">0.0</span><span class="p">,</span><span class="mf">0.0</span><span class="p">,</span><span class="mf">0.0</span><span class="p">],[</span><span class="mf">0.5</span><span class="o">*</span><span class="mi">3</span><span class="o">**</span><span class="mf">0.5</span><span class="o">*</span><span class="n">d</span><span class="p">,</span><span class="mf">0.5</span><span class="o">*</span><span class="n">d</span><span class="p">,</span><span class="mf">0.0</span><span class="p">]])</span>
+<span class="n">add_adsorbate</span><span class="p">(</span><span class="n">slab</span><span class="p">,</span><span class="n">N2mol</span><span class="p">,</span><span class="n">height</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span><span class="n">position</span><span class="o">=</span><span class="s">&#39;fcc&#39;</span><span class="p">)</span>
+
+<span class="c"># Use the EMT calculator for the forces and energies:</span>
+<span class="n">slab</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+
+<span class="c"># We don&#39;t want to worry about the Cu degrees of freedom,</span>
+<span class="c"># so fix these atoms:</span>
+
+<span class="n">mask</span> <span class="o">=</span> <span class="p">[</span><span class="n">atom</span><span class="o">.</span><span class="n">symbol</span> <span class="o">==</span> <span class="s">&#39;Cu&#39;</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">slab</span><span class="p">]</span>
+<span class="n">slab</span><span class="o">.</span><span class="n">set_constraint</span><span class="p">(</span><span class="n">FixAtoms</span><span class="p">(</span><span class="n">mask</span><span class="o">=</span><span class="n">mask</span><span class="p">))</span>
+
+<span class="c"># Relax the structure</span>
+<span class="n">relax</span> <span class="o">=</span> <span class="n">QuasiNewton</span><span class="p">(</span><span class="n">slab</span><span class="p">)</span>
+<span class="n">relax</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="s">&#39;initial state:&#39;</span><span class="p">,</span> <span class="n">slab</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>
+<span class="n">write</span><span class="p">(</span><span class="s">&#39;N2.traj&#39;</span><span class="p">,</span> <span class="n">slab</span><span class="p">)</span>
+
+<span class="c"># Now the final state.</span>
+<span class="c"># Move the second N atom to a neighboring hollow site:</span>
+<span class="n">slab</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">position</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">slab</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">position</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mf">0.25</span> <span class="o">*</span> <span class="n">slab</span><span class="o">.</span><span class="n">cell</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">slab</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">position</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">slab</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">position</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="c"># and relax.</span>
+<span class="n">relax</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+<span class="k">print</span><span class="p">(</span><span class="s">&#39;final state:  &#39;</span><span class="p">,</span> <span class="n">slab</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>
+<span class="n">write</span><span class="p">(</span><span class="s">&#39;2N.traj&#39;</span><span class="p">,</span> <span class="n">slab</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Having obtained these structures we set up an NEB
+calculation with 9 images.  Using <tt class="xref py py-func docutils literal"><span class="pre">interpolate()</span></tt>
+provides a guess for the path between the initial
+and final states.  We perform the relaxation of the images
+and obtain the intermediate steps.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">ase.constraints</span> <span class="kn">import</span> <span class="n">FixAtoms</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="kn">from</span> <span class="nn">ase.neb</span> <span class="kn">import</span> <span class="n">NEB</span>
+<span class="kn">from</span> <span class="nn">ase.optimize.fire</span> <span class="kn">import</span> <span class="n">FIRE</span> <span class="k">as</span> <span class="n">QuasiNewton</span>
+<span class="kn">from</span> <span class="nn">ase.io</span> <span class="kn">import</span> <span class="n">read</span>
+
+<span class="c"># Read the previous configurations</span>
+<span class="n">initial</span> <span class="o">=</span> <span class="n">read</span><span class="p">(</span><span class="s">&#39;N2.traj&#39;</span><span class="p">)</span>
+<span class="n">final</span> <span class="o">=</span> <span class="n">read</span><span class="p">(</span><span class="s">&#39;2N.traj&#39;</span><span class="p">)</span>
+
+<span class="c">#  Make 9 images (note the use of copy)</span>
+<span class="n">configs</span> <span class="o">=</span> <span class="p">[</span><span class="n">initial</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">8</span><span class="p">)]</span> <span class="o">+</span> <span class="p">[</span><span class="n">final</span><span class="p">]</span>
+
+<span class="c"># As before, fix the Cu atoms</span>
+<span class="n">constraint</span> <span class="o">=</span> <span class="n">FixAtoms</span><span class="p">(</span><span class="n">mask</span><span class="o">=</span><span class="p">[</span><span class="n">atom</span><span class="o">.</span><span class="n">symbol</span> <span class="o">!=</span> <span class="s">&#39;N&#39;</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">initial</span><span class="p">])</span>
+<span class="k">for</span> <span class="n">config</span> <span class="ow">in</span> <span class="n">configs</span><span class="p">:</span>
+    <span class="n">config</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+    <span class="n">config</span><span class="o">.</span><span class="n">set_constraint</span><span class="p">(</span><span class="n">constraint</span><span class="p">)</span>
+
+<span class="c"># Make the NEB object, interpolate to guess the intermediate steps</span>
+<span class="n">band</span> <span class="o">=</span> <span class="n">NEB</span><span class="p">(</span><span class="n">configs</span><span class="p">)</span>
+<span class="n">band</span><span class="o">.</span><span class="n">interpolate</span><span class="p">()</span>
+
+<span class="n">relax</span> <span class="o">=</span> <span class="n">QuasiNewton</span><span class="p">(</span><span class="n">band</span><span class="p">)</span>
+
+<span class="c"># Do the calculation</span>
+<span class="n">relax</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+
+<span class="c"># Compare intermediate steps to initial energy</span>
+<span class="n">e0</span> <span class="o">=</span> <span class="n">initial</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+<span class="k">for</span> <span class="n">config</span> <span class="ow">in</span> <span class="n">configs</span><span class="p">:</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">position</span> <span class="o">-</span> <span class="n">config</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">position</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">d</span><span class="p">),</span> <span class="n">config</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span> <span class="o">-</span> <span class="n">e0</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>After the calculation is complete, the energy difference
+with respect to the initial state is given for each image,
+as well as the distance between the N atoms.</p>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../overview.html">
+              Overview</a></li>
+            <li><a href="../download.html">
+              Installation</a></li>
+            <li><a href="tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../faq.html">FAQ</a></li>
+            <li><a href="../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="neb/idpp.html" title="previous chapter">Image Dependent Pair Potential for improved interpolation of NEB initial guess</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="spacegroup/spacegroup.html" title="next chapter">Using the spacegroup subpackage</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../_sources/tutorials/dissociation.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="tutorials.html" accesskey="U">Tutorials</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

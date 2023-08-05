@@ -1,0 +1,460 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>ase.vibrations.infrared &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../../contents.html" />
+    <link rel="index" title="Global index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../../index.html" />
+    <link rel="up" title="ase.vibrations" href="../vibrations.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../vibrations.html" accesskey="U">ase.vibrations</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for ase.vibrations.infrared</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+
+<span class="sd">&quot;&quot;&quot;Infrared intensities&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">pickle</span>
+<span class="kn">from</span> <span class="nn">math</span> <span class="kn">import</span> <span class="n">sqrt</span>
+<span class="kn">from</span> <span class="nn">sys</span> <span class="kn">import</span> <span class="n">stdout</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+<span class="kn">import</span> <span class="nn">ase.units</span> <span class="kn">as</span> <span class="nn">units</span>
+<span class="kn">from</span> <span class="nn">ase.parallel</span> <span class="kn">import</span> <span class="n">parprint</span><span class="p">,</span> <span class="n">paropen</span>
+<span class="kn">from</span> <span class="nn">ase.vibrations</span> <span class="kn">import</span> <span class="n">Vibrations</span>
+
+
+<span class="k">class</span> <span class="nc">InfraRed</span><span class="p">(</span><span class="n">Vibrations</span><span class="p">):</span>
+<div class="viewcode-block" id="InfraRed"><a class="viewcode-back" href="../../../ase/infrared.html#ase.vibrations.infrared.InfraRed">[docs]</a>    <span class="sd">&quot;&quot;&quot;Class for calculating vibrational modes and infrared intensities</span>
+<span class="sd">    using finite difference.</span>
+
+<span class="sd">    The vibrational modes are calculated from a finite difference</span>
+<span class="sd">    approximation of the Dynamical matrix and the IR intensities from</span>
+<span class="sd">    a finite difference approximation of the gradient of the dipole</span>
+<span class="sd">    moment. The method is described in:</span>
+
+<span class="sd">      D. Porezag, M. R. Pederson:</span>
+<span class="sd">      &quot;Infrared intensities and Raman-scattering activities within</span>
+<span class="sd">      density-functional theory&quot;,</span>
+<span class="sd">      Phys. Rev. B 54, 7830 (1996)</span>
+
+<span class="sd">    The calculator object (calc) linked to the Atoms object (atoms) must </span>
+<span class="sd">    have the attribute:</span>
+<span class="sd">    </span>
+<span class="sd">    &gt;&gt;&gt; calc.get_dipole_moment(atoms)</span>
+
+<span class="sd">    In addition to the methods included in the ``Vibrations`` class</span>
+<span class="sd">    the ``InfraRed`` class introduces two new methods;</span>
+<span class="sd">    *get_spectrum()* and *write_spectra()*. The *summary()*, *get_energies()*, </span>
+<span class="sd">    *get_frequencies()*, *get_spectrum()* and *write_spectra()*</span>
+<span class="sd">    methods all take an optional *method* keyword.  Use</span>
+<span class="sd">    method=&#39;Frederiksen&#39; to use the method described in:</span>
+
+<span class="sd">      T. Frederiksen, M. Paulsson, M. Brandbyge, A. P. Jauho:</span>
+<span class="sd">      &quot;Inelastic transport theory from first-principles: methodology</span>
+<span class="sd">      and applications for nanoscale devices&quot;, </span>
+<span class="sd">      Phys. Rev. B 75, 205413 (2007) </span>
+
+<span class="sd">    atoms: Atoms object</span>
+<span class="sd">        The atoms to work on.</span>
+<span class="sd">    indices: list of int</span>
+<span class="sd">        List of indices of atoms to vibrate.  Default behavior is</span>
+<span class="sd">        to vibrate all atoms.</span>
+<span class="sd">    name: str</span>
+<span class="sd">        Name to use for files.</span>
+<span class="sd">    delta: float</span>
+<span class="sd">        Magnitude of displacements.</span>
+<span class="sd">    nfree: int</span>
+<span class="sd">        Number of displacements per degree of freedom, 2 or 4 are</span>
+<span class="sd">        supported. Default is 2 which will displace each atom +delta</span>
+<span class="sd">        and -delta in each cartesian direction.</span>
+<span class="sd">    directions: list of int</span>
+<span class="sd">        Cartesian coordinates to calculate the gradient </span>
+<span class="sd">        of the dipole moment in. </span>
+<span class="sd">        For example directions = 2 only dipole moment in the z-direction will</span>
+<span class="sd">        be considered, whereas for directions = [0, 1] only the dipole</span>
+<span class="sd">        moment in the xy-plane will be considered. Default behavior is to</span>
+<span class="sd">        use the dipole moment in all directions.</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">    </span>
+<span class="sd">    &gt;&gt;&gt; from ase.io import read</span>
+<span class="sd">    &gt;&gt;&gt; from ase.calculators.vasp import Vasp</span>
+<span class="sd">    &gt;&gt;&gt; from ase.vibrations.infrared import InfraRed</span>
+<span class="sd">    &gt;&gt;&gt; water = read(&#39;water.traj&#39;)  # read pre-relaxed structure of water molecule</span>
+<span class="sd">    &gt;&gt;&gt; calc = Vasp(prec=&#39;Accurate&#39;,</span>
+<span class="sd">    ...             ediff=1E-8,</span>
+<span class="sd">    ...             isym=0,</span>
+<span class="sd">    ...             idipol=4,       # calculate the total dipole moment</span>
+<span class="sd">    ...             dipol=water.get_center_of_mass(scaled=True),</span>
+<span class="sd">    ...             ldipol=True)</span>
+<span class="sd">    &gt;&gt;&gt; water.set_calculator(calc)</span>
+<span class="sd">    &gt;&gt;&gt; ir = InfraRed(water)</span>
+<span class="sd">    &gt;&gt;&gt; ir.run()</span>
+<span class="sd">    &gt;&gt;&gt; ir.summary()</span>
+<span class="sd">    -------------------------------------</span>
+<span class="sd">    Mode    Frequency        Intensity</span>
+<span class="sd">    #    meV     cm^-1   (D/Å)^2 amu^-1</span>
+<span class="sd">    -------------------------------------</span>
+<span class="sd">    0   16.9i    136.2i     1.6108</span>
+<span class="sd">    1   10.5i     84.9i     2.1682</span>
+<span class="sd">    2    5.1i     41.1i     1.7327</span>
+<span class="sd">    3    0.3i      2.2i     0.0080</span>
+<span class="sd">    4    2.4      19.0      0.1186</span>
+<span class="sd">    5   15.3     123.5      1.4956</span>
+<span class="sd">    6  195.5    1576.7      1.6437</span>
+<span class="sd">    7  458.9    3701.3      0.0284</span>
+<span class="sd">    8  473.0    3814.6      1.1812</span>
+<span class="sd">    -------------------------------------</span>
+<span class="sd">    Zero-point energy: 0.573 eV</span>
+<span class="sd">    Static dipole moment: 1.833 D</span>
+<span class="sd">    Maximum force on atom in `equilibrium`: 0.0026 eV/Å</span>
+
+
+
+<span class="sd">    This interface now also works for calculator &#39;siesta&#39;, </span>
+<span class="sd">    (added get_dipole_moment for siesta).</span>
+
+<span class="sd">    Example:</span>
+
+<span class="sd">    &gt;&gt;&gt; #!/usr/bin/env python</span>
+
+<span class="sd">    &gt;&gt;&gt; from ase.io import read</span>
+<span class="sd">    &gt;&gt;&gt; from ase.calculators.siesta import Siesta</span>
+<span class="sd">    &gt;&gt;&gt; from ase.infrared import InfraRed</span>
+
+<span class="sd">    &gt;&gt;&gt; bud = read(&#39;bud1.xyz&#39;)</span>
+
+<span class="sd">    &gt;&gt;&gt; calc = Siesta(label=&#39;bud&#39;,</span>
+<span class="sd">    ...       meshcutoff=250 * Ry,</span>
+<span class="sd">    ...       basis=&#39;DZP&#39;,</span>
+<span class="sd">    ...       kpts=[1, 1, 1])</span>
+
+<span class="sd">    &gt;&gt;&gt; calc.set_fdf(&#39;DM.MixingWeight&#39;, 0.08)</span>
+<span class="sd">    &gt;&gt;&gt; calc.set_fdf(&#39;DM.NumberPulay&#39;, 3)</span>
+<span class="sd">    &gt;&gt;&gt; calc.set_fdf(&#39;DM.NumberKick&#39;, 20)</span>
+<span class="sd">    &gt;&gt;&gt; calc.set_fdf(&#39;DM.KickMixingWeight&#39;, 0.15)</span>
+<span class="sd">    &gt;&gt;&gt; calc.set_fdf(&#39;SolutionMethod&#39;,      &#39;Diagon&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; calc.set_fdf(&#39;MaxSCFIterations&#39;, 500)</span>
+<span class="sd">    &gt;&gt;&gt; calc.set_fdf(&#39;PAO.BasisType&#39;,  &#39;split&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; #50 meV = 0.003674931 * Ry</span>
+<span class="sd">    &gt;&gt;&gt; calc.set_fdf(&#39;PAO.EnergyShift&#39;, 0.003674931 * Ry )</span>
+<span class="sd">    &gt;&gt;&gt; calc.set_fdf(&#39;LatticeConstant&#39;, 1.000000 * Ang)</span>
+<span class="sd">    &gt;&gt;&gt; calc.set_fdf(&#39;WriteCoorXmol&#39;,       &#39;T&#39;)</span>
+
+<span class="sd">    &gt;&gt;&gt; bud.set_calculator(calc)</span>
+
+<span class="sd">    &gt;&gt;&gt; ir = InfraRed(bud)</span>
+<span class="sd">    &gt;&gt;&gt; ir.run()</span>
+<span class="sd">    &gt;&gt;&gt; ir.summary()</span>
+
+
+
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">indices</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;ir&#39;</span><span class="p">,</span> <span class="n">delta</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span> 
+                 <span class="n">nfree</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">directions</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="n">nfree</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="n">atoms</span>
+        <span class="k">if</span> <span class="n">atoms</span><span class="o">.</span><span class="n">constraints</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&#39;WARNING! </span><span class="se">\n</span><span class="s"> Your Atoms object is constrained. &#39;</span> <span class="o">+</span>
+            <span class="s">&#39;Some forces may be unintended set to zero. </span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">calc</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_calculator</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">indices</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">indices</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">indices</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nfree</span> <span class="o">=</span> <span class="n">nfree</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span> <span class="o">+</span> <span class="s">&#39;-d</span><span class="si">%.3f</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">delta</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">delta</span> <span class="o">=</span> <span class="n">delta</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">H</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">if</span> <span class="n">directions</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">directions</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">directions</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">directions</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ir</span> <span class="o">=</span> <span class="bp">True</span>
+
+    <span class="k">def</span> <span class="nf">read</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&#39;standard&#39;</span><span class="p">,</span> <span class="n">direction</span><span class="o">=</span><span class="s">&#39;central&#39;</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">=</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">direction</span> <span class="o">=</span> <span class="n">direction</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;standard&#39;</span><span class="p">,</span> <span class="s">&#39;frederiksen&#39;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">direction</span> <span class="o">!=</span> <span class="s">&#39;central&#39;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+                <span class="s">&#39;Only central difference is implemented at the moment.&#39;</span><span class="p">)</span>
+
+        <span class="c"># Get &quot;static&quot; dipole moment and forces</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">.eq.pckl&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span>
+        <span class="p">[</span><span class="n">forces_zero</span><span class="p">,</span> <span class="n">dipole_zero</span><span class="p">]</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="nb">open</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dipole_zero</span> <span class="o">=</span> <span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">dipole_zero</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mf">0.5</span><span class="p">)</span> <span class="o">/</span> <span class="n">units</span><span class="o">.</span><span class="n">Debye</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">force_zero</span> <span class="o">=</span> <span class="nb">max</span><span class="p">([</span><span class="nb">sum</span><span class="p">((</span><span class="n">forces_zero</span><span class="p">[</span><span class="n">j</span><span class="p">])</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mf">0.5</span> 
+                               <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">indices</span><span class="p">])</span>
+
+        <span class="n">ndof</span> <span class="o">=</span> <span class="mi">3</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">indices</span><span class="p">)</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">ndof</span><span class="p">,</span> <span class="n">ndof</span><span class="p">))</span>
+        <span class="n">dpdx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">ndof</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">indices</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="s">&#39;xyz&#39;</span><span class="p">:</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">.</span><span class="si">%d%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+                <span class="p">[</span><span class="n">fminus</span><span class="p">,</span> <span class="n">dminus</span><span class="p">]</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="nb">open</span><span class="p">(</span><span class="n">name</span> <span class="o">+</span> <span class="s">&#39;-.pckl&#39;</span><span class="p">))</span>
+                <span class="p">[</span><span class="n">fplus</span><span class="p">,</span> <span class="n">dplus</span><span class="p">]</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="nb">open</span><span class="p">(</span><span class="n">name</span> <span class="o">+</span> <span class="s">&#39;+.pckl&#39;</span><span class="p">))</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">nfree</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
+                    <span class="p">[</span><span class="n">fminusminus</span><span class="p">,</span> <span class="n">dminusminus</span><span class="p">]</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span>
+                        <span class="nb">open</span><span class="p">(</span><span class="n">name</span> <span class="o">+</span> <span class="s">&#39;--.pckl&#39;</span><span class="p">))</span>
+                    <span class="p">[</span><span class="n">fplusplus</span><span class="p">,</span> <span class="n">dplusplus</span><span class="p">]</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span>
+                        <span class="nb">open</span><span class="p">(</span><span class="n">name</span> <span class="o">+</span> <span class="s">&#39;++.pckl&#39;</span><span class="p">))</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s">&#39;frederiksen&#39;</span><span class="p">:</span>
+                    <span class="n">fminus</span><span class="p">[</span><span class="n">a</span><span class="p">]</span> <span class="o">+=</span> <span class="o">-</span><span class="n">fminus</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                    <span class="n">fplus</span><span class="p">[</span><span class="n">a</span><span class="p">]</span> <span class="o">+=</span> <span class="o">-</span><span class="n">fplus</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">nfree</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
+                        <span class="n">fminusminus</span><span class="p">[</span><span class="n">a</span><span class="p">]</span> <span class="o">+=</span> <span class="o">-</span><span class="n">fminus</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                        <span class="n">fplusplus</span><span class="p">[</span><span class="n">a</span><span class="p">]</span> <span class="o">+=</span> <span class="o">-</span><span class="n">fplus</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">nfree</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                    <span class="n">H</span><span class="p">[</span><span class="n">r</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">fminus</span> <span class="o">-</span> <span class="n">fplus</span><span class="p">)[</span><span class="bp">self</span><span class="o">.</span><span class="n">indices</span><span class="p">]</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span> <span class="o">/</span> <span class="mf">2.0</span>
+                    <span class="n">dpdx</span><span class="p">[</span><span class="n">r</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">dminus</span> <span class="o">-</span> <span class="n">dplus</span><span class="p">)</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">nfree</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
+                    <span class="n">H</span><span class="p">[</span><span class="n">r</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="n">fminusminus</span> <span class="o">+</span> <span class="mi">8</span> <span class="o">*</span> <span class="n">fminus</span> <span class="o">-</span> <span class="mi">8</span> <span class="o">*</span> <span class="n">fplus</span> <span class="o">+</span>
+                            <span class="n">fplusplus</span><span class="p">)[</span><span class="bp">self</span><span class="o">.</span><span class="n">indices</span><span class="p">]</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span> <span class="o">/</span> <span class="mf">12.0</span>
+                    <span class="n">dpdx</span><span class="p">[</span><span class="n">r</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="n">dplusplus</span> <span class="o">+</span> <span class="mi">8</span> <span class="o">*</span> <span class="n">dplus</span> <span class="o">-</span> <span class="mi">8</span> <span class="o">*</span> <span class="n">dminus</span> <span class="o">+</span> 
+                               <span class="n">dminusminus</span><span class="p">)</span> <span class="o">/</span> <span class="mf">6.0</span>
+                <span class="n">H</span><span class="p">[</span><span class="n">r</span><span class="p">]</span> <span class="o">/=</span> <span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">delta</span>
+                <span class="n">dpdx</span><span class="p">[</span><span class="n">r</span><span class="p">]</span> <span class="o">/=</span> <span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">delta</span>
+                <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">n</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">directions</span><span class="p">:</span>
+                        <span class="n">dpdx</span><span class="p">[</span><span class="n">r</span><span class="p">][</span><span class="n">n</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+                        <span class="n">dpdx</span><span class="p">[</span><span class="n">r</span><span class="p">][</span><span class="n">n</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="n">r</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="c"># Calculate eigenfrequencies and eigenvectors</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_masses</span><span class="p">()</span>
+        <span class="n">H</span> <span class="o">+=</span> <span class="n">H</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span><span class="o">.</span><span class="n">T</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">H</span> <span class="o">=</span> <span class="n">H</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_masses</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">im</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">indices</span><span class="p">]</span><span class="o">**-</span><span class="mf">0.5</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="n">omega2</span><span class="p">,</span> <span class="n">modes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eigh</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">im</span><span class="p">[:,</span> <span class="bp">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">H</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">im</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">modes</span> <span class="o">=</span> <span class="n">modes</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="c"># Calculate intensities</span>
+        <span class="n">dpdq</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">dpdx</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">/</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">indices</span><span class="p">[</span><span class="n">j</span> <span class="o">/</span> <span class="mi">3</span><span class="p">]]</span> <span class="o">*</span> 
+                                        <span class="n">units</span><span class="o">.</span><span class="n">_amu</span> <span class="o">/</span> <span class="n">units</span><span class="o">.</span><span class="n">_me</span><span class="p">)</span> 
+                         <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ndof</span><span class="p">)])</span>
+        <span class="n">dpdQ</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">dpdq</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">modes</span><span class="p">)</span>
+        <span class="n">dpdQ</span> <span class="o">=</span> <span class="n">dpdQ</span><span class="o">.</span><span class="n">T</span>
+        <span class="n">intensities</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="nb">sum</span><span class="p">(</span><span class="n">dpdQ</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ndof</span><span class="p">)])</span>
+        <span class="c"># Conversion factor:</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">units</span><span class="o">.</span><span class="n">_hbar</span> <span class="o">*</span> <span class="mf">1e10</span> <span class="o">/</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">units</span><span class="o">.</span><span class="n">_e</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">_amu</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">hnu</span> <span class="o">=</span> <span class="n">s</span> <span class="o">*</span> <span class="n">omega2</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">complex</span><span class="p">)</span><span class="o">**</span><span class="mf">0.5</span>
+        <span class="c"># Conversion factor from atomic units to (D/Angstrom)^2/amu.</span>
+        <span class="n">conv</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">units</span><span class="o">.</span><span class="n">Debye</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">_amu</span> <span class="o">/</span> <span class="n">units</span><span class="o">.</span><span class="n">_me</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">intensities</span> <span class="o">=</span> <span class="n">intensities</span> <span class="o">*</span> <span class="n">conv</span>
+
+    <span class="k">def</span> <span class="nf">intensity_prefactor</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">intensity_unit</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">intensity_unit</span> <span class="o">==</span> <span class="s">&#39;(D/A)2/amu&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s">&#39;(D/Å)^2 amu^-1&#39;</span>
+        <span class="k">elif</span> <span class="n">intensity_unit</span> <span class="o">==</span> <span class="s">&#39;km/mol&#39;</span><span class="p">:</span>
+            <span class="c"># conversion factor from Porezag PRB 54 (1996) 7830</span>
+            <span class="k">return</span> <span class="mf">42.255</span><span class="p">,</span> <span class="s">&#39;km/mol&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&#39;Intensity unit &gt;&#39;</span> <span class="o">+</span> <span class="n">intensity_unit</span> <span class="o">+</span>
+                               <span class="s">&#39;&lt; unknown.&#39;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&#39;standard&#39;</span><span class="p">,</span> <span class="n">direction</span><span class="o">=</span><span class="s">&#39;central&#39;</span><span class="p">,</span> 
+                <span class="n">intensity_unit</span><span class="o">=</span><span class="s">&#39;(D/A)2/amu&#39;</span><span class="p">,</span> <span class="n">log</span><span class="o">=</span><span class="n">stdout</span><span class="p">):</span>
+        <span class="n">hnu</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_energies</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">direction</span><span class="p">)</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="mf">0.01</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">_e</span> <span class="o">/</span> <span class="n">units</span><span class="o">.</span><span class="n">_c</span> <span class="o">/</span> <span class="n">units</span><span class="o">.</span><span class="n">_hplanck</span>
+        <span class="n">iu</span><span class="p">,</span> <span class="n">iu_string</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">intensity_prefactor</span><span class="p">(</span><span class="n">intensity_unit</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">intensity_unit</span> <span class="o">==</span> <span class="s">&#39;(D/A)2/amu&#39;</span><span class="p">:</span>
+            <span class="n">iu_format</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%9.4f</span><span class="s">&#39;</span>
+        <span class="k">elif</span> <span class="n">intensity_unit</span> <span class="o">==</span> <span class="s">&#39;km/mol&#39;</span><span class="p">:</span>
+            <span class="n">iu_string</span> <span class="o">=</span> <span class="s">&#39;   &#39;</span> <span class="o">+</span> <span class="n">iu_string</span>
+            <span class="n">iu_format</span> <span class="o">=</span> <span class="s">&#39; </span><span class="si">%7.1f</span><span class="s">&#39;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">log</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">log</span> <span class="o">=</span> <span class="n">paropen</span><span class="p">(</span><span class="n">log</span><span class="p">,</span> <span class="s">&#39;a&#39;</span><span class="p">)</span>
+
+        <span class="n">parprint</span><span class="p">(</span><span class="s">&#39;-------------------------------------&#39;</span><span class="p">,</span> <span class="nb">file</span><span class="o">=</span><span class="n">log</span><span class="p">)</span>
+        <span class="n">parprint</span><span class="p">(</span><span class="s">&#39; Mode    Frequency        Intensity&#39;</span><span class="p">,</span> <span class="nb">file</span><span class="o">=</span><span class="n">log</span><span class="p">)</span>
+        <span class="n">parprint</span><span class="p">(</span><span class="s">&#39;  #    meV     cm^-1   &#39;</span> <span class="o">+</span> <span class="n">iu_string</span><span class="p">,</span> <span class="nb">file</span><span class="o">=</span><span class="n">log</span><span class="p">)</span>
+        <span class="n">parprint</span><span class="p">(</span><span class="s">&#39;-------------------------------------&#39;</span><span class="p">,</span> <span class="nb">file</span><span class="o">=</span><span class="n">log</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">e</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">hnu</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">imag</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">c</span> <span class="o">=</span> <span class="s">&#39;i&#39;</span>
+                <span class="n">e</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">imag</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">c</span> <span class="o">=</span> <span class="s">&#39; &#39;</span>
+                <span class="n">e</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">real</span>
+            <span class="n">parprint</span><span class="p">((</span><span class="s">&#39;</span><span class="si">%3d</span><span class="s"> </span><span class="si">%6.1f%s</span><span class="s">  </span><span class="si">%7.1f%s</span><span class="s">  &#39;</span> <span class="o">+</span> <span class="n">iu_format</span><span class="p">)</span> <span class="o">%</span> 
+                     <span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">1000</span> <span class="o">*</span> <span class="n">e</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">s</span> <span class="o">*</span> <span class="n">e</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">iu</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">intensities</span><span class="p">[</span><span class="n">n</span><span class="p">]),</span>
+                     <span class="nb">file</span><span class="o">=</span><span class="n">log</span><span class="p">)</span>
+        <span class="n">parprint</span><span class="p">(</span><span class="s">&#39;-------------------------------------&#39;</span><span class="p">,</span> <span class="nb">file</span><span class="o">=</span><span class="n">log</span><span class="p">)</span>
+        <span class="n">parprint</span><span class="p">(</span><span class="s">&#39;Zero-point energy: </span><span class="si">%.3f</span><span class="s"> eV&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_zero_point_energy</span><span class="p">(),</span> 
+                <span class="nb">file</span><span class="o">=</span><span class="n">log</span><span class="p">)</span>
+        <span class="n">parprint</span><span class="p">(</span><span class="s">&#39;Static dipole moment: </span><span class="si">%.3f</span><span class="s"> D&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">dipole_zero</span><span class="p">,</span> <span class="nb">file</span><span class="o">=</span><span class="n">log</span><span class="p">)</span>
+        <span class="n">parprint</span><span class="p">(</span><span class="s">&#39;Maximum force on atom in `equilibrium`: </span><span class="si">%.4f</span><span class="s"> eV/Å&#39;</span> <span class="o">%</span> 
+                  <span class="bp">self</span><span class="o">.</span><span class="n">force_zero</span><span class="p">,</span> <span class="nb">file</span><span class="o">=</span><span class="n">log</span><span class="p">)</span>
+        <span class="n">parprint</span><span class="p">(</span><span class="nb">file</span><span class="o">=</span><span class="n">log</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">get_spectrum</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">800</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="mi">4000</span><span class="p">,</span> <span class="n">npts</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> 
+<div class="viewcode-block" id="InfraRed.get_spectrum"><a class="viewcode-back" href="../../../ase/infrared.html#ase.vibrations.infrared.InfraRed.get_spectrum">[docs]</a>                     <span class="nb">type</span><span class="o">=</span><span class="s">&#39;Gaussian&#39;</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&#39;standard&#39;</span><span class="p">,</span> <span class="n">direction</span><span class="o">=</span><span class="s">&#39;central&#39;</span><span class="p">,</span> 
+                     <span class="n">intensity_unit</span><span class="o">=</span><span class="s">&#39;(D/A)2/amu&#39;</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Get infrared spectrum.</span>
+
+<span class="sd">        The method returns wavenumbers in cm^-1 with corresponding </span>
+<span class="sd">        absolute infrared intensity.</span>
+<span class="sd">        Start and end point, and width of the Gaussian/Lorentzian should </span>
+<span class="sd">        be given in cm^-1.</span>
+<span class="sd">        normalize=True ensures the integral over the peaks to give the </span>
+<span class="sd">        intensity.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">frequencies</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_frequencies</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">direction</span><span class="p">)</span><span class="o">.</span><span class="n">real</span>
+        <span class="n">intensities</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">intensities</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">fold</span><span class="p">(</span><span class="n">frequencies</span><span class="p">,</span> <span class="n">intensities</span><span class="p">,</span>
+                         <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">npts</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="nb">type</span><span class="p">,</span> <span class="n">normalize</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">write_spectra</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">out</span><span class="o">=</span><span class="s">&#39;ir-spectra.dat&#39;</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">800</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="mi">4000</span><span class="p">,</span> </div>
+<div class="viewcode-block" id="InfraRed.write_spectra"><a class="viewcode-back" href="../../../ase/infrared.html#ase.vibrations.infrared.InfraRed.write_spectra">[docs]</a>                      <span class="n">npts</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> 
+                      <span class="nb">type</span><span class="o">=</span><span class="s">&#39;Gaussian&#39;</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&#39;standard&#39;</span><span class="p">,</span> <span class="n">direction</span><span class="o">=</span><span class="s">&#39;central&#39;</span><span class="p">,</span> 
+                      <span class="n">intensity_unit</span><span class="o">=</span><span class="s">&#39;(D/A)2/amu&#39;</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Write out infrared spectrum to file.</span>
+
+<span class="sd">        First column is the wavenumber in cm^-1, the second column the </span>
+<span class="sd">        absolute infrared intensities, and</span>
+<span class="sd">        the third column the absorbance scaled so that data runs </span>
+<span class="sd">        from 1 to 0. Start and end </span>
+<span class="sd">        point, and width of the Gaussian/Lorentzian should be given </span>
+<span class="sd">        in cm^-1.&quot;&quot;&quot;</span>
+        <span class="n">energies</span><span class="p">,</span> <span class="n">spectrum</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_spectrum</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">npts</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> 
+                                               <span class="nb">type</span><span class="p">,</span> <span class="n">method</span><span class="p">,</span> <span class="n">direction</span><span class="p">,</span> 
+                                               <span class="n">normalize</span><span class="p">)</span>
+
+        <span class="c">#Write out spectrum in file. First column is absolute intensities. </span>
+        <span class="c">#Second column is absorbance scaled so that data runs from 1 to 0</span>
+        <span class="n">spectrum2</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">-</span> <span class="n">spectrum</span> <span class="o">/</span> <span class="n">spectrum</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+        <span class="n">outdata</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">energies</span><span class="p">),</span> <span class="mi">3</span><span class="p">])</span>
+        <span class="n">outdata</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">energies</span>
+        <span class="n">outdata</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">spectrum</span>
+        <span class="n">outdata</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">spectrum2</span>
+        <span class="n">fd</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span>
+        <span class="n">fd</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;# </span><span class="si">%s</span><span class="s"> folded, width=</span><span class="si">%g</span><span class="s"> cm^-1</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">type</span><span class="o">.</span><span class="n">title</span><span class="p">(),</span> <span class="n">width</span><span class="p">))</span>
+        <span class="n">iu</span><span class="p">,</span> <span class="n">iu_string</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">intensity_prefactor</span><span class="p">(</span><span class="n">intensity_unit</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">normalize</span><span class="p">:</span>
+            <span class="n">iu_string</span> <span class="o">=</span> <span class="s">&#39;cm &#39;</span> <span class="o">+</span> <span class="n">iu_string</span>
+        <span class="n">fd</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;# [cm^-1] </span><span class="si">%14s</span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="s">&#39;[&#39;</span> <span class="o">+</span> <span class="n">iu_string</span> <span class="o">+</span> <span class="s">&#39;]&#39;</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">outdata</span><span class="p">:</span>
+            <span class="n">fd</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&#39;</span><span class="si">%.3f</span><span class="s">  </span><span class="si">%15.5e</span><span class="s">  </span><span class="si">%15.5e</span><span class="s"> </span><span class="se">\n</span><span class="s">&#39;</span> <span class="o">%</span> 
+                     <span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">iu</span> <span class="o">*</span> <span class="n">row</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">row</span><span class="p">[</span><span class="mi">2</span><span class="p">]))</span>
+        <span class="n">fd</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="c">#np.savetxt(out, outdata, fmt=&#39;%.3f  %15.5e  %15.5e&#39;)</span>
+</pre></div></div></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../../overview.html">
+              Overview</a></li>
+            <li><a href="../../../download.html">
+              Installation</a></li>
+            <li><a href="../../../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../../faq.html">FAQ</a></li>
+            <li><a href="../../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../../index.html"><img class="logo" src="../../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li>
+          <li><a href="../vibrations.html" accesskey="U">ase.vibrations</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:28:35.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

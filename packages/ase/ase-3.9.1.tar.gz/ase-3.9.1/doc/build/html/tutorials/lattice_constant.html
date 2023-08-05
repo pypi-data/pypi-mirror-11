@@ -1,0 +1,256 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Finding lattice constants &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../contents.html" />
+    <link rel="index" title="Global index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="top" title="ASE  documentation" href="../index.html" />
+    <link rel="up" title="Tutorials" href="tutorials.html" />
+    <link rel="next" title="Equation of state" href="eos/eos.html" />
+    <link rel="prev" title="Atomization energy" href="atomization.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="tutorials.html" accesskey="U">Tutorials</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="finding-lattice-constants">
+<span id="lattice-constant"></span><h1>Finding lattice constants<a class="headerlink" href="#finding-lattice-constants" title="Permalink to this headline">¶</a></h1>
+<div class="admonition seealso">
+<p class="first admonition-title">See also</p>
+<p class="last"><a class="reference internal" href="eos/eos.html#eos"><em>Equation of state</em></a>.</p>
+</div>
+<div class="section" id="hcp">
+<h2>HCP<a class="headerlink" href="#hcp" title="Permalink to this headline">¶</a></h2>
+<p>Let&#8217;s try to find the <span class="math">\(a\)</span> and <span class="math">\(c\)</span> lattice constants for HCP nickel
+using the <a class="reference internal" href="../ase/calculators/emt.html#module-ase.calculators.emt" title="ase.calculators.emt: Effective Medium Theory"><tt class="xref py py-mod docutils literal"><span class="pre">EMT</span></tt></a> potential.</p>
+<p>First, we make a good initial guess for <span class="math">\(a\)</span> and <span class="math">\(c\)</span> using the FCC nearest
+neighbor distance and the ideal <span class="math">\(c/a\)</span> ratio:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="n">a0</span> <span class="o">=</span> <span class="mf">3.52</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="n">c0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">8</span> <span class="o">/</span> <span class="mf">3.0</span><span class="p">)</span> <span class="o">*</span> <span class="n">a0</span>
+</pre></div>
+</div>
+<p>and create a trajectory for the results:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.io</span> <span class="kn">import</span> <span class="n">Trajectory</span>
+<span class="n">traj</span> <span class="o">=</span> <span class="n">Trajectory</span><span class="p">(</span><span class="s">&#39;Ni.traj&#39;</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Finally, we do the 9 calculations (three values for <span class="math">\(a\)</span> and three for <span class="math">\(c\)</span>):</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.lattice</span> <span class="kn">import</span> <span class="n">bulk</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="n">eps</span> <span class="o">=</span> <span class="mf">0.01</span>
+<span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">a0</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">eps</span><span class="p">,</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">eps</span><span class="p">,</span> <span class="mi">3</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">c0</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">eps</span><span class="p">,</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">eps</span><span class="p">,</span> <span class="mi">3</span><span class="p">):</span>
+        <span class="n">ni</span> <span class="o">=</span> <span class="n">bulk</span><span class="p">(</span><span class="s">&#39;Ni&#39;</span><span class="p">,</span> <span class="s">&#39;hcp&#39;</span><span class="p">,</span> <span class="n">a</span><span class="o">=</span><span class="n">a</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+        <span class="n">ni</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+        <span class="n">ni</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+        <span class="n">traj</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">ni</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="section" id="analysis">
+<h3>Analysis<a class="headerlink" href="#analysis" title="Permalink to this headline">¶</a></h3>
+<p>Now, we need to extract the data from the trajectory.  Try this:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">ase.lattice</span> <span class="kn">import</span> <span class="n">bulk</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ni</span> <span class="o">=</span> <span class="n">bulk</span><span class="p">(</span><span class="s">&#39;Ni&#39;</span><span class="p">,</span> <span class="s">&#39;hcp&#39;</span><span class="p">,</span> <span class="n">a</span><span class="o">=</span><span class="mf">2.5</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ni</span><span class="o">.</span><span class="n">cell</span>
+<span class="go">array([[ 2.5       ,  0.        ,  0.        ],</span>
+<span class="go">       [-1.25      ,  2.16506351,  0.        ],</span>
+<span class="go">       [ 0.        ,  0.        ,  4.        ]])</span>
+</pre></div>
+</div>
+<p>So, we can get <span class="math">\(a\)</span> and <span class="math">\(c\)</span> from <tt class="docutils literal"><span class="pre">ni.cell[0,</span> <span class="pre">0]</span></tt> and <tt class="docutils literal"><span class="pre">ni.cell[2,</span>
+<span class="pre">2]</span></tt>:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.io</span> <span class="kn">import</span> <span class="n">read</span>
+<span class="n">configs</span> <span class="o">=</span> <span class="n">read</span><span class="p">(</span><span class="s">&#39;Ni.traj@:&#39;</span><span class="p">)</span>
+<span class="n">energies</span> <span class="o">=</span> <span class="p">[</span><span class="n">config</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span> <span class="k">for</span> <span class="n">config</span> <span class="ow">in</span> <span class="n">configs</span><span class="p">]</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">config</span><span class="o">.</span><span class="n">cell</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">config</span> <span class="ow">in</span> <span class="n">configs</span><span class="p">])</span>
+<span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">config</span><span class="o">.</span><span class="n">cell</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span> <span class="k">for</span> <span class="n">config</span> <span class="ow">in</span> <span class="n">configs</span><span class="p">])</span>
+</pre></div>
+</div>
+<p>We fit the energy to this expression:</p>
+<div class="math">
+\[p_0 + p_1 a + p_2 c + p_3 a^2 + p_4 ac + p_5 c^2\]</div>
+<p>The best fit is found like this:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">functions</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">a</span><span class="o">**</span><span class="mi">0</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">a</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">a</span> <span class="o">*</span> <span class="n">c</span><span class="p">,</span> <span class="n">c</span><span class="o">**</span><span class="mi">2</span><span class="p">])</span>
+<span class="n">p</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">lstsq</span><span class="p">(</span><span class="n">functions</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">energies</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>and we can find the minimum like this:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">p0</span> <span class="o">=</span> <span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">p1</span> <span class="o">=</span> <span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">3</span><span class="p">]</span>
+<span class="n">p2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">p</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">p</span><span class="p">[</span><span class="mi">4</span><span class="p">]),</span>
+               <span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="mi">4</span><span class="p">],</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">p</span><span class="p">[</span><span class="mi">5</span><span class="p">])])</span>
+<span class="n">a0</span><span class="p">,</span> <span class="n">c0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">p2</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="o">-</span><span class="n">p1</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Results:</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="50%" />
+<col width="50%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">a</th>
+<th class="head">c</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td>2.466</td>
+<td>4.023</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="section" id="using-the-stress-tensor">
+<h2>Using the stress tensor<a class="headerlink" href="#using-the-stress-tensor" title="Permalink to this headline">¶</a></h2>
+<p>One can also use the stress tensor to optimize the unit cell. For this we cannot use the EMT calculator.:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.optimize</span> <span class="kn">import</span> <span class="n">BFGS</span>
+<span class="kn">from</span> <span class="nn">ase.constraints</span> <span class="kn">import</span> <span class="n">StrainFilter</span>
+<span class="kn">from</span> <span class="nn">gpaw</span> <span class="kn">import</span> <span class="n">GPAW</span><span class="p">,</span> <span class="n">PW</span>
+<span class="n">ni</span> <span class="o">=</span> <span class="n">bulk</span><span class="p">(</span><span class="s">&#39;Ni&#39;</span><span class="p">,</span> <span class="s">&#39;hcp&#39;</span><span class="p">,</span> <span class="n">a</span><span class="o">=</span><span class="n">a0</span><span class="p">,</span><span class="n">c</span><span class="o">=</span><span class="n">c0</span><span class="p">)</span>
+<span class="n">calc</span> <span class="o">=</span> <span class="n">GPAW</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="n">PW</span><span class="p">(</span><span class="mi">200</span><span class="p">),</span><span class="n">xc</span><span class="o">=</span><span class="s">&#39;LDA&#39;</span><span class="p">,</span><span class="n">txt</span><span class="o">=</span><span class="s">&#39;Ni.out&#39;</span><span class="p">)</span>
+<span class="n">ni</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">calc</span><span class="p">)</span>
+<span class="n">sf</span> <span class="o">=</span> <span class="n">StrainFilter</span><span class="p">(</span><span class="n">ni</span><span class="p">)</span>
+<span class="n">opt</span> <span class="o">=</span> <span class="n">BFGS</span><span class="p">(</span><span class="n">sf</span><span class="p">)</span>
+<span class="n">opt</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="mf">0.005</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>If you want the optimization path in a trajectory, add these lines
+before calling the <tt class="docutils literal"><span class="pre">run()</span></tt> method:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">traj</span> <span class="o">=</span> <span class="n">PickleTrajectory</span><span class="p">(</span><span class="s">&#39;path.traj&#39;</span><span class="p">,</span> <span class="s">&#39;w&#39;</span><span class="p">,</span> <span class="n">ni</span><span class="p">)</span>
+<span class="n">opt</span><span class="o">.</span><span class="n">attach</span><span class="p">(</span><span class="n">traj</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../overview.html">
+              Overview</a></li>
+            <li><a href="../download.html">
+              Installation</a></li>
+            <li><a href="tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../faq.html">FAQ</a></li>
+            <li><a href="../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>This Page</h3>
+            <ul>
+<li><a class="reference internal" href="#">Finding lattice constants</a><ul>
+<li><a class="reference internal" href="#hcp">HCP</a><ul>
+<li><a class="reference internal" href="#analysis">Analysis</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#using-the-stress-tensor">Using the stress tensor</a></li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="atomization.html" title="previous chapter">Atomization energy</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="eos/eos.html" title="next chapter">Equation of state</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../_sources/tutorials/lattice_constant.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="tutorials.html" accesskey="U">Tutorials</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

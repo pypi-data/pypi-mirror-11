@@ -1,0 +1,644 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Optimization with a Genetic Algorithm &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="Genetic Algorithm" href="../../ase/ga.html" />
+    <link rel="next" title="GA Search for stable FCC alloys" href="ga_fcc_alloys.html" />
+    <link rel="prev" title="Genetic Algorithm" href="../../ase/ga.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../ase/ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+          <li><a href="../../ase/ga.html" accesskey="U">Genetic Algorithm</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="optimization-with-a-genetic-algorithm">
+<span id="genetic-algorithm-optimization-tutorial"></span><h1>Optimization with a Genetic Algorithm<a class="headerlink" href="#optimization-with-a-genetic-algorithm" title="Permalink to this headline">¶</a></h1>
+<p>A genetic algorithm (GA) has been implemented for global structure
+optimization within ase. The optimizer consists of its own module
+<a class="reference internal" href="../../ase/ga.html#module-ase.ga" title="ase.ga: Genetic Algorithm Optimization"><tt class="xref py py-mod docutils literal"><span class="pre">ase.ga</span></tt></a> which includes all classes needed for the optimizer.</p>
+<p>The method was first described in the supplemental material of</p>
+<blockquote>
+<div><div class="line-block">
+<div class="line">L. B. Vilhelmsen and B. Hammer</div>
+<div class="line"><a class="reference external" href="http://dx.doi.org/10.1103/physrevlett.108.126101">Systematic Study of Au6 to Au12 Gold Clusters on MgO(100) F Centers Using Density-Functional Theory</a></div>
+<div class="line">Physical Review Letters, Vol. 108 (Mar 2012), 126101</div>
+</div>
+</div></blockquote>
+<p>and a full account of the method is given in</p>
+<blockquote>
+<div><div class="line-block">
+<div class="line">L. B. Vilhelmsen and B. Hammer</div>
+<div class="line"><a class="reference external" href="http://dx.doi.org/10.1063/1.4886337">A genetic algorithm for first principles global optimization of supported nano structures</a></div>
+<div class="line">Journal of Chemical Physics, Vol 141, 044711 (2014)</div>
+</div>
+</div></blockquote>
+<p>Any questions about how to use the GA can be asked at the mailing
+list.</p>
+<div class="section" id="a-brief-overview-of-the-implementation">
+<h2>A Brief Overview of the Implementation<a class="headerlink" href="#a-brief-overview-of-the-implementation" title="Permalink to this headline">¶</a></h2>
+<p>The GA relies on the ase.db module for tracking which structures have
+been found. Before the GA optimization starts the user therefore needs
+to prepare this database and appropriate folders. This is done trough
+an initialization script as the one described in the next section. In
+this initialization the starting population is generated and
+added to the database.</p>
+<p>After initialization the main script is run. This script defines
+objects responsible for the different parts of the GA and then creates
+and locally relaxes new candidates. It is up to the user to define
+when the main script should terminate. An example of a main script is
+given in the next section.  Notice that because of the persistent data
+storage the main script can be executed multiple times to generate new
+candidates.</p>
+<p>The GA implementation generally follows a responsibility driven
+approach. This means that each part of the GA is isolated into
+individual classes making it possible to put together an optimizer
+satisfying the needs of a specific optimization problem.</p>
+<p>This tutorial will use the following parts of the GA:</p>
+<ul class="simple">
+<li>A population responsible for proposing new candidates to pair
+together.</li>
+<li>A paring operator which combines two candidates.</li>
+<li>A set of mutations.</li>
+<li>A comparator which determines if two structures are different.</li>
+<li>A starting population generator.</li>
+</ul>
+<p>Each of the above components are described in the supplemental
+material of the first reference given above and will not be discussed
+here. The example will instead focus on the technical aspect of
+executing the GA.</p>
+</div>
+<div class="section" id="a-basic-example">
+<h2>A Basic Example<a class="headerlink" href="#a-basic-example" title="Permalink to this headline">¶</a></h2>
+<p>The user needs to specify the following three properties about the
+structure that needs to be optimized.</p>
+<ul class="simple">
+<li>A list of atomic numbers for the structure to be optimized</li>
+<li>A super cell in which to do the optimization. If the structure to
+optimize resides on a surface or in a support this supercell
+contains the atoms which should not be considered explicitly by the
+GA.</li>
+<li>A box defining the volume of the super cell in which to randomly
+distribute the starting population.</li>
+</ul>
+<p>As an example we will find the structure of a
+Ag<sub>2</sub>Au<sub>2</sub> cluster on a Au(111) surface using the
+EMT optimizer.</p>
+<p>The script doing all the initialisations should be run in the folder
+in which the GA optimisation is to take place. The script looks as follows:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.ga.data</span> <span class="kn">import</span> <span class="n">PrepareDB</span>
+<span class="kn">from</span> <span class="nn">ase.ga.startgenerator</span> <span class="kn">import</span> <span class="n">StartGenerator</span>
+<span class="kn">from</span> <span class="nn">ase.ga.utilities</span> <span class="kn">import</span> <span class="n">closest_distances_generator</span>
+<span class="kn">from</span> <span class="nn">ase.ga.utilities</span> <span class="kn">import</span> <span class="n">get_all_atom_types</span>
+<span class="kn">from</span> <span class="nn">ase.constraints</span> <span class="kn">import</span> <span class="n">FixAtoms</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">ase.lattice.surface</span> <span class="kn">import</span> <span class="n">fcc111</span>
+
+<span class="n">db_file</span> <span class="o">=</span> <span class="s">&#39;gadb.db&#39;</span>
+
+<span class="c"># create the surface</span>
+<span class="n">slab</span> <span class="o">=</span> <span class="n">fcc111</span><span class="p">(</span><span class="s">&#39;Au&#39;</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">vacuum</span><span class="o">=</span><span class="mf">10.0</span><span class="p">,</span> <span class="n">orthogonal</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="n">slab</span><span class="o">.</span><span class="n">set_constraint</span><span class="p">(</span><span class="n">FixAtoms</span><span class="p">(</span><span class="n">mask</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">slab</span><span class="p">)</span> <span class="o">*</span> <span class="p">[</span><span class="bp">True</span><span class="p">]))</span>
+
+<span class="c"># define the volume in which the adsorbed cluster is optimized</span>
+<span class="c"># the volume is defined by a corner position (p0)</span>
+<span class="c"># and three spanning vectors (v1, v2, v3)</span>
+<span class="n">pos</span> <span class="o">=</span> <span class="n">slab</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+<span class="n">cell</span> <span class="o">=</span> <span class="n">slab</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()</span>
+<span class="n">p0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="n">pos</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">])</span> <span class="o">+</span> <span class="mf">2.</span><span class="p">])</span>
+<span class="n">v1</span> <span class="o">=</span> <span class="n">cell</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:]</span> <span class="o">*</span> <span class="mf">0.8</span>
+<span class="n">v2</span> <span class="o">=</span> <span class="n">cell</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="o">*</span> <span class="mf">0.8</span>
+<span class="n">v3</span> <span class="o">=</span> <span class="n">cell</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="p">:]</span>
+<span class="n">v3</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">3.</span>
+
+<span class="c"># Define the composition of the atoms to optimize</span>
+<span class="n">atom_numbers</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">[</span><span class="mi">47</span><span class="p">]</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">[</span><span class="mi">79</span><span class="p">]</span>
+
+<span class="c"># define the closest distance two atoms of a given species can be to each other</span>
+<span class="n">unique_atom_types</span> <span class="o">=</span> <span class="n">get_all_atom_types</span><span class="p">(</span><span class="n">slab</span><span class="p">,</span> <span class="n">atom_numbers</span><span class="p">)</span>
+<span class="n">cd</span> <span class="o">=</span> <span class="n">closest_distances_generator</span><span class="p">(</span><span class="n">atom_numbers</span><span class="o">=</span><span class="n">unique_atom_types</span><span class="p">,</span>
+                                 <span class="n">ratio_of_covalent_radii</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
+
+<span class="c"># create the starting population</span>
+<span class="n">sg</span> <span class="o">=</span> <span class="n">StartGenerator</span><span class="p">(</span><span class="n">slab</span><span class="o">=</span><span class="n">slab</span><span class="p">,</span>
+                    <span class="n">atom_numbers</span><span class="o">=</span><span class="n">atom_numbers</span><span class="p">,</span>
+                    <span class="n">closest_allowed_distances</span><span class="o">=</span><span class="n">cd</span><span class="p">,</span>
+                    <span class="n">box_to_place_in</span><span class="o">=</span><span class="p">[</span><span class="n">p0</span><span class="p">,</span> <span class="p">[</span><span class="n">v1</span><span class="p">,</span> <span class="n">v2</span><span class="p">,</span> <span class="n">v3</span><span class="p">]])</span>
+
+<span class="c"># generate the starting population</span>
+<span class="n">population_size</span> <span class="o">=</span> <span class="mi">20</span>
+<span class="n">starting_population</span> <span class="o">=</span> <span class="p">[</span><span class="n">sg</span><span class="o">.</span><span class="n">get_new_candidate</span><span class="p">()</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">population_size</span><span class="p">)]</span>
+
+<span class="c"># from ase.visualize import view   # uncomment these lines</span>
+<span class="c"># view(starting_population)        # to see the starting population</span>
+
+<span class="c"># create the database to store information in</span>
+<span class="n">d</span> <span class="o">=</span> <span class="n">PrepareDB</span><span class="p">(</span><span class="n">db_file_name</span><span class="o">=</span><span class="n">db_file</span><span class="p">,</span>
+              <span class="n">simulation_cell</span><span class="o">=</span><span class="n">slab</span><span class="p">,</span>
+              <span class="n">stoichiometry</span><span class="o">=</span><span class="n">atom_numbers</span><span class="p">,)</span>
+              <span class="c"># population_size=population_size)</span>
+
+<span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">starting_population</span><span class="p">:</span>
+    <span class="n">d</span><span class="o">.</span><span class="n">add_unrelaxed_candidate</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Having initialized the GA optimization we now need to actually run the
+GA. The main script running the GA consists of first an initialization
+part, and then a loop proposing new structures and locally optimizing
+them. The main script can look as follows:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">random</span> <span class="kn">import</span> <span class="n">random</span>
+<span class="kn">from</span> <span class="nn">ase.io</span> <span class="kn">import</span> <span class="n">write</span>
+<span class="kn">from</span> <span class="nn">ase.optimize</span> <span class="kn">import</span> <span class="n">BFGS</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+
+<span class="kn">from</span> <span class="nn">ase.ga.data</span> <span class="kn">import</span> <span class="n">DataConnection</span>
+<span class="kn">from</span> <span class="nn">ase.ga.population</span> <span class="kn">import</span> <span class="n">Population</span>
+<span class="kn">from</span> <span class="nn">ase.ga.standard_comparators</span> <span class="kn">import</span> <span class="n">InteratomicDistanceComparator</span>
+<span class="kn">from</span> <span class="nn">ase.ga.cutandsplicepairing</span> <span class="kn">import</span> <span class="n">CutAndSplicePairing</span>
+<span class="kn">from</span> <span class="nn">ase.ga.utilities</span> <span class="kn">import</span> <span class="n">closest_distances_generator</span>
+<span class="kn">from</span> <span class="nn">ase.ga.utilities</span> <span class="kn">import</span> <span class="n">get_all_atom_types</span>
+<span class="kn">from</span> <span class="nn">ase.ga.offspring_creator</span> <span class="kn">import</span> <span class="n">OperationSelector</span>
+<span class="kn">from</span> <span class="nn">ase.ga.standardmutations</span> <span class="kn">import</span> <span class="n">MirrorMutation</span>
+<span class="kn">from</span> <span class="nn">ase.ga.standardmutations</span> <span class="kn">import</span> <span class="n">RattleMutation</span>
+<span class="kn">from</span> <span class="nn">ase.ga.standardmutations</span> <span class="kn">import</span> <span class="n">PermutationMutation</span>
+
+<span class="c"># Change the following three parameters to suit your needs</span>
+<span class="n">population_size</span> <span class="o">=</span> <span class="mi">20</span>
+<span class="n">mutation_probability</span> <span class="o">=</span> <span class="mf">0.3</span>
+<span class="n">n_to_test</span> <span class="o">=</span> <span class="mi">20</span>
+
+<span class="c"># Initialize the different components of the GA</span>
+<span class="n">da</span> <span class="o">=</span> <span class="n">DataConnection</span><span class="p">(</span><span class="s">&#39;gadb.db&#39;</span><span class="p">)</span>
+<span class="n">atom_numbers_to_optimize</span> <span class="o">=</span> <span class="n">da</span><span class="o">.</span><span class="n">get_atom_numbers_to_optimize</span><span class="p">()</span>
+<span class="n">n_to_optimize</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">atom_numbers_to_optimize</span><span class="p">)</span>
+<span class="n">slab</span> <span class="o">=</span> <span class="n">da</span><span class="o">.</span><span class="n">get_slab</span><span class="p">()</span>
+<span class="n">all_atom_types</span> <span class="o">=</span> <span class="n">get_all_atom_types</span><span class="p">(</span><span class="n">slab</span><span class="p">,</span> <span class="n">atom_numbers_to_optimize</span><span class="p">)</span>
+<span class="n">blmin</span> <span class="o">=</span> <span class="n">closest_distances_generator</span><span class="p">(</span><span class="n">all_atom_types</span><span class="p">,</span>
+                                    <span class="n">ratio_of_covalent_radii</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
+
+<span class="n">comp</span> <span class="o">=</span> <span class="n">InteratomicDistanceComparator</span><span class="p">(</span><span class="n">n_top</span><span class="o">=</span><span class="n">n_to_optimize</span><span class="p">,</span>
+                                     <span class="n">pair_cor_cum_diff</span><span class="o">=</span><span class="mf">0.015</span><span class="p">,</span>
+                                     <span class="n">pair_cor_max</span><span class="o">=</span><span class="mf">0.7</span><span class="p">,</span>
+                                     <span class="n">dE</span><span class="o">=</span><span class="mf">0.02</span><span class="p">,</span>
+                                     <span class="n">mic</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+
+<span class="n">pairing</span> <span class="o">=</span> <span class="n">CutAndSplicePairing</span><span class="p">(</span><span class="n">slab</span><span class="p">,</span> <span class="n">n_to_optimize</span><span class="p">,</span> <span class="n">blmin</span><span class="p">)</span>
+<span class="n">mutations</span> <span class="o">=</span> <span class="n">OperationSelector</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">],</span>
+                              <span class="p">[</span><span class="n">MirrorMutation</span><span class="p">(</span><span class="n">blmin</span><span class="p">,</span> <span class="n">n_to_optimize</span><span class="p">),</span>
+                               <span class="n">RattleMutation</span><span class="p">(</span><span class="n">blmin</span><span class="p">,</span> <span class="n">n_to_optimize</span><span class="p">),</span>
+                               <span class="n">PermutationMutation</span><span class="p">(</span><span class="n">n_to_optimize</span><span class="p">)])</span>
+
+<span class="c"># Relax all unrelaxed structures (e.g. the starting population)</span>
+<span class="k">while</span> <span class="n">da</span><span class="o">.</span><span class="n">get_number_of_unrelaxed_candidates</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">da</span><span class="o">.</span><span class="n">get_an_unrelaxed_candidate</span><span class="p">()</span>
+    <span class="n">a</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;Relaxing starting candidate {0}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">info</span><span class="p">[</span><span class="s">&#39;confid&#39;</span><span class="p">]))</span>
+    <span class="n">dyn</span> <span class="o">=</span> <span class="n">BFGS</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">logfile</span><span class="o">=</span><span class="bp">None</span><span class="p">)</span>
+    <span class="n">dyn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">steps</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+    <span class="n">a</span><span class="o">.</span><span class="n">set_raw_score</span><span class="p">(</span><span class="o">-</span><span class="n">a</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>
+    <span class="n">da</span><span class="o">.</span><span class="n">add_relaxed_step</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="c"># create the population</span>
+<span class="n">population</span> <span class="o">=</span> <span class="n">Population</span><span class="p">(</span><span class="n">data_connection</span><span class="o">=</span><span class="n">da</span><span class="p">,</span>
+                        <span class="n">population_size</span><span class="o">=</span><span class="n">population_size</span><span class="p">,</span>
+                        <span class="n">comparator</span><span class="o">=</span><span class="n">comp</span><span class="p">)</span>
+
+<span class="c"># test n_to_test new candidates</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_to_test</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;Now starting configuration number {0}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
+    <span class="n">a1</span><span class="p">,</span> <span class="n">a2</span> <span class="o">=</span> <span class="n">population</span><span class="o">.</span><span class="n">get_two_candidates</span><span class="p">()</span>
+    <span class="n">a3</span><span class="p">,</span> <span class="n">desc</span> <span class="o">=</span> <span class="n">pairing</span><span class="o">.</span><span class="n">get_new_individual</span><span class="p">([</span><span class="n">a1</span><span class="p">,</span> <span class="n">a2</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">a3</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">continue</span>
+    <span class="n">da</span><span class="o">.</span><span class="n">add_unrelaxed_candidate</span><span class="p">(</span><span class="n">a3</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="n">desc</span><span class="p">)</span>
+
+    <span class="c"># Check if we want to do a mutation</span>
+    <span class="k">if</span> <span class="n">random</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">mutation_probability</span><span class="p">:</span>
+        <span class="n">a3_mut</span><span class="p">,</span> <span class="n">desc</span> <span class="o">=</span> <span class="n">mutations</span><span class="o">.</span><span class="n">get_new_individual</span><span class="p">([</span><span class="n">a3</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">a3_mut</span> <span class="o">!=</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">da</span><span class="o">.</span><span class="n">add_unrelaxed_step</span><span class="p">(</span><span class="n">a3_mut</span><span class="p">,</span> <span class="n">desc</span><span class="p">)</span>
+            <span class="n">a3</span> <span class="o">=</span> <span class="n">a3_mut</span>
+        
+    <span class="c"># Relax the new candidate</span>
+    <span class="n">a3</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+    <span class="n">dyn</span> <span class="o">=</span> <span class="n">BFGS</span><span class="p">(</span><span class="n">a3</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">logfile</span><span class="o">=</span><span class="bp">None</span><span class="p">)</span>
+    <span class="n">dyn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">steps</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+    <span class="n">a3</span><span class="o">.</span><span class="n">set_raw_score</span><span class="p">(</span><span class="o">-</span><span class="n">a3</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>
+    <span class="n">da</span><span class="o">.</span><span class="n">add_relaxed_step</span><span class="p">(</span><span class="n">a3</span><span class="p">)</span>
+    <span class="n">population</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
+
+<span class="n">write</span><span class="p">(</span><span class="s">&#39;all_candidates.traj&#39;</span><span class="p">,</span> <span class="n">da</span><span class="o">.</span><span class="n">get_all_relaxed_candidates</span><span class="p">())</span>
+</pre></div>
+</div>
+<p>The above script proposes and locally relaxes 20 new candidates. To
+speed up the execution of this sample the local relaxations are
+limited to 100 steps. This restriction should not be set in a real
+application. <em>Note</em> it is important to set the the <tt class="docutils literal"><span class="pre">raw_score</span></tt>, as
+it is what is being optimized (maximized). It is really an input in the
+<tt class="docutils literal"><span class="pre">atoms.info['key_value_pairs']</span></tt> dictionary.</p>
+<p>The GA progress can be monitored by running the tool
+<tt class="docutils literal"><span class="pre">ase/ga/tools/get_all_candidates</span></tt> in the
+same folder as the GA. This will create a trajectory file
+<tt class="docutils literal"><span class="pre">all_candidates.traj</span></tt> which includes all locally relaxed candidates
+the GA has tried. This script can be run at the same time as the main
+script is running. This is possible because the ase.db database
+is being updated as the GA progresses.</p>
+</div>
+<div class="section" id="running-the-ga-in-parallel">
+<h2>Running the GA in Parallel<a class="headerlink" href="#running-the-ga-in-parallel" title="Permalink to this headline">¶</a></h2>
+<p>One of the great advantages of a GA is that many structures can be
+relaxed in parallel. This GA implementation includes two classes which
+facilitates running the GA in parallel. One class can be used for
+running several single threaded optimizations simultaneously on the
+same compute node, and the other class integrates the GA into the PBS
+queuing system used at many high performance computer clusters.</p>
+<div class="section" id="relaxations-in-parallel-on-the-same-computer">
+<h3>Relaxations in Parallel on the Same Computer<a class="headerlink" href="#relaxations-in-parallel-on-the-same-computer" title="Permalink to this headline">¶</a></h3>
+<p>In order to relax several structures simultaneously on the same
+computer a seperate script relaxing one structure needs to be
+created. Continuing the example from above we therefore create a
+script taking as input the filename of the structure to relax and
+which as output saves a trajectory file with the locally optimized
+structure. It is important that the relaxed structure is named as in
+this script, since the parallel integration assumes this file naming
+scheme. For the example described above this script could look like</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.optimize</span> <span class="kn">import</span> <span class="n">BFGS</span>
+<span class="kn">from</span> <span class="nn">ase.io</span> <span class="kn">import</span> <span class="n">read</span><span class="p">,</span> <span class="n">write</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="kn">from</span> <span class="nn">ase.ga.relax_attaches</span> <span class="kn">import</span> <span class="n">VariansBreak</span>
+<span class="kn">from</span> <span class="nn">ase.ga.atoms_attach</span> <span class="kn">import</span> <span class="n">enable_raw_score_methods</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+
+
+<span class="n">fname</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">&#39;Now relaxing {0}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">fname</span><span class="p">))</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">read</span><span class="p">(</span><span class="n">fname</span><span class="p">)</span>
+
+<span class="n">a</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+<span class="n">dyn</span> <span class="o">=</span> <span class="n">BFGS</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">logfile</span><span class="o">=</span><span class="bp">None</span><span class="p">)</span>
+<span class="n">vb</span> <span class="o">=</span> <span class="n">VariansBreak</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">dyn</span><span class="p">)</span>
+<span class="n">dyn</span><span class="o">.</span><span class="n">attach</span><span class="p">(</span><span class="n">vb</span><span class="o">.</span><span class="n">write</span><span class="p">)</span>
+<span class="n">dyn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+
+<span class="n">enable_raw_score_methods</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+<span class="n">a</span><span class="o">.</span><span class="n">set_raw_score</span><span class="p">(</span><span class="o">-</span><span class="n">a</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">())</span>
+
+<span class="n">write</span><span class="p">(</span><span class="n">fname</span><span class="p">[:</span><span class="o">-</span><span class="mi">5</span><span class="p">]</span> <span class="o">+</span> <span class="s">&#39;_done.traj&#39;</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s">&#39;Done relaxing {0}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">fname</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>The main script needs to initialize the parallel controller and then
+the script needs to be changed the two places where structures are
+relaxed. The changed main script now looks like</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">random</span> <span class="kn">import</span> <span class="n">random</span>
+<span class="kn">from</span> <span class="nn">ase.io</span> <span class="kn">import</span> <span class="n">write</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">from</span> <span class="nn">ase.ga.data</span> <span class="kn">import</span> <span class="n">DataConnection</span>
+<span class="kn">from</span> <span class="nn">ase.ga.population</span> <span class="kn">import</span> <span class="n">Population</span>
+<span class="kn">from</span> <span class="nn">ase.ga.standard_comparators</span> <span class="kn">import</span> <span class="n">InteratomicDistanceComparator</span>
+<span class="kn">from</span> <span class="nn">ase.ga.cutandsplicepairing</span> <span class="kn">import</span> <span class="n">CutAndSplicePairing</span>
+<span class="kn">from</span> <span class="nn">ase.ga.offspring_creator</span> <span class="kn">import</span> <span class="n">OperationSelector</span>
+<span class="kn">from</span> <span class="nn">ase.ga.standardmutations</span> <span class="kn">import</span> <span class="n">MirrorMutation</span>
+<span class="kn">from</span> <span class="nn">ase.ga.standardmutations</span> <span class="kn">import</span> <span class="n">RattleMutation</span>
+<span class="kn">from</span> <span class="nn">ase.ga.standardmutations</span> <span class="kn">import</span> <span class="n">PermutationMutation</span>
+<span class="kn">from</span> <span class="nn">ase.ga.utilities</span> <span class="kn">import</span> <span class="n">closest_distances_generator</span>
+<span class="kn">from</span> <span class="nn">ase.ga.utilities</span> <span class="kn">import</span> <span class="n">get_all_atom_types</span>
+<span class="kn">from</span> <span class="nn">ase.ga.parallellocalrun</span> <span class="kn">import</span> <span class="n">ParallelLocalRun</span>
+
+<span class="n">population_size</span> <span class="o">=</span> <span class="mi">20</span>
+<span class="n">mutation_probability</span> <span class="o">=</span> <span class="mf">0.3</span>
+<span class="n">n_to_test</span> <span class="o">=</span> <span class="mi">100</span>
+
+
+<span class="c"># Initialize the different components of the GA</span>
+<span class="n">da</span> <span class="o">=</span> <span class="n">DataConnection</span><span class="p">(</span><span class="s">&#39;gadb.db&#39;</span><span class="p">)</span>
+<span class="n">tmp_folder</span> <span class="o">=</span> <span class="s">&#39;tmp_folder/&#39;</span>
+
+<span class="c"># An extra object is needed to handle the parallel execution</span>
+<span class="n">parallel_local_run</span> <span class="o">=</span> <span class="n">ParallelLocalRun</span><span class="p">(</span><span class="n">data_connection</span><span class="o">=</span><span class="n">da</span><span class="p">,</span>
+                                      <span class="n">tmp_folder</span><span class="o">=</span><span class="n">tmp_folder</span><span class="p">,</span>
+                                      <span class="n">n_simul</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+                                      <span class="n">calc_script</span><span class="o">=</span><span class="s">&#39;calc.py&#39;</span><span class="p">)</span>
+
+<span class="n">atom_numbers_to_optimize</span> <span class="o">=</span> <span class="n">da</span><span class="o">.</span><span class="n">get_atom_numbers_to_optimize</span><span class="p">()</span>
+<span class="n">n_to_optimize</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">atom_numbers_to_optimize</span><span class="p">)</span>
+<span class="n">slab</span> <span class="o">=</span> <span class="n">da</span><span class="o">.</span><span class="n">get_slab</span><span class="p">()</span>
+<span class="n">all_atom_types</span> <span class="o">=</span> <span class="n">get_all_atom_types</span><span class="p">(</span><span class="n">slab</span><span class="p">,</span> <span class="n">atom_numbers_to_optimize</span><span class="p">)</span>
+<span class="n">blmin</span> <span class="o">=</span> <span class="n">closest_distances_generator</span><span class="p">(</span><span class="n">all_atom_types</span><span class="p">,</span>
+                                    <span class="n">ratio_of_covalent_radii</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
+
+<span class="n">comp</span> <span class="o">=</span> <span class="n">InteratomicDistanceComparator</span><span class="p">(</span><span class="n">n_top</span><span class="o">=</span><span class="n">n_to_optimize</span><span class="p">,</span>
+                                     <span class="n">pair_cor_cum_diff</span><span class="o">=</span><span class="mf">0.015</span><span class="p">,</span>
+                                     <span class="n">pair_cor_max</span><span class="o">=</span><span class="mf">0.7</span><span class="p">,</span>
+                                     <span class="n">dE</span><span class="o">=</span><span class="mf">0.02</span><span class="p">,</span>
+                                     <span class="n">mic</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+<span class="n">pairing</span> <span class="o">=</span> <span class="n">CutAndSplicePairing</span><span class="p">(</span><span class="n">slab</span><span class="p">,</span> <span class="n">n_to_optimize</span><span class="p">,</span> <span class="n">blmin</span><span class="p">)</span>
+<span class="n">mutations</span> <span class="o">=</span> <span class="n">OperationSelector</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">],</span>
+                              <span class="p">[</span><span class="n">MirrorMutation</span><span class="p">(</span><span class="n">blmin</span><span class="p">,</span> <span class="n">n_to_optimize</span><span class="p">),</span>
+                               <span class="n">RattleMutation</span><span class="p">(</span><span class="n">blmin</span><span class="p">,</span> <span class="n">n_to_optimize</span><span class="p">),</span>
+                               <span class="n">PermutationMutation</span><span class="p">(</span><span class="n">n_to_optimize</span><span class="p">)])</span>
+
+<span class="c"># Relax all unrelaxed structures (e.g. the starting population)</span>
+<span class="k">while</span> <span class="n">da</span><span class="o">.</span><span class="n">get_number_of_unrelaxed_candidates</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">da</span><span class="o">.</span><span class="n">get_an_unrelaxed_candidate</span><span class="p">()</span>
+    <span class="n">parallel_local_run</span><span class="o">.</span><span class="n">relax</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="c"># Wait until the starting population is relaxed</span>
+<span class="k">while</span> <span class="n">parallel_local_run</span><span class="o">.</span><span class="n">get_number_of_jobs_running</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">5.</span><span class="p">)</span>
+
+<span class="c"># create the population</span>
+<span class="n">population</span> <span class="o">=</span> <span class="n">Population</span><span class="p">(</span><span class="n">data_connection</span><span class="o">=</span><span class="n">da</span><span class="p">,</span>
+                        <span class="n">population_size</span><span class="o">=</span><span class="n">population_size</span><span class="p">,</span>
+                        <span class="n">comparator</span><span class="o">=</span><span class="n">comp</span><span class="p">)</span>
+
+<span class="c"># test n_to_test new candidates</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_to_test</span><span class="p">):</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&#39;Now starting configuration number {0}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
+    <span class="n">a1</span><span class="p">,</span> <span class="n">a2</span> <span class="o">=</span> <span class="n">population</span><span class="o">.</span><span class="n">get_two_candidates</span><span class="p">()</span>
+    <span class="n">a3</span><span class="p">,</span> <span class="n">desc</span> <span class="o">=</span> <span class="n">pairing</span><span class="o">.</span><span class="n">get_new_individual</span><span class="p">([</span><span class="n">a1</span><span class="p">,</span> <span class="n">a2</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">a3</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">continue</span>
+    <span class="n">da</span><span class="o">.</span><span class="n">add_unrelaxed_candidate</span><span class="p">(</span><span class="n">a3</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="n">desc</span><span class="p">)</span>
+
+    <span class="c"># Check if we want to do a mutation</span>
+    <span class="k">if</span> <span class="n">random</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">mutation_probability</span><span class="p">:</span>
+        <span class="n">a3_mut</span><span class="p">,</span> <span class="n">desc</span> <span class="o">=</span> <span class="n">mutations</span><span class="o">.</span><span class="n">get_new_individual</span><span class="p">([</span><span class="n">a3</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">a3_mut</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">da</span><span class="o">.</span><span class="n">add_unrelaxed_step</span><span class="p">(</span><span class="n">a3_mut</span><span class="p">,</span> <span class="n">desc</span><span class="p">)</span>
+            <span class="n">a3</span> <span class="o">=</span> <span class="n">a3_mut</span>
+
+    <span class="c"># Relax the new candidate</span>
+    <span class="n">parallel_local_run</span><span class="o">.</span><span class="n">relax</span><span class="p">(</span><span class="n">a3</span><span class="p">)</span>
+    <span class="n">population</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
+
+<span class="c"># Wait until the last candidates are relaxed</span>
+<span class="k">while</span> <span class="n">parallel_local_run</span><span class="o">.</span><span class="n">get_number_of_jobs_running</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">5.</span><span class="p">)</span>
+
+<span class="n">write</span><span class="p">(</span><span class="s">&#39;all_candidates.traj&#39;</span><span class="p">,</span> <span class="n">da</span><span class="o">.</span><span class="n">get_all_relaxed_candidates</span><span class="p">())</span>
+</pre></div>
+</div>
+<p>Notice how the main script is not cluttered by the local optimization
+logic and is therefore now also easier to read. <tt class="docutils literal"><span class="pre">n_simul</span></tt> controls
+the number of simultaneous relaxations, and can of course also be set
+to 1 effectively giving the same result as in the non parallel
+situation.</p>
+<p>The <tt class="docutils literal"><span class="pre">relax</span></tt> method on the <tt class="docutils literal"><span class="pre">ParallelLocalRun</span></tt> class only returns
+control to the main script when there is an execution thread
+available. In the above example the relax method immediately returns
+control to the main script the first 4 times it is called, but the
+fifth time control is first returned when one of the first four
+relaxations have been completed.</p>
+</div>
+</div>
+<div class="section" id="running-the-ga-together-with-a-queing-system">
+<h2>Running the GA together with a queing system<a class="headerlink" href="#running-the-ga-together-with-a-queing-system" title="Permalink to this headline">¶</a></h2>
+<p>The GA has been implemented with first principles structure
+optimization in mind. When using for instance DFT calculations for the
+local relaxations relaxing one structure can take many hours. For this
+reason the GA has been made so that it can work together with queing
+systems where each candidate is relaxed in a separate job. With this
+in mind the main script of the GA can thus also be considered a
+controller script which every time it is invoked gathers the current
+population, checks with a queing system for the number of jobs
+submitted, and submits new jobs. For a typical application the main
+script can thus be invoked by a crontab once every hour.</p>
+<p>To run the GA together with a queing system the user needs to specify
+a function which takes as input a job name and the path to the
+trajectory file that needs to be submitted (the <tt class="docutils literal"><span class="pre">jtg</span></tt> function in
+the sample script below). From this the function generates a PBS job
+file which is submitted to the queing system. The calculator script
+specified in the jobfile needs to obey the same naming scheme as the
+sample calculator script in the previous section. The sample
+relaxation script given in the previous can be used as starting point
+for a relaxation script.</p>
+<p>Handling of the parallel logic is in this case in the main script. The
+parameter n_simul given to the <tt class="docutils literal"><span class="pre">PBSQueueRun</span></tt> object determines how
+many relaxations should be in the queuing system simultaneously. The
+main script now looks the following:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">random</span> <span class="kn">import</span> <span class="n">random</span>
+<span class="kn">from</span> <span class="nn">ase.io</span> <span class="kn">import</span> <span class="n">write</span>
+<span class="kn">from</span> <span class="nn">ase.ga.data</span> <span class="kn">import</span> <span class="n">DataConnection</span>
+<span class="kn">from</span> <span class="nn">ase.ga.population</span> <span class="kn">import</span> <span class="n">Population</span>
+<span class="kn">from</span> <span class="nn">ase.ga.standard_comparators</span> <span class="kn">import</span> <span class="n">InteratomicDistanceComparator</span>
+<span class="kn">from</span> <span class="nn">ase.ga.cutandsplicepairing</span> <span class="kn">import</span> <span class="n">CutAndSplicePairing</span>
+<span class="kn">from</span> <span class="nn">ase.ga.offspring_creator</span> <span class="kn">import</span> <span class="n">OperationSelector</span>
+<span class="kn">from</span> <span class="nn">ase.ga.standardmutations</span> <span class="kn">import</span> <span class="n">MirrorMutation</span>
+<span class="kn">from</span> <span class="nn">ase.ga.standardmutations</span> <span class="kn">import</span> <span class="n">RattleMutation</span>
+<span class="kn">from</span> <span class="nn">ase.ga.standardmutations</span> <span class="kn">import</span> <span class="n">PermutationMutation</span>
+<span class="kn">from</span> <span class="nn">ase.ga.utilities</span> <span class="kn">import</span> <span class="n">closest_distances_generator</span>
+<span class="kn">from</span> <span class="nn">ase.ga.utilities</span> <span class="kn">import</span> <span class="n">get_all_atom_types</span>
+<span class="kn">from</span> <span class="nn">ase.ga.pbs_queue_run</span> <span class="kn">import</span> <span class="n">PBSQueueRun</span>
+
+
+<span class="k">def</span> <span class="nf">jtg</span><span class="p">(</span><span class="n">job_name</span><span class="p">,</span> <span class="n">traj_file</span><span class="p">):</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="s">&#39;#!/bin/sh</span><span class="se">\n</span><span class="s">&#39;</span>
+    <span class="n">s</span> <span class="o">+=</span> <span class="s">&#39;#PBS -l nodes=1:ppn=12</span><span class="se">\n</span><span class="s">&#39;</span>
+    <span class="n">s</span> <span class="o">+=</span> <span class="s">&#39;#PBS -l walltime=48:00:00</span><span class="se">\n</span><span class="s">&#39;</span>
+    <span class="n">s</span> <span class="o">+=</span> <span class="s">&#39;#PBS -N {0}</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">job_name</span><span class="p">)</span>
+    <span class="n">s</span> <span class="o">+=</span> <span class="s">&#39;#PBS -q q12</span><span class="se">\n</span><span class="s">&#39;</span>
+    <span class="n">s</span> <span class="o">+=</span> <span class="s">&#39;cd $PBS_O_WORKDIR</span><span class="se">\n</span><span class="s">&#39;</span>
+    <span class="n">s</span> <span class="o">+=</span> <span class="s">&#39;python calc.py {0}</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">traj_file</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">s</span>
+
+<span class="n">population_size</span> <span class="o">=</span> <span class="mi">20</span>
+<span class="n">mutation_probability</span> <span class="o">=</span> <span class="mf">0.3</span>
+
+<span class="c"># Initialize the different components of the GA</span>
+<span class="n">da</span> <span class="o">=</span> <span class="n">DataConnection</span><span class="p">(</span><span class="s">&#39;gadb.db&#39;</span><span class="p">)</span>
+<span class="n">tmp_folder</span> <span class="o">=</span> <span class="s">&#39;tmp_folder/&#39;</span>
+<span class="c"># The PBS queing interface is created</span>
+<span class="n">pbs_run</span> <span class="o">=</span> <span class="n">PBSQueueRun</span><span class="p">(</span><span class="n">da</span><span class="p">,</span>
+                      <span class="n">tmp_folder</span><span class="o">=</span><span class="n">tmp_folder</span><span class="p">,</span>
+                      <span class="n">job_prefix</span><span class="o">=</span><span class="s">&#39;Ag2Au2_opt&#39;</span><span class="p">,</span>
+                      <span class="n">n_simul</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+                      <span class="n">job_template_generator</span><span class="o">=</span><span class="n">jtg</span><span class="p">)</span>
+
+<span class="n">atom_numbers_to_optimize</span> <span class="o">=</span> <span class="n">da</span><span class="o">.</span><span class="n">get_atom_numbers_to_optimize</span><span class="p">()</span>
+<span class="n">n_to_optimize</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">atom_numbers_to_optimize</span><span class="p">)</span>
+<span class="n">slab</span> <span class="o">=</span> <span class="n">da</span><span class="o">.</span><span class="n">get_slab</span><span class="p">()</span>
+<span class="n">all_atom_types</span> <span class="o">=</span> <span class="n">get_all_atom_types</span><span class="p">(</span><span class="n">slab</span><span class="p">,</span> <span class="n">atom_numbers_to_optimize</span><span class="p">)</span>
+<span class="n">blmin</span> <span class="o">=</span> <span class="n">closest_distances_generator</span><span class="p">(</span><span class="n">all_atom_types</span><span class="p">,</span>
+                                    <span class="n">ratio_of_covalent_radii</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
+
+<span class="n">comp</span> <span class="o">=</span> <span class="n">InteratomicDistanceComparator</span><span class="p">(</span><span class="n">n_top</span><span class="o">=</span><span class="n">n_to_optimize</span><span class="p">,</span>
+                                     <span class="n">pair_cor_cum_diff</span><span class="o">=</span><span class="mf">0.015</span><span class="p">,</span>
+                                     <span class="n">pair_cor_max</span><span class="o">=</span><span class="mf">0.7</span><span class="p">,</span>
+                                     <span class="n">dE</span><span class="o">=</span><span class="mf">0.02</span><span class="p">,</span>
+                                     <span class="n">mic</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+<span class="n">pairing</span> <span class="o">=</span> <span class="n">CutAndSplicePairing</span><span class="p">(</span><span class="n">slab</span><span class="p">,</span> <span class="n">n_to_optimize</span><span class="p">,</span> <span class="n">blmin</span><span class="p">)</span>
+<span class="n">mutations</span> <span class="o">=</span> <span class="n">OperationSelector</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">],</span>
+                              <span class="p">[</span><span class="n">MirrorMutation</span><span class="p">(</span><span class="n">blmin</span><span class="p">,</span> <span class="n">n_to_optimize</span><span class="p">),</span>
+                               <span class="n">RattleMutation</span><span class="p">(</span><span class="n">blmin</span><span class="p">,</span> <span class="n">n_to_optimize</span><span class="p">),</span>
+                               <span class="n">PermutationMutation</span><span class="p">(</span><span class="n">n_to_optimize</span><span class="p">)])</span>
+
+<span class="c"># Relax all unrelaxed structures (e.g. the starting population)</span>
+<span class="k">while</span> <span class="p">(</span><span class="n">da</span><span class="o">.</span><span class="n">get_number_of_unrelaxed_candidates</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span>
+       <span class="ow">and</span> <span class="ow">not</span> <span class="n">pbs_run</span><span class="o">.</span><span class="n">enough_jobs_running</span><span class="p">()):</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">da</span><span class="o">.</span><span class="n">get_an_unrelaxed_candidate</span><span class="p">()</span>
+    <span class="n">pbs_run</span><span class="o">.</span><span class="n">relax</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="c"># create the population</span>
+<span class="n">population</span> <span class="o">=</span> <span class="n">Population</span><span class="p">(</span><span class="n">data_connection</span><span class="o">=</span><span class="n">da</span><span class="p">,</span>
+                        <span class="n">population_size</span><span class="o">=</span><span class="n">population_size</span><span class="p">,</span>
+                        <span class="n">comparator</span><span class="o">=</span><span class="n">comp</span><span class="p">)</span>
+
+<span class="c"># Submit new candidates until enough are running</span>
+<span class="k">while</span> <span class="p">(</span><span class="ow">not</span> <span class="n">pbs_run</span><span class="o">.</span><span class="n">enough_jobs_running</span><span class="p">()</span>
+       <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">population</span><span class="o">.</span><span class="n">get_current_population</span><span class="p">())</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">):</span>
+    <span class="n">a1</span><span class="p">,</span> <span class="n">a2</span> <span class="o">=</span> <span class="n">population</span><span class="o">.</span><span class="n">get_two_candidates</span><span class="p">()</span>
+    <span class="n">a3</span><span class="p">,</span> <span class="n">desc</span> <span class="o">=</span> <span class="n">pairing</span><span class="o">.</span><span class="n">get_new_individual</span><span class="p">([</span><span class="n">a1</span><span class="p">,</span> <span class="n">a2</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">a3</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">continue</span>
+    <span class="n">da</span><span class="o">.</span><span class="n">add_unrelaxed_candidate</span><span class="p">(</span><span class="n">a3</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="n">desc</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">random</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">mutation_probability</span><span class="p">:</span>
+        <span class="n">a3_mut</span><span class="p">,</span> <span class="n">desc</span> <span class="o">=</span> <span class="n">mutations</span><span class="o">.</span><span class="n">get_new_individual</span><span class="p">([</span><span class="n">a3</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">a3_mut</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">da</span><span class="o">.</span><span class="n">add_unrelaxed_step</span><span class="p">(</span><span class="n">a3_mut</span><span class="p">,</span> <span class="n">desc</span><span class="p">)</span>
+            <span class="n">a3</span> <span class="o">=</span> <span class="n">a3_mut</span>
+    <span class="n">pbs_run</span><span class="o">.</span><span class="n">relax</span><span class="p">(</span><span class="n">a3</span><span class="p">)</span>
+
+<span class="n">write</span><span class="p">(</span><span class="s">&#39;all_candidates.traj&#39;</span><span class="p">,</span> <span class="n">da</span><span class="o">.</span><span class="n">get_all_relaxed_candidates</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>This Page</h3>
+            <ul>
+<li><a class="reference internal" href="#">Optimization with a Genetic Algorithm</a><ul>
+<li><a class="reference internal" href="#a-brief-overview-of-the-implementation">A Brief Overview of the Implementation</a></li>
+<li><a class="reference internal" href="#a-basic-example">A Basic Example</a></li>
+<li><a class="reference internal" href="#running-the-ga-in-parallel">Running the GA in Parallel</a><ul>
+<li><a class="reference internal" href="#relaxations-in-parallel-on-the-same-computer">Relaxations in Parallel on the Same Computer</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#running-the-ga-together-with-a-queing-system">Running the GA together with a queing system</a></li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="../../ase/ga.html" title="previous chapter">Genetic Algorithm</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="ga_fcc_alloys.html" title="next chapter">GA Search for stable FCC alloys</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../../_sources/tutorials/ga/ga_optimize.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../../ase/ase.html" accesskey="U">Documentation for modules in ASE</a> &raquo;</li>
+          <li><a href="../../ase/ga.html" accesskey="U">Genetic Algorithm</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

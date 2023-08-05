@@ -1,0 +1,434 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Image Dependent Pair Potential for improved interpolation of NEB initial guess &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../../contents.html" />
+    <link rel="index" title="Global index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="top" title="ASE  documentation" href="../../index.html" />
+    <link rel="up" title="Tutorials" href="../tutorials.html" />
+    <link rel="next" title="Dissociation tutorial" href="../dissociation.html" />
+    <link rel="prev" title="Diffusion of gold atom on Al(100) surface (NEB)" href="diffusion.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../tutorials.html" accesskey="U">Tutorials</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="image-dependent-pair-potential-for-improved-interpolation-of-neb-initial-guess">
+<span id="idpp-tutorial"></span><h1>Image Dependent Pair Potential for improved interpolation of NEB initial guess<a class="headerlink" href="#image-dependent-pair-potential-for-improved-interpolation-of-neb-initial-guess" title="Permalink to this headline">¶</a></h1>
+<p>Reference: S. Smidstrup, A. Pedersen, K. Stokbro and H. Jonsson,
+Improved initial guess for minimum energy path calculations,
+J. Chem. Phys. 140, 214106 (2014).</p>
+<p>Use of the NEB method is dependent upon generating an initial guess
+for the images lying between the initial and final states. The most
+simple approach is to use linear interpolation of the
+atomic coordinates. However, this can be problematic as the quality
+of the interpolated path can ofter be far from the real one. The implication being
+that a lot of time is spent in the NEB routine optimising the shape of
+the path, before the transition state is homed-in upon.</p>
+<p>The image dependent pair potential is a method that has been
+developed to provide an improvement to the initial guess for the NEB path.
+The IDPP method uses the bond distance between the atoms involved in
+the transition state to create target structures for the images, rather
+than interpolating the atomic positions. By defining an objective function in terms
+of the distances between atoms, the NEB algorithm is used with this
+image dependent pair potential (IDPP) to create the initial guess for the
+full NEB calculation.</p>
+<p>Note: The examples below utilise the EMT calculator for illustrative purposes, the
+results should not be over interpreted.</p>
+<div class="section" id="example-1-ethane">
+<h2>Example 1: Ethane<a class="headerlink" href="#example-1-ethane" title="Permalink to this headline">¶</a></h2>
+<p>This example illustrates the use of the IDPP interpolation scheme to
+generate an initial guess for rotation of a methyl group around the CC bond.</p>
+<p>Using the standard linear interpolation approach, as in the following example, we can see
+that 46 iterations are required to find the transition state.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.structure</span> <span class="kn">import</span> <span class="n">molecule</span>
+<span class="kn">from</span> <span class="nn">ase.neb</span> <span class="kn">import</span> <span class="n">NEB</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="kn">from</span> <span class="nn">ase.optimize.fire</span> <span class="kn">import</span> <span class="n">FIRE</span> <span class="k">as</span> <span class="n">QuasiNewton</span>
+<span class="kn">from</span> <span class="nn">ase.visualize</span> <span class="kn">import</span> <span class="n">view</span>
+
+<span class="c">#Optimise molecule</span>
+<span class="n">initial</span> <span class="o">=</span> <span class="n">molecule</span><span class="p">(</span><span class="s">&#39;C2H6&#39;</span><span class="p">)</span>
+<span class="n">initial</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+<span class="n">relax</span> <span class="o">=</span> <span class="n">QuasiNewton</span><span class="p">(</span><span class="n">initial</span><span class="p">)</span>
+<span class="n">relax</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+<span class="n">view</span><span class="p">(</span><span class="n">initial</span><span class="p">)</span>
+
+<span class="c">#Create final state</span>
+<span class="n">final</span> <span class="o">=</span> <span class="n">initial</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+<span class="n">final</span><span class="o">.</span><span class="n">positions</span><span class="p">[</span><span class="mi">2</span><span class="p">:</span><span class="mi">5</span><span class="p">]</span> <span class="o">=</span> <span class="n">initial</span><span class="o">.</span><span class="n">positions</span><span class="p">[[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">2</span><span class="p">]]</span>
+
+<span class="c">#Generate blank images</span>
+<span class="n">images</span> <span class="o">=</span> <span class="p">[</span><span class="n">initial</span><span class="p">]</span>
+
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9</span><span class="p">):</span>
+    <span class="n">images</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">initial</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+
+<span class="k">for</span> <span class="n">image</span> <span class="ow">in</span> <span class="n">images</span><span class="p">:</span>
+    <span class="n">image</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+   
+<span class="n">images</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">final</span><span class="p">)</span>
+
+<span class="c">#Run IDPP interpolation</span>
+<span class="n">neb</span> <span class="o">=</span> <span class="n">NEB</span><span class="p">(</span><span class="n">images</span><span class="p">)</span>
+<span class="n">neb</span><span class="o">.</span><span class="n">interpolate</span><span class="p">()</span>
+
+<span class="c">#Run NEB calculation</span>
+<span class="n">qn</span> <span class="o">=</span> <span class="n">QuasiNewton</span><span class="p">(</span><span class="n">neb</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="s">&#39;ethane_linear.traj&#39;</span><span class="p">,</span>  <span class="n">logfile</span><span class="o">=</span><span class="s">&#39;ethane_linear.log&#39;</span><span class="p">)</span>
+<span class="n">qn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>However if we modify our script slightly and use the IDPP method to find the initial
+guess, we can see that the number of iterations required to find the transition
+state is reduced to 14.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">ase.structure</span> <span class="kn">import</span> <span class="n">molecule</span>
+<span class="kn">from</span> <span class="nn">ase.neb</span> <span class="kn">import</span> <span class="n">NEB</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="kn">from</span> <span class="nn">ase.optimize.fire</span> <span class="kn">import</span> <span class="n">FIRE</span> <span class="k">as</span> <span class="n">QuasiNewton</span>
+<span class="kn">from</span> <span class="nn">ase.visualize</span> <span class="kn">import</span> <span class="n">view</span>
+
+<span class="c">#Optimise molecule</span>
+<span class="n">initial</span> <span class="o">=</span> <span class="n">molecule</span><span class="p">(</span><span class="s">&#39;C2H6&#39;</span><span class="p">)</span>
+<span class="n">initial</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+<span class="n">relax</span> <span class="o">=</span> <span class="n">QuasiNewton</span><span class="p">(</span><span class="n">initial</span><span class="p">)</span>
+<span class="n">relax</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+<span class="n">view</span><span class="p">(</span><span class="n">initial</span><span class="p">)</span>
+
+<span class="c">#Create final state</span>
+<span class="n">final</span> <span class="o">=</span> <span class="n">initial</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+<span class="n">final</span><span class="o">.</span><span class="n">positions</span><span class="p">[</span><span class="mi">2</span><span class="p">:</span><span class="mi">5</span><span class="p">]</span> <span class="o">=</span> <span class="n">initial</span><span class="o">.</span><span class="n">positions</span><span class="p">[[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">2</span><span class="p">]]</span>
+
+<span class="c">#Generate blank images</span>
+<span class="n">images</span> <span class="o">=</span> <span class="p">[</span><span class="n">initial</span><span class="p">]</span>
+
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9</span><span class="p">):</span>
+    <span class="n">images</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">initial</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+
+<span class="k">for</span> <span class="n">image</span> <span class="ow">in</span> <span class="n">images</span><span class="p">:</span>
+    <span class="n">image</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+   
+<span class="n">images</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">final</span><span class="p">)</span>
+
+<span class="c">#Run IDPP interpolation</span>
+<span class="n">neb</span> <span class="o">=</span> <span class="n">NEB</span><span class="p">(</span><span class="n">images</span><span class="p">)</span>
+<span class="n">neb</span><span class="o">.</span><span class="n">interpolate</span><span class="p">(</span><span class="s">&#39;idpp&#39;</span><span class="p">)</span>
+
+<span class="c">#Run NEB calculation</span>
+<span class="n">qn</span> <span class="o">=</span> <span class="n">QuasiNewton</span><span class="p">(</span><span class="n">neb</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="s">&#39;ethane_idpp.traj&#39;</span><span class="p">,</span>  <span class="n">logfile</span><span class="o">=</span><span class="s">&#39;ethane_idpp.log&#39;</span><span class="p">)</span>
+<span class="n">qn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Clearly, if one was using a full DFT calculator one can
+potentially gain a significant time improvement.</p>
+</div>
+<div class="section" id="example-2-n-diffusion-over-a-step-edge">
+<h2>Example 2: N diffusion over a step edge<a class="headerlink" href="#example-2-n-diffusion-over-a-step-edge" title="Permalink to this headline">¶</a></h2>
+<p>Often we are interested in generating an initial guess for a surface reaction.
+This example illustrates how we can optimise our initial and final state structures
+before using the IDPP interpolation to generate our initial guess
+for the NEB calculation:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">Atoms</span>
+<span class="kn">from</span> <span class="nn">ase.constraints</span> <span class="kn">import</span> <span class="n">FixAtoms</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="kn">from</span> <span class="nn">ase.neb</span> <span class="kn">import</span> <span class="n">NEB</span>
+<span class="kn">from</span> <span class="nn">ase.visualize</span> <span class="kn">import</span> <span class="n">view</span>
+<span class="kn">from</span> <span class="nn">ase.optimize.fire</span> <span class="kn">import</span> <span class="n">FIRE</span> <span class="k">as</span> <span class="n">QuasiNewton</span>
+<span class="kn">from</span> <span class="nn">ase.lattice.surface</span> <span class="kn">import</span> <span class="n">surface</span>
+<span class="kn">from</span> <span class="nn">ase.lattice.cubic</span> <span class="kn">import</span> <span class="n">FaceCenteredCubic</span>
+
+<span class="c">#set the number of images you want</span>
+<span class="n">nimages</span> <span class="o">=</span> <span class="mi">5</span>
+
+<span class="c">#some algebra to determine surface normal and the plane of the surface</span>
+<span class="n">d3</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">a1</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">])</span>
+<span class="n">d1</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">a1</span><span class="p">,</span><span class="n">d3</span><span class="p">)</span>
+<span class="n">a2</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">])</span>
+<span class="n">d2</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">a2</span><span class="p">,</span><span class="n">d3</span><span class="p">)</span>
+
+<span class="c">#create your slab</span>
+<span class="n">slab</span>  <span class="o">=</span><span class="n">FaceCenteredCubic</span><span class="p">(</span><span class="n">directions</span><span class="o">=</span><span class="p">[</span><span class="n">d1</span><span class="p">,</span><span class="n">d2</span><span class="p">,</span><span class="n">d3</span><span class="p">],</span>
+                         <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">),</span>
+                         <span class="n">symbol</span><span class="o">=</span><span class="p">(</span><span class="s">&#39;Pt&#39;</span><span class="p">),</span>
+                         <span class="n">latticeconstant</span><span class="o">=</span><span class="mf">3.9</span><span class="p">)</span>
+
+<span class="c">#add some vacuum to your slab</span>
+<span class="n">uc</span> <span class="o">=</span> <span class="n">slab</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()</span>
+<span class="k">print</span> <span class="n">uc</span>        
+<span class="n">uc</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">+=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">10</span><span class="p">]</span>  <span class="c">#there are ten layers of vacuum</span>
+<span class="n">uc</span> <span class="o">=</span> <span class="n">slab</span><span class="o">.</span><span class="n">set_cell</span><span class="p">(</span><span class="n">uc</span><span class="p">,</span><span class="n">scale_atoms</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+<span class="c">#view the slab to amke sure it is how you expect</span>
+<span class="n">view</span><span class="p">(</span><span class="n">slab</span><span class="p">)</span>
+
+<span class="c">#some positions needed to place the atom in the correct place</span>
+<span class="n">x1</span> <span class="o">=</span> <span class="mf">1.379</span>
+<span class="n">x2</span> <span class="o">=</span> <span class="mf">4.137</span>
+<span class="n">x3</span> <span class="o">=</span> <span class="mf">2.759</span>
+<span class="n">y1</span> <span class="o">=</span> <span class="mf">0.0</span>
+<span class="n">y2</span> <span class="o">=</span> <span class="mf">2.238</span> 
+<span class="n">z1</span> <span class="o">=</span> <span class="mf">7.165</span>
+<span class="n">z2</span> <span class="o">=</span> <span class="mf">6.439</span>
+
+
+<span class="c">#Add the adatom to the list of atoms and set constraints of surface atoms.</span>
+<span class="n">slab</span> <span class="o">+=</span> <span class="n">Atoms</span><span class="p">(</span><span class="s">&#39;N&#39;</span><span class="p">,</span> <span class="p">[</span> <span class="p">((</span><span class="n">x2</span><span class="o">+</span><span class="n">x1</span><span class="p">)</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span><span class="n">y1</span><span class="p">,</span><span class="n">z1</span><span class="o">+</span><span class="mf">1.5</span><span class="p">)])</span>
+<span class="n">mask</span> <span class="o">=</span> <span class="p">[</span><span class="n">atom</span><span class="o">.</span><span class="n">symbol</span> <span class="o">==</span> <span class="s">&#39;Pt&#39;</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">slab</span><span class="p">]</span>
+<span class="n">slab</span><span class="o">.</span><span class="n">set_constraint</span><span class="p">(</span><span class="n">FixAtoms</span><span class="p">(</span><span class="n">mask</span><span class="o">=</span><span class="n">mask</span><span class="p">))</span>
+
+<span class="c">#optimise the initial state</span>
+<span class="c"># Atom below step</span>
+<span class="n">initial</span> <span class="o">=</span> <span class="n">slab</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+<span class="n">initial</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+<span class="n">relax</span> <span class="o">=</span> <span class="n">QuasiNewton</span><span class="p">(</span><span class="n">initial</span><span class="p">)</span>
+<span class="n">relax</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+<span class="n">view</span><span class="p">(</span><span class="n">initial</span><span class="p">)</span>
+
+<span class="c">#optimise the initial state</span>
+<span class="c"># Atom above step</span>
+<span class="n">slab</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">position</span> <span class="o">=</span> <span class="p">(</span><span class="n">x3</span><span class="p">,</span><span class="n">y2</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="n">z2</span><span class="o">+</span><span class="mf">3.5</span><span class="p">)</span>
+<span class="n">final</span> <span class="o">=</span> <span class="n">slab</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+<span class="n">final</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+<span class="n">relax</span> <span class="o">=</span> <span class="n">QuasiNewton</span><span class="p">(</span><span class="n">final</span><span class="p">)</span>
+<span class="n">relax</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+<span class="n">view</span><span class="p">(</span><span class="n">final</span><span class="p">)</span>
+
+<span class="c">#create a list of images for interpolation</span>
+<span class="n">images</span> <span class="o">=</span> <span class="p">[</span><span class="n">initial</span><span class="p">]</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nimages</span><span class="p">):</span>
+    <span class="n">images</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">initial</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+
+<span class="k">for</span> <span class="n">image</span> <span class="ow">in</span> <span class="n">images</span><span class="p">:</span>
+    <span class="n">image</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+
+<span class="n">images</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">final</span><span class="p">)</span>
+<span class="n">view</span><span class="p">(</span><span class="n">images</span><span class="p">)</span>    
+
+<span class="c">#carry out idpp interpolation</span>
+<span class="n">neb</span> <span class="o">=</span> <span class="n">NEB</span><span class="p">(</span><span class="n">images</span><span class="p">)</span>    
+<span class="n">neb</span><span class="o">.</span><span class="n">interpolate</span><span class="p">(</span><span class="s">&#39;idpp&#39;</span><span class="p">)</span>
+
+<span class="c">#Run NEB calculation</span>
+<span class="n">qn</span> <span class="o">=</span> <span class="n">QuasiNewton</span><span class="p">(</span><span class="n">neb</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="s">&#39;N_diffusion.traj&#39;</span><span class="p">,</span>  <span class="n">logfile</span><span class="o">=</span><span class="s">&#39;N_diffusion.log&#39;</span><span class="p">)</span>
+<span class="n">qn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>To again illustrate the potential speedup, the following script which
+uses the linear interpolation takes 23 iterations to find a transition
+state, compared to 12 using the IDPP interpolation.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">Atoms</span>
+<span class="kn">from</span> <span class="nn">ase.constraints</span> <span class="kn">import</span> <span class="n">FixAtoms</span>
+<span class="kn">from</span> <span class="nn">ase.calculators.emt</span> <span class="kn">import</span> <span class="n">EMT</span>
+<span class="kn">from</span> <span class="nn">ase.neb</span> <span class="kn">import</span> <span class="n">NEB</span>
+<span class="kn">from</span> <span class="nn">ase.visualize</span> <span class="kn">import</span> <span class="n">view</span>
+<span class="kn">from</span> <span class="nn">ase.optimize.fire</span> <span class="kn">import</span> <span class="n">FIRE</span> <span class="k">as</span> <span class="n">QuasiNewton</span>
+<span class="kn">from</span> <span class="nn">ase.lattice.surface</span> <span class="kn">import</span> <span class="n">surface</span>
+<span class="kn">from</span> <span class="nn">ase.lattice.cubic</span> <span class="kn">import</span> <span class="n">FaceCenteredCubic</span>
+
+<span class="c">#set the number of images you want</span>
+<span class="n">nimages</span> <span class="o">=</span> <span class="mi">5</span>
+
+<span class="c">#some algebra to determine surface normal and the plane of the surface</span>
+<span class="n">d3</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">a1</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">])</span>
+<span class="n">d1</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">a1</span><span class="p">,</span><span class="n">d3</span><span class="p">)</span>
+<span class="n">a2</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">])</span>
+<span class="n">d2</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">a2</span><span class="p">,</span><span class="n">d3</span><span class="p">)</span>
+
+<span class="c">#create your slab</span>
+<span class="n">slab</span>  <span class="o">=</span><span class="n">FaceCenteredCubic</span><span class="p">(</span><span class="n">directions</span><span class="o">=</span><span class="p">[</span><span class="n">d1</span><span class="p">,</span><span class="n">d2</span><span class="p">,</span><span class="n">d3</span><span class="p">],</span>
+                         <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">),</span>
+                         <span class="n">symbol</span><span class="o">=</span><span class="p">(</span><span class="s">&#39;Pt&#39;</span><span class="p">),</span>
+                         <span class="n">latticeconstant</span><span class="o">=</span><span class="mf">3.9</span><span class="p">)</span>
+
+<span class="c">#add some vacuum to your slab</span>
+<span class="n">uc</span> <span class="o">=</span> <span class="n">slab</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()</span>
+<span class="k">print</span> <span class="n">uc</span>        
+<span class="n">uc</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">+=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">10</span><span class="p">]</span>  <span class="c">#there are ten layers of vacuum</span>
+<span class="n">uc</span> <span class="o">=</span> <span class="n">slab</span><span class="o">.</span><span class="n">set_cell</span><span class="p">(</span><span class="n">uc</span><span class="p">,</span><span class="n">scale_atoms</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+<span class="c">#view the slab to amke sure it is how you expect</span>
+<span class="n">view</span><span class="p">(</span><span class="n">slab</span><span class="p">)</span>
+
+<span class="c">#some positions needed to place the atom in the correct place</span>
+<span class="n">x1</span> <span class="o">=</span> <span class="mf">1.379</span>
+<span class="n">x2</span> <span class="o">=</span> <span class="mf">4.137</span>
+<span class="n">x3</span> <span class="o">=</span> <span class="mf">2.759</span>
+<span class="n">y1</span> <span class="o">=</span> <span class="mf">0.0</span>
+<span class="n">y2</span> <span class="o">=</span> <span class="mf">2.238</span> 
+<span class="n">z1</span> <span class="o">=</span> <span class="mf">7.165</span>
+<span class="n">z2</span> <span class="o">=</span> <span class="mf">6.439</span>
+
+
+<span class="c">#Add the adatom to the list of atoms and set constraints of surface atoms.</span>
+<span class="n">slab</span> <span class="o">+=</span> <span class="n">Atoms</span><span class="p">(</span><span class="s">&#39;N&#39;</span><span class="p">,</span> <span class="p">[</span> <span class="p">((</span><span class="n">x2</span><span class="o">+</span><span class="n">x1</span><span class="p">)</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span><span class="n">y1</span><span class="p">,</span><span class="n">z1</span><span class="o">+</span><span class="mf">1.5</span><span class="p">)])</span>
+<span class="n">mask</span> <span class="o">=</span> <span class="p">[</span><span class="n">atom</span><span class="o">.</span><span class="n">symbol</span> <span class="o">==</span> <span class="s">&#39;Pt&#39;</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">slab</span><span class="p">]</span>
+<span class="n">slab</span><span class="o">.</span><span class="n">set_constraint</span><span class="p">(</span><span class="n">FixAtoms</span><span class="p">(</span><span class="n">mask</span><span class="o">=</span><span class="n">mask</span><span class="p">))</span>
+
+<span class="c">#optimise the initial state</span>
+<span class="c"># Atom below step</span>
+<span class="n">initial</span> <span class="o">=</span> <span class="n">slab</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+<span class="n">initial</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+<span class="n">relax</span> <span class="o">=</span> <span class="n">QuasiNewton</span><span class="p">(</span><span class="n">initial</span><span class="p">)</span>
+<span class="n">relax</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+<span class="n">view</span><span class="p">(</span><span class="n">initial</span><span class="p">)</span>
+
+<span class="c">#optimise the initial state</span>
+<span class="c"># Atom above step</span>
+<span class="n">slab</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">position</span> <span class="o">=</span> <span class="p">(</span><span class="n">x3</span><span class="p">,</span><span class="n">y2</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="n">z2</span><span class="o">+</span><span class="mf">3.5</span><span class="p">)</span>
+<span class="n">final</span> <span class="o">=</span> <span class="n">slab</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+<span class="n">final</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+<span class="n">relax</span> <span class="o">=</span> <span class="n">QuasiNewton</span><span class="p">(</span><span class="n">final</span><span class="p">)</span>
+<span class="n">relax</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+<span class="n">view</span><span class="p">(</span><span class="n">final</span><span class="p">)</span>
+
+<span class="c">#create a list of images for interpolation</span>
+<span class="n">images</span> <span class="o">=</span> <span class="p">[</span><span class="n">initial</span><span class="p">]</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nimages</span><span class="p">):</span>
+    <span class="n">images</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">initial</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+
+<span class="k">for</span> <span class="n">image</span> <span class="ow">in</span> <span class="n">images</span><span class="p">:</span>
+    <span class="n">image</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">EMT</span><span class="p">())</span>
+
+<span class="n">images</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">final</span><span class="p">)</span>
+<span class="n">view</span><span class="p">(</span><span class="n">images</span><span class="p">)</span>    
+
+<span class="c">#carry out idpp interpolation</span>
+<span class="n">neb</span> <span class="o">=</span> <span class="n">NEB</span><span class="p">(</span><span class="n">images</span><span class="p">)</span>    
+<span class="c">#neb.interpolate(&#39;idpp&#39;)</span>
+<span class="n">neb</span><span class="o">.</span><span class="n">interpolate</span><span class="p">()</span>
+
+<span class="c">#Run NEB calculation</span>
+<span class="n">qn</span> <span class="o">=</span> <span class="n">QuasiNewton</span><span class="p">(</span><span class="n">neb</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">=</span><span class="s">&#39;N_diffusion_lin.traj&#39;</span><span class="p">,</span>  <span class="n">logfile</span><span class="o">=</span><span class="s">&#39;N_diffusion_lin.log&#39;</span><span class="p">)</span>
+<span class="n">qn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">fmax</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../../overview.html">
+              Overview</a></li>
+            <li><a href="../../download.html">
+              Installation</a></li>
+            <li><a href="../tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../../faq.html">FAQ</a></li>
+            <li><a href="../../mailinglists.html">Mailing lists</a></li>
+            <li><a href="../../development/releasenotes.html">Release notes</a></li>
+            <li><a href="../../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="../../development/development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>This Page</h3>
+            <ul>
+<li><a class="reference internal" href="#">Image Dependent Pair Potential for improved interpolation of NEB initial guess</a><ul>
+<li><a class="reference internal" href="#example-1-ethane">Example 1: Ethane</a></li>
+<li><a class="reference internal" href="#example-2-n-diffusion-over-a-step-edge">Example 2: N diffusion over a step edge</a></li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="diffusion.html" title="previous chapter">Diffusion of gold atom on Al(100) surface (NEB)</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="../dissociation.html" title="next chapter">Dissociation tutorial</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../../_sources/tutorials/neb/idpp.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../../index.html"><img class="logo" src="../../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="../tutorials.html" accesskey="U">Tutorials</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>

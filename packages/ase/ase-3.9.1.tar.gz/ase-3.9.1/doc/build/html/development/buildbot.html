@@ -1,0 +1,647 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Buildbot &mdash; ASE  documentation</title>
+    <link rel="stylesheet" href="../_static/ase.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+          URL_ROOT:    '../',
+          VERSION:     '',
+          COLLAPSE_MODINDEX: false,
+          FILE_SUFFIX: '.html'
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../_static/ase.ico"/>
+    <link rel="contents" title="Global table of contents" href="../contents.html" />
+    <link rel="index" title="Global index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="top" title="ASE  documentation" href="../index.html" />
+    <link rel="up" title="ASE development" href="development.html" />
+    <link rel="next" title="Translate ASE" href="translate.html" />
+    <link rel="prev" title="Testing the code" href="tests.html" />
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="development.html" accesskey="U">ASE development</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="id1">
+<h1>Buildbot<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h1>
+<p><a class="reference external" href="http://trac.buildbot.net/">buildbot</a> is a continuous integration system.
+The server called <tt class="docutils literal"><span class="pre">buildmaster</span></tt> defines and schedules processes of building
+and testing of software to be performed by so called builders on machines
+called <tt class="docutils literal"><span class="pre">buildslaves</span></tt> (or buildbots).
+One buildslave can have several builders associated (for example a given
+operating system version <tt class="docutils literal"><span class="pre">buildslave</span></tt> performs testing of several software
+branches <tt class="docutils literal"><span class="pre">builders</span></tt>).
+One builder can also be associated with several <tt class="docutils literal"><span class="pre">buildslaves</span></tt> (several,
+&#8220;identical&#8221; machines running the same operating system),
+in which case <tt class="docutils literal"><span class="pre">buildmaster</span></tt> will schedule the given builder to switch
+periodically between the <tt class="docutils literal"><span class="pre">buildslaves</span></tt>.
+At the time of writing (2012) <a class="reference external" href="http://trac.buildbot.net/">buildbot</a> does not offer satisfactory security
+mechanisms, and due to clear text passwords stored/transferred both on
+<tt class="docutils literal"><span class="pre">buildmaster</span></tt> and <tt class="docutils literal"><span class="pre">buildslaves</span></tt> external security measures like firewall,
+proxy, ssh/stunnel should be used.</p>
+<p>The sections below describe the configuration of <tt class="docutils literal"><span class="pre">buildmaster</span></tt> and <tt class="docutils literal"><span class="pre">buildslaves</span></tt>.</p>
+<div class="section" id="configuration-of-buildmaster">
+<h2>Configuration of buildmaster<a class="headerlink" href="#configuration-of-buildmaster" title="Permalink to this headline">¶</a></h2>
+<p>The <tt class="docutils literal"><span class="pre">buildmaster</span></tt> should be running as unprivileged user
+(usually called <tt class="docutils literal"><span class="pre">buildmaster</span></tt>). The user and group need to be created.</p>
+<p>In order to install buildbot on RHEL6 system you need:</p>
+<div class="highlight-python"><div class="highlight"><pre>yum install python-twisted python-jinja2 python-tempita
+</pre></div>
+</div>
+<p>Additional dependencies + buildbot itself need to be installed manually:</p>
+<div class="highlight-python"><div class="highlight"><pre>wget https://downloads.sourceforge.net/project/sqlalchemy/sqlalchemy/0.7.9/SQLAlchemy-0.7.9.tar.gz
+wget http://sqlalchemy-migrate.googlecode.com/files/sqlalchemy-migrate-0.7.2.tar.gz
+</pre></div>
+</div>
+<p>It is sufficient to unpack the files and set <span class="target" id="index-0"></span><a class="reference external" href="http://docs.python.org/2.7/using/cmdline.html#envvar-PYTHONPATH" title="(in Python v2.7)"><tt class="xref std std-envvar docutils literal"><span class="pre">PYTHONPATH</span></tt></a>,
+and <span class="target" id="index-1"></span><a class="reference external" href="http://wiki.fysik.dtu.dk/gpaw/install/installationguide.html#envvar-PATH" title="(in GPAW v)"><tt class="xref std std-envvar docutils literal"><span class="pre">PATH</span></tt></a> accordingly.
+Buildbot may need to be patched for twisted compatibility
+<a class="reference external" href="http://www.npcglib.org/~stathis/blog/2012/10/20/bug-buildbot-dies-with-exceptions-importerror-cannot-import-name-noresource/">http://www.npcglib.org/~stathis/blog/2012/10/20/bug-buildbot-dies-with-exceptions-importerror-cannot-import-name-noresource/</a></p>
+<p>Proceed with buildbot configuration:</p>
+<ul>
+<li><p class="first">create the master:</p>
+<div class="highlight-python"><div class="highlight"><pre>buildbot create-master --relocatable python-ase
+</pre></div>
+</div>
+</li>
+<li><p class="first">reconfigure the master with <a class="reference external" href="http://svn.fysik.dtu.dk/projects/ase/trunk/doc/development/master.cfg">doc/development/master.cfg</a>:</p>
+<div class="highlight-python"><div class="highlight"><pre>cp master.cfg python-ase
+buildbot checkconfig python-ase/master.cfg
+buildbot start python-ase
+</pre></div>
+</div>
+</li>
+<li><p class="first">consider setting up a crontab which starts <tt class="docutils literal"><span class="pre">buildmaster</span></tt>
+after the server reboot (this solution is not reliable,
+deploy rather init scripts - see below):</p>
+<div class="highlight-python"><div class="highlight"><pre># run every 5 minutes
+*/5 * * * * sh ~/python-ase-restart.sh
+</pre></div>
+</div>
+<p>with the following <tt class="docutils literal"><span class="pre">python-ase-restart.sh</span></tt>:</p>
+<div class="highlight-python"><div class="highlight"><pre>bot=python-ase
+# no pid file - assume buildbot is not running
+if ! test -f $bot/twistd.pid;
+then
+    buildbot restart $bot || buildbot start $bot
+else
+    # pid file exists but buildbot is not running
+    pid=`cat $bot/twistd.pid`
+    if test -z `ps -p $pid -o pid=`;
+    then
+        buildbot restart $bot
+    fi
+fi
+</pre></div>
+</div>
+</li>
+<li><p class="first">or create a system V init script under <tt class="docutils literal"><span class="pre">/etc/init.d</span></tt></p>
+<div class="highlight-python"><div class="highlight"><pre>#!/bin/sh
+#
+# python-ase:	python-ase buildmaster
+#
+# chkconfig:	345 98 02
+# description:	python-ase buildmaster
+
+# LSB init-info
+### BEGIN INIT INFO
+# Provides:          python-ase
+# Required-Start:    $network
+# Required-Stop:     $network
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: python-ase buildmaster
+### END INIT INFO
+
+# Source function library.
+if [ -e /etc/init.d/functions ]; then
+	. /etc/init.d/functions
+fi
+
+# LSB functions
+. /lib/lsb/init-functions
+
+# Check that networking is configured.
+[ &quot;${NETWORKING}&quot; = &quot;no&quot; ] &amp;&amp; exit 0
+
+RUN_AS=buildmaster-username
+PYTHON_ASE_HOME=/home/$RUN_AS/python-ase
+test -d $PYTHON_ASE_HOME || exit 5
+
+LOGFILE=$PYTHON_ASE_HOME/../python-ase.log
+PIDFILE=$PYTHON_ASE_HOME/../python-ase.pid
+LOCKFILE=$PYTHON_ASE_HOME/../python-ase.lock
+
+start() {
+	echo -n $&quot;Starting python-ase buildmaster: &quot;
+	dostatus &gt; /dev/null 2&gt;&amp;1
+	if [ $RETVAL -eq 0 ]
+	then
+		echo -n $&quot;python-ase buildmaster already running&quot;
+		log_failure_msg
+		RETVAL=1
+		return
+	fi
+	#su - $RUN_AS -s /bin/sh -c &quot;exec nohup /bin/sh $PYTHON_ASE_HOME/../python-ase-start.sh &gt;&gt; $LOGFILE 2&gt;&amp;1 &amp;&quot;
+        # don&#39;t produce log
+	su - $RUN_AS -s /bin/sh -c &quot;exec nohup /bin/sh $PYTHON_ASE_HOME/../python-ase-start.sh &gt;&gt; /dev/null 2&gt;&amp;1 &amp;&quot;
+	RETVAL=$?
+	if [ $RETVAL -eq 0 ]
+	then
+		sleep 5
+		su - $RUN_AS -s /bin/sh -c &quot;cat $PYTHON_ASE_HOME/twistd.pid &gt; $PIDFILE&quot;
+		su - $RUN_AS -s /bin/sh -c &quot;touch $LOCKFILE&quot;
+		log_success_msg
+	else
+		log_failure_msg
+	fi
+	return $RETVAL
+}
+
+stop() {
+	echo -n $&quot;Shutting down python-ase buildmaster: &quot;
+	kill $(su - $RUN_AS -s /bin/sh -c &quot;cat $PIDFILE 2&gt;/dev/null&quot;) &gt; /dev/null 2&gt;&amp;1
+	RETVAL=$?
+	sleep 5
+	if [ $RETVAL -eq 0 ]
+	then
+		su - $RUN_AS -s /bin/sh -c &quot;rm -f $PIDFILE $LOCKFILE&quot;
+		log_success_msg
+	else
+		log_failure_msg
+	fi
+	return $RETVAL
+}
+
+restart() {
+	stop
+	start
+}
+
+condrestart() {
+	[ -f $LOCKFILE ] &amp;&amp; restart || :
+}
+
+dostatus() {
+	kill -0 $(cat $PIDFILE 2&gt;/dev/null) &gt; /dev/null 2&gt;&amp;1
+	RETVAL=$?
+	if [ $RETVAL -eq 0 ]
+	then
+		echo &quot;python-ase buildmaster (pid $(cat $PIDFILE 2&gt;/dev/null)) is running...&quot;
+	else
+		if [ -f $PIDFILE ]
+		then
+			echo &quot;python-ase buildmaster dead but pid file exists&quot;
+			RETVAL=1
+			return
+		fi
+		if [ -f $LOCKFILE ]
+		then
+			echo &quot;python-ase buildmaster dead but subsys locked&quot;
+			RETVAL=2
+			return
+		fi
+		echo &quot;python-ase buildmaster is stopped&quot;
+		RETVAL=3
+	fi
+}
+
+# See how we were called.
+case &quot;$1&quot; in
+  start)
+	start
+	;;
+  stop)
+	stop
+	;;
+  status)
+	dostatus
+	;;
+  restart|reload)
+	restart
+	;;
+  condrestart)
+	condrestart
+	;;
+  *)
+	echo $&quot;Usage: $0 {start|stop|status|restart|reload|condrestart}&quot;
+	exit 1
+esac
+
+exit $RETVAL
+</pre></div>
+</div>
+<p>The service is added with:</p>
+<div class="highlight-python"><div class="highlight"><pre>chkconfig --add python-ase-buildmaster
+</pre></div>
+</div>
+<p>started with:</p>
+<div class="highlight-python"><div class="highlight"><pre>service python-ase-buildmaster start
+</pre></div>
+</div>
+<p>end enabled for boot time with:</p>
+<div class="highlight-python"><div class="highlight"><pre>chkconfig python-ase-buildmaster on
+</pre></div>
+</div>
+<p>See also an example of <tt class="docutils literal"><span class="pre">systemd</span></tt> script in the section below.</p>
+</li>
+<li><p class="first">consider protecting the <tt class="docutils literal"><span class="pre">buildmaster</span></tt> web interface by, e.g.
+apache reverse proxy (<a class="reference external" href="http://httpd.apache.org/docs/2.4/mod/mod_proxy.html">http://httpd.apache.org/docs/2.4/mod/mod_proxy.html</a>).
+The basic configuration file may look like</p>
+<div class="highlight-python"><div class="highlight"><pre># EEE.EEE.EEE.EEE is the IP of your External apache server:
+# ase-buildbot.fysik.dtu.dk
+
+&lt;VirtualHost EEE.EEE.EEE.EEE:80&gt;
+    ServerName ase-buildbot.fysik.dtu.dk
+    ServerAlias ase-buildbot ase-buildbot.fysik.dtu.dk
+    Redirect / https://ase-buildbot.fysik.dtu.dk/
+&lt;/VirtualHost&gt;
+
+&lt;VirtualHost EEE.EEE.EEE.EEE:443&gt;
+    ServerName ase-buildbot.fysik.dtu.dk
+    ServerAlias ase-buildbot ase-buildbot.fysik.dtu.dk
+
+    # important http://httpd.apache.org/docs/current/mod/mod_proxy.html
+    ProxyRequests Off
+
+    # III.III.III.III:8080 the IP and port of the Internal buildbot web server
+
+    ProxyPass / http://III.III.III.III:8080/
+    ProxyPassReverse / http://III.III.III.III:8080/
+
+    &lt;Proxy http://III.III.III.III:8080/*&gt;
+	Options -Indexes
+	Order deny,allow
+	Deny from all
+	Allow from 127.0.0.1
+	Allow from ::1
+	#Allow from all
+    &lt;/Proxy&gt;
+
+SSLProxyEngine on
+
+# provide an authority signed certificate
+SSLCertificateFile /etc/pki/tls/certs/localhost.crt
+SSLCertificateKeyFile /etc/pki/tls/private/localhost.key
+
+&lt;/VirtualHost&gt;
+
+# vim: filetype=apache shiftwidth=4 tabstop=4 wrap!
+</pre></div>
+</div>
+</li>
+</ul>
+</div>
+<div class="section" id="installation-and-configuration-of-buildslaves">
+<h2>Installation and configuration of buildslaves<a class="headerlink" href="#installation-and-configuration-of-buildslaves" title="Permalink to this headline">¶</a></h2>
+<p>Some examples are given below. The configuration should be performed
+under an unprivileged <tt class="docutils literal"><span class="pre">buildslave</span></tt>, or buildbot user account.</p>
+<div class="section" id="installation">
+<h3>Installation<a class="headerlink" href="#installation" title="Permalink to this headline">¶</a></h3>
+<div class="section" id="fedora">
+<h4>Fedora<a class="headerlink" href="#fedora" title="Permalink to this headline">¶</a></h4>
+<p>Install with:</p>
+<div class="highlight-python"><div class="highlight"><pre>yum install buildbot-slave
+</pre></div>
+</div>
+<p>Perform <a class="reference internal" href="#bslave-conf"><em>Configuration</em></a> now.</p>
+<p>After configuring buildbot-slave, you can configure <tt class="docutils literal"><span class="pre">systemd</span></tt> service by
+creating <tt class="file docutils literal"><span class="pre">python-ase-fedora-18-x86_64-gcc-2.7.service</span></tt> file under
+<tt class="docutils literal"><span class="pre">/usr/lib/systemd/system</span></tt>.</p>
+<div class="highlight-python"><div class="highlight"><pre>[Unit]
+Description=buildslave python-ase-fedora+18+x86_64+gcc+2.7 stock
+After=network.target
+
+[Service]
+Type=forking
+User=buildslave-username
+Group=buildslave-groupname
+ExecStart=/usr/bin/sh /home/buildslave-username/python-ase-fedora+18+x86_64+gcc+2.7-start.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+</pre></div>
+</div>
+<p><tt class="docutils literal"><span class="pre">python-ase-fedora+18+x86_64+gcc+2.7-start.sh</span></tt> simply exports
+the necessary environment variables (if needed) and starts <tt class="docutils literal"><span class="pre">buildslave</span></tt>
+(use the full path), e.g.:</p>
+<div class="highlight-python"><div class="highlight"><pre>#!/bin/sh
+bot=/home/buildslave-username/python-ase-fedora+18+x86_64+gcc+2.7
+buildslave start $bot
+</pre></div>
+</div>
+<p>Choose <tt class="docutils literal"><span class="pre">User</span></tt> and <tt class="docutils literal"><span class="pre">Group</span></tt> under which <tt class="docutils literal"><span class="pre">buildslave</span></tt> will be running.
+The service is started with:</p>
+<div class="highlight-python"><div class="highlight"><pre>systemctl start python-ase-fedora-18-x86_64-gcc-2.7.service
+</pre></div>
+</div>
+<p>In order to force the service to be started at boot time create a link:</p>
+<div class="highlight-python"><div class="highlight"><pre>cd /etc/systemd/system/multi-user.target.wants
+ln -s /usr/lib/systemd/system/python-ase-fedora-18-x86_64-gcc-2.7.service .
+</pre></div>
+</div>
+</div>
+<div class="section" id="os-x">
+<h4>OS X<a class="headerlink" href="#os-x" title="Permalink to this headline">¶</a></h4>
+<p>Configure <a class="reference external" href="https://wiki.fysik.dtu.dk/gpaw/install/MacOSX/homebrew.html">Homebrew</a>, and:</p>
+<div class="highlight-python"><div class="highlight"><pre>brew install subversion
+</pre></div>
+</div>
+<p>Configure a virtualenv, and then:</p>
+<div class="highlight-python"><div class="highlight"><pre>pip install numpy
+pip install buildbot-slave
+</pre></div>
+</div>
+<p>Perform <a class="reference internal" href="#bslave-conf"><em>Configuration</em></a> now.</p>
+</div>
+<div class="section" id="rhel5">
+<h4>RHEL5<a class="headerlink" href="#rhel5" title="Permalink to this headline">¶</a></h4>
+<p>Install recent <tt class="docutils literal"><span class="pre">python-setuptools</span></tt> in order to get <tt class="docutils literal"><span class="pre">easy_install</span></tt>:</p>
+<div class="highlight-python"><div class="highlight"><pre>mkdir ~/buildbot-slave-el5
+export PATH=$HOME/buildbot-slave-el5:${PATH}
+export PYTHONPATH=$HOME/buildbot-slave-el5:${PYTHONPATH}
+wget http://pypi.python.org/packages/2.4/s/setuptools/setuptools-0.6c11-py2.4.egg
+sh setuptools-0.6c11-py2.4.egg --install-dir=$HOME/buildbot-slave-el5
+</pre></div>
+</div>
+<p>then:</p>
+<div class="highlight-python"><div class="highlight"><pre>easy_install --install-dir=$HOME/buildbot-slave-el5 zope.interface==3.6.7
+easy_install --install-dir=$HOME/buildbot-slave-el5 twisted==9.0.0  # ignore errors
+easy_install --install-dir=$HOME/buildbot-slave-el5 buildbot-slave
+</pre></div>
+</div>
+<p>Perform <a class="reference internal" href="#bslave-conf"><em>Configuration</em></a> now.</p>
+</div>
+<div class="section" id="rhel6">
+<h4>RHEL6<a class="headerlink" href="#rhel6" title="Permalink to this headline">¶</a></h4>
+<p>Install <tt class="docutils literal"><span class="pre">build-slave</span></tt> and dependencies:</p>
+<div class="highlight-python"><div class="highlight"><pre>mkdir ~/buildbot-slave-el6
+export PATH=$HOME/buildbot-slave-el6:${PATH}
+export PYTHONPATH=$HOME/buildbot-slave-el6:${PYTHONPATH}
+easy_install --install-dir=$HOME/buildbot-slave-el6 buildbot-slave
+</pre></div>
+</div>
+<p>Perform <a class="reference internal" href="#bslave-conf"><em>Configuration</em></a> now.</p>
+</div>
+<div class="section" id="rhel7">
+<h4>RHEL7<a class="headerlink" href="#rhel7" title="Permalink to this headline">¶</a></h4>
+<p>Install <tt class="docutils literal"><span class="pre">build-slave</span></tt> and dependencies:</p>
+<div class="highlight-python"><div class="highlight"><pre>mkdir ~/buildbot-slave-el7
+export PATH=$HOME/buildbot-slave-el7:${PATH}
+export PYTHONPATH=$HOME/buildbot-slave-el7:${PYTHONPATH}
+easy_install --install-dir=$HOME/buildbot-slave-el7 buildbot-slave
+</pre></div>
+</div>
+<p>Perform <a class="reference internal" href="#bslave-conf"><em>Configuration</em></a> now.</p>
+</div>
+<div class="section" id="windows">
+<h4>Windows<a class="headerlink" href="#windows" title="Permalink to this headline">¶</a></h4>
+<p><tt class="docutils literal"><span class="pre">build-slave</span></tt> can be installed and configured to start as a service on
+Windows <a class="reference external" href="http://trac.buildbot.net/wiki/RunningBuildbotOnWindows">http://trac.buildbot.net/wiki/RunningBuildbotOnWindows</a>.
+This involves several steps:</p>
+<ol class="arabic">
+<li><p class="first">install Python(x,y) from <a class="reference external" href="https://code.google.com/p/pythonxy/wiki/Downloads">https://code.google.com/p/pythonxy/wiki/Downloads</a></p>
+</li>
+<li><p class="first">configure distutils to use mingw. First enable showing file extensions:</p>
+<div class="highlight-python"><div class="highlight"><pre>Open a folder with IE -&gt; Folder and search options-&gt; View -&gt; Folder Options:
+Check: Show hidden files, ...; uncheck: Hide extensions for known file types.
+</pre></div>
+</div>
+<p>Then, in notepad, create C:\python27\lib\distutils\distutils.cfg,
+containing:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="p">[</span><span class="n">build</span><span class="p">]</span>
+<span class="n">compiler</span><span class="o">=</span><span class="n">mingw32</span>
+</pre></div>
+</div>
+</li>
+<li><p class="first">install <tt class="docutils literal"><span class="pre">build-slave</span></tt> on the command line:</p>
+<div class="highlight-python"><div class="highlight"><pre>C:\python27\scripts\easy_install.exe buildbot-slave
+</pre></div>
+</div>
+</li>
+<li><p class="first">create a local (domain <tt class="docutils literal"><span class="pre">computer-name</span></tt>) user that will run the
+<tt class="docutils literal"><span class="pre">buildbot</span></tt> service:</p>
+<div class="highlight-python"><div class="highlight"><pre>control panel-&gt;administrative tools-&gt;computer management-&gt;local users and groups-&gt;users-&gt;new user: buildslave-username.
+Click the created user: member of: administrators-&gt;check names
+</pre></div>
+</div>
+</li>
+<li><p class="first">grant <tt class="docutils literal"><span class="pre">buildslave-username</span></tt> the ability to run the services.
+Login as <tt class="docutils literal"><span class="pre">computer-name\buildslave-username</span></tt>:
+Run <tt class="docutils literal"><span class="pre">secpol.msc</span></tt> on the command line as administrator
+(task bar-&gt;cmd-&gt;right click: run as administrator):</p>
+<ul class="simple">
+<li>Select the &#8220;Local Policies&#8221; folder</li>
+<li>Select the &#8220;User Rights Assignment&#8221; folder</li>
+<li>Double click &#8220;Log on as a service&#8221;</li>
+<li>Use &#8220;Add User or Group...&#8221; to add your user here.</li>
+</ul>
+<p>Select the correct &#8220;from this location&#8221;
+(may require login as the current domain administrator) and Enter the
+object names: <tt class="docutils literal"><span class="pre">computer-name\buildslave-username</span></tt>.</p>
+</li>
+<li><p class="first">on the command line install the <tt class="docutils literal"><span class="pre">buildbot</span></tt> service:</p>
+<div class="highlight-python"><div class="highlight"><pre>buildbot_service.py --user computer-name\buildslave-username --password thepassword --startup auto install
+</pre></div>
+</div>
+</li>
+<li><p class="first">start the service (for the moment it does not start any <tt class="docutils literal"><span class="pre">buildslave</span></tt>,
+because they are not configured yet):</p>
+<div class="highlight-python"><div class="highlight"><pre>Start-&gt;Control Panel&gt; Administrative Tools-&gt;Services-&gt;Buildbot (Start)
+</pre></div>
+</div>
+<p>There are additional steps mentioned in the buildbot wiki, but it seems
+just to work on Windows 7.</p>
+</li>
+<li><p class="first">run regedit as administrator (type &#8220;regedit&#8221; on the command line) and add
+&#8220;directories&#8221; parameter of the String Value type, containing paths to all
+your <tt class="docutils literal"><span class="pre">buildslave</span></tt> instances (they will be configured in the Configuration
+section below):</p>
+<div class="highlight-python"><div class="highlight"><pre>HKEY_LOCAL_MACHINE\System\CurrentControlSet\services\Buildbot-&gt;paramaters-&gt;new (String Value): directories C:\python-ase-windows+7+AMD64+msc+2.7;C:\proj2
+</pre></div>
+</div>
+</li>
+<li><p class="first">configure <tt class="docutils literal"><span class="pre">buildslave</span></tt> instance as described in the <a class="reference internal" href="#bslave-conf"><em>Configuration</em></a>
+section below and start the service again (point 7.). Test that
+<tt class="docutils literal"><span class="pre">buildslave</span></tt> comes online, and verify that the service starts after
+reboot.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="section" id="configuration">
+<span id="bslave-conf"></span><h3>Configuration<a class="headerlink" href="#configuration" title="Permalink to this headline">¶</a></h3>
+<p>After having installed the buildbot create a name which will identify
+your <tt class="docutils literal"><span class="pre">buildslave</span></tt>.
+Obtain the first part of the name for your <tt class="docutils literal"><span class="pre">buildslave</span></tt> by
+running <a class="reference external" href="http://svn.fysik.dtu.dk/projects/ase/trunk/doc/development/master.cfg">doc/development/master.cfg</a>:</p>
+<div class="highlight-python"><div class="highlight"><pre>python master.cfg
+</pre></div>
+</div>
+<p>This will return a string like <tt class="docutils literal"><span class="pre">redhat+6+x86_64+gcc+2.6</span></tt>
+(OS+OSversion+Bitness+Ccompiler+PythonVersion).
+Append it with something that identifies your <tt class="docutils literal"><span class="pre">buildslave</span></tt>,
+for example <tt class="docutils literal"><span class="pre">gpu</span></tt>.
+For a very special system you can use a name like
+<tt class="docutils literal"><span class="pre">mycluster+x86_64+open64+2.5</span> <span class="pre">gpu</span></tt>.
+Note that ASE buildbot will perform verification of python version based on
+the <tt class="docutils literal"><span class="pre">buildslave</span></tt> name so stay consistent!</p>
+<p>Generate a strong <tt class="docutils literal"><span class="pre">buildslave</span></tt> password with <a class="reference internal" href="development.html#devel-passwd-create"><em>Creating an encrypted password for SVN access</em></a>.
+Don&#8217;t reuse any valuable passwords. You don&#8217;t need to remember it,
+buildbot stores it plain text!</p>
+<p>Create the <tt class="docutils literal"><span class="pre">buildslave</span></tt> with:</p>
+<div class="highlight-python"><div class="highlight"><pre>buildslave create-slave python-ase-redhat+6+x86_64+gcc+2.6 buildbot.fysik.dtu.dk:ASE_BB_PORT &quot;redhat+6+x86_64+gcc+2.6 gpu&quot; &quot;password&quot;
+</pre></div>
+</div>
+<p>ASE_BB_PORT is the port ASE buildbot uses for communication with the <tt class="docutils literal"><span class="pre">buildslave</span></tt>.
+You will have to tell us the name and password of your <tt class="docutils literal"><span class="pre">buildslave</span></tt>.
+Please contact ase-developers list <a class="reference internal" href="../mailinglists.html#mailing-lists"><em>Mailing Lists</em></a>, but
+don&#8217;t send the name and password there!</p>
+<p>Edit the <tt class="docutils literal"><span class="pre">python-ase-redhat+6+x86_64+gcc+2.6/info/{admin,info}</span></tt> files:
+describe your <tt class="docutils literal"><span class="pre">buildslave</span></tt> configuration relevant for the builder process
+in the <tt class="docutils literal"><span class="pre">info</span></tt> file.</p>
+<p>Note that before starting the slave you need to perform an temporary
+svn checkout of ASE in order to accept the certificate permanently.</p>
+<p>Start the <tt class="docutils literal"><span class="pre">buildslave</span></tt> with:</p>
+<div class="highlight-python"><div class="highlight"><pre>buildslave start python-ase-redhat+6+x86_64+gcc+2.6
+</pre></div>
+</div>
+<p>Don&#8217;t forget to configure a crontab job or a service as described in the
+previous sections.</p>
+<p>By default all slaves run the continuous integration for the trunk.
+If you prefer your <tt class="docutils literal"><span class="pre">buildslave</span></tt> works also on one of the branches, write
+this in the email to ase-developers <a class="reference internal" href="../mailinglists.html#mailing-lists"><em>Mailing Lists</em></a>.</p>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+
+          <h3>ASE</h3>
+          <ul class="this-page-menu">
+            <li><a href="../overview.html">
+              Overview</a></li>
+            <li><a href="../download.html">
+              Installation</a></li>
+            <li><a href="../tutorials/tutorials.html">
+              Tutorials</em></a></li>
+            <li><a href="../ase/ase.html">
+              Documentation</a></li>
+            <li><a href="../faq.html">FAQ</a></li>
+            <li><a href="../mailinglists.html">Mailing lists</a></li>
+            <li><a href="releasenotes.html">Release notes</a></li>
+            <li><a href="../licenseinfo.html">License info</a></li>
+           </ul>
+           <h3>Development</h3>
+           <ul class="this-page-menu">
+            <li><a href="development.html">
+              Development</a></li>
+            <li><a href="http://wiki.fysik.dtu.dk/ase/epydoc/ase-module.html">
+              Epydoc</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/browser/trunk/">
+              Source code (svn)</a></li>
+            <li><a href="../bugs.html">Bugs!</a></li>
+            <li><a href="http://trac.fysik.dtu.dk/projects/ase/report/1">
+              Bug Tracker</a></li>
+            <li><a href="https://ase-buildbot.fysik.dtu.dk/waterfall">
+              BuildBot</a></li>
+          </ul>
+            <h3>This Page</h3>
+            <ul>
+<li><a class="reference internal" href="#">Buildbot</a><ul>
+<li><a class="reference internal" href="#configuration-of-buildmaster">Configuration of buildmaster</a></li>
+<li><a class="reference internal" href="#installation-and-configuration-of-buildslaves">Installation and configuration of buildslaves</a><ul>
+<li><a class="reference internal" href="#installation">Installation</a><ul>
+<li><a class="reference internal" href="#fedora">Fedora</a></li>
+<li><a class="reference internal" href="#os-x">OS X</a></li>
+<li><a class="reference internal" href="#rhel5">RHEL5</a></li>
+<li><a class="reference internal" href="#rhel6">RHEL6</a></li>
+<li><a class="reference internal" href="#rhel7">RHEL7</a></li>
+<li><a class="reference internal" href="#windows">Windows</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#configuration">Configuration</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+            <h4>Previous topic</h4>
+            <p class="topless"><a href="tests.html" title="previous chapter">Testing the code</a></p>
+            <h4>Next topic</h4>
+            <p class="topless"><a href="translate.html" title="next chapter">Translate ASE</a></p>
+            <ul class="this-page-menu">
+              <li><a href="../_sources/development/buildbot.txt">Show Source</a></li>
+            </ul>
+            <h3>Quick search</h3>
+            <form class="search" action="../search.html" method="get">
+              <input type="text" name="q" size="18" /> <input type="submit" value="Go" />
+              <input type="hidden" name="check_keywords" value="yes" />
+              <input type="hidden" name="area" value="default" />
+            </form>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+
+
+
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+
+
+
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             accesskey="">modules</a> |</li>
+        <a href="../index.html"><img class="logo" src="../_static/ase.ico" alt="Logo" align="absmiddle"/></a>
+          <li><a href="development.html" accesskey="U">ASE development</a> &raquo;</li>
+      </ul>
+    </div>
+    <div class="footer">
+      &copy; Copyright 2015, CAMd.
+      Last updated on Tue, 21 Jul 2015 11:00:40.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.2.3.
+    </div>
+  </body>
+</html>
