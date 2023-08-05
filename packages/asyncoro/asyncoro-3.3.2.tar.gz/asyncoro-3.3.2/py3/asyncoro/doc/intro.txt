@@ -1,0 +1,65 @@
+
+Introduction
+************
+
+Traditional methods of threads and synchronous sockets have some
+drawbacks, especially with Python due to global interpreter lock
+(GIL). This approach is not suited for large number of concurrent
+connections, known as C10K problem. In addition, threads in Python
+have both memory and time overheads, especially on multi-core systems
+due to context switches; see Inside the Python GIL.
+
+Unlike with other frameworks for asynchronous programming, using
+asyncoro is very similar to the thread based programming so there is
+almost no learning curve - existing thread implementations can be
+converted to asyncoro almost mechanically (although it cannot be
+automated). In fact, it is easier to use asyncoro than threads, as
+locking is not required with asyncoro. While not required to program
+with asyncoro, Curious Course on Coroutines and Concurrency offers
+details on generator functions and coroutines.
+
+For example, a simple tcp server with asyncoro looks like:
+
+   def process_request(sock, coro=None):
+       # ...
+       # send reply, for example, and let other coroutines execute
+       # in the meantime
+       yield sock.sendall(reply)
+       sock.close()
+
+   def server(host, port, coro=None):
+       sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+       # convert to asynchronous version
+       sock = AsyncSocket(sock)
+       sock.bind((host, port))
+       sock.listen(128)
+       while True:
+           # 'accept' is asynchronous, so called with 'yield'
+           conn, addr = yield sock.accept()
+           Coro(process_request, conn)
+
+   if __name__ == '__main__':
+       host, port = 'localhost', 3456
+       # create coroutine with 'server' method
+       # it will be called with 'host' and 'port' arguments
+       Coro(server, host, port)
+
+The server waits for connections asynchronously and each connection is
+processed in a coroutine. Note that I/O event loop is transparent -
+asyncoro's scheduler handles I/O events automatically. If coroutine
+method has "coro=None" default argument, the coroutine creator "Coro"
+(which is similar to "threading.Thread") will set coro argument with
+the Coro instance, which can be used for calling methods in "Coro"
+class. In the coroutines, socket I/O operations are called with
+*yield*. With these statements, the I/O operation is initiated, the
+coroutine is suspended and control goes to asyncoro's scheduler for
+scheduling other coroutines as well as processing I/O events. When an
+I/O operation is complete, the scheduler resumes the suspended
+coroutine with the results of the I/O operation. During the time it
+takes to complete an I/O operation, the scheduler executes other
+coroutines, so many requests can be concurrently processed.
+
+asyncoro has been tested with Python versions 2.7 and 3.2 under Linux,
+OS X and Windows. Under Windows asyncoro uses IOCP only if Python for
+Windows Extensions (pywin32) is installed. pywin32 works with Windows
+32-bit and 64-bit.
