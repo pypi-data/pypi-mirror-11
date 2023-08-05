@@ -1,0 +1,59 @@
+#!/usr/bin/python
+
+from lov2pi.lov2pi import Lov2pi
+import logging
+import os
+import sys
+import json
+from time import sleep
+
+from daemons.prefab import run
+
+
+class Counters(run.RunDaemon):
+
+    def run(self):
+
+        config_path = os.path.expanduser("~") + '/.lov2pi'
+        if os.path.isfile(config_path):
+            config = json.load(open(config_path))
+            lov = Lov2pi(config['appkey'], config['name'])
+            while True:
+                try:
+                    lov.sync_counter()
+                    sleep(1)
+                except Exception as e:
+                    print e.message
+        else:
+            raise ValueError('config not_found, you should register your lov2pi first')
+
+if __name__ == '__main__':
+
+    action = sys.argv[1]
+    logfile = os.path.join(os.getcwd(), "lov2pi.log")
+    pidfile = os.path.join(os.getcwd(), "lov2pi.pid")
+
+    logging.basicConfig(filename=logfile, level=logging.DEBUG)
+    d = Counters(pidfile=pidfile)
+
+    if action == "start":
+        print 'starting...'
+        d.start()
+
+    elif action == "stop":
+        print 'stopping...'
+        d.stop()
+
+    elif action == "restart":
+        print 'restarting...'
+        d.restart()
+
+    elif action == 'register':
+        if len(sys.argv) < 3:
+            print "Usage", sys.argv[0], "register application_id desired_device_name"
+        else:
+            appkey = sys.argv[2]
+            name = sys.argv[3]
+            client = Lov2pi(appkey, name)
+            client.register()
+            sys.exit(0)
