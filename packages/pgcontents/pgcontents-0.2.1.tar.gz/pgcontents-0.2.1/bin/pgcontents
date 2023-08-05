@@ -1,0 +1,149 @@
+#!/usr/bin/env python
+from getpass import getuser
+from os import getcwd
+from os.path import join
+import subprocess
+from textwrap import dedent
+
+import click
+
+from pgcontents.constants import (
+    ALEMBIC_DIR_LOCATION,
+    DB_URL_ENVVAR,
+)
+
+from pgcontents.utils.migrate import (
+    temp_alembic_ini,
+    upgrade,
+)
+from pgcontents.utils.sync import (
+    checkpoint_all,
+    download_checkpoints,
+)
+
+
+@click.group(context_settings=dict(help_option_names=['-h', '--help']))
+def main():
+    """
+    Create or manage a pgcontents database.
+
+    For documentation on sub-commands, do:
+
+    pgcontents [COMMAND] --help
+    """
+    pass
+
+
+# Options
+_db_url = click.option(
+    '-l', '--db-url',
+    type=click.STRING,
+    help='SQLAlchemy connection string for database.',
+    envvar=DB_URL_ENVVAR,
+    prompt="File Database URL",
+    confirmation_prompt=True,
+)
+_directory = click.option(
+    '-d', '--directory',
+    type=click.Path(
+        exists=True,
+        writable=True,
+        resolve_path=True,
+    ),
+    help="Path to a local directory.",
+    default=getcwd(),
+)
+_users = click.option(
+    '-u', '--users',
+    type=click.STRING,
+    help="Comma-separated list of users to sync.",
+    default=getuser(),
+)
+
+
+CONFIRM_MIGRATION = dedent(
+    """
+    About to run schema migrations against supplied database URL.  If you have
+    stored data from a previous pgcontents installation, it may not be
+    correctly preserved.
+
+    It is *HIGHLY* recommended that you back up stored data before proceeding.
+
+    Proceed?"""
+)
+
+
+@main.command('init')
+@_db_url
+@click.option(
+    '-r', '--revision',
+    type=click.STRING,
+    help="Revision ID to upgrade to.",
+    default='head',
+)
+@click.option(
+    '--prompt/--no-prompt',
+    default=True,
+    help="If passed, don't prompt for confirmation before migrating DB.",
+)
+def init(db_url, revision, prompt):
+    """
+    Migrate a database to the current pgcontents schema.
+    """
+    click.echo("Initializing pgcontents...")
+    if prompt:
+        click.confirm(CONFIRM_MIGRATION, abort=True)
+    upgrade(db_url, revision)
+
+    click.echo('Initialization completed successfully.')
+
+
+@main.command()
+@_db_url
+def gen_migration(db_url):
+    """
+    Use alembic revision --autogenerate to create a new migration from
+    schema.py.
+
+    You probably don't need to use this unless you're doing local development
+    or changing the default pgcontents schema.
+    """
+    with temp_alembic_ini(ALEMBIC_DIR_LOCATION, db_url) as alembic_ini:
+        subprocess.check_call(
+            ['alembic', '-c', alembic_ini, 'revision', '--autogenerate']
+        )
+
+
+@main.command('download_checkpoints')
+@_db_url
+@_directory
+@_users
+def _download_checkpoints(db_url, directory, users):
+    """
+    Download checkpoints to a directory.
+    """
+    users = users.split(',')
+    if len(users) == 1:
+        download_checkpoints(db_url, directory, users[0])
+    else:
+        for user in users:
+            download_checkpoints(db_url, join(directory, user), user)
+
+
+@main.command('checkpoint_all')
+@_db_url
+@_directory
+@_users
+def _checkpoint_all(db_url, directory, users):
+    """
+    Upload a checkpoint for every file in a directory.
+    """
+    users = users.split(',')
+    if len(users) == 1:
+        checkpoint_all(db_url, directory, users[0])
+    else:
+        for user in users:
+            checkpoint_all(db_url, join(directory, user), user)
+
+if __name__ == "__main__":
+    main()
