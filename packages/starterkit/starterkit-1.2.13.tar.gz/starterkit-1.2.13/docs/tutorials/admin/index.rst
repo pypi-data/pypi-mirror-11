@@ -1,0 +1,24 @@
+.. _admin:
+
+========================
+Administrators Tutorials
+========================
+
+Welcome to the GET-IT Administrators Workshop!
+
+:ref:`quick`
+     Learn how to install GET-IT by virtual machine.
+:ref:`scratch`
+     Learn how to install GET-IT from scratch step by step.
+:ref:`server`
+     Minimum server requirements.
+:ref:`advanced`
+     Advanced administration
+
+
+.. toctree::
+   :hidden:
+
+   quick
+   scratch
+   server
