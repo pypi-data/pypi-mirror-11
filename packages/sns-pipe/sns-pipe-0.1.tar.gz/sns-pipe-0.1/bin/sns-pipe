@@ -1,0 +1,38 @@
+#!/usr/bin/env python
+
+import os
+import snspipe
+import sys
+
+
+if len(sys.argv) == 2:
+    topic_arn = sys.argv[1]
+else:
+    sys.stderr.write(
+        'Usage: {} <SNS Topic ARN>\n'.format(
+            os.path.basename(sys.argv[0])
+        )
+    )
+    sys.exit(snspipe.EXIT_STATUS_INCORRECT_USAGE)
+
+if topic_arn == '--test':
+    tests_passed = snspipe.test()
+    if tests_passed:
+        sys.exit(snspipe.EXIT_STATUS_SUCCESS)
+    else:
+        sys.exit(snspipe.EXIT_STATUS_TESTS_FAILED)
+
+try:
+    snspipe.parse_arn(topic_arn)
+except ValueError as error:
+    sys.stderr.write(str(error))
+    sys.stderr.write('\n')
+    sys.exit(snspipe.EXIT_STATUS_INVALID_ARGUMENT)
+
+subject, body = snspipe.read_stdin()
+if subject:
+    snspipe.publish(
+        topic_arn=topic_arn,
+        subject=subject,
+        body=body,
+    )
