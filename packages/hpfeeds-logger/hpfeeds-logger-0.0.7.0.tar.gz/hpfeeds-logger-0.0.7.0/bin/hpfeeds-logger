@@ -1,0 +1,89 @@
+#!/usr/bin/env python
+
+import json
+import hpfeeds
+import sys
+import logging
+from logging.handlers import RotatingFileHandler
+from hpfeedslogger.formatters import splunk, arcsight, json_formatter
+from hpfeedslogger import processors
+
+FORMATTERS = {
+    'splunk': splunk.format,
+    'arcsight': arcsight.format,
+    'json': json_formatter.format,
+}
+
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+logger = logging.getLogger('logger')
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)
+
+def main():
+    if len(sys.argv) < 2:
+        logger.error('No config file found. Exiting')
+        return 1
+
+    logger.info('Parsing config file: %s', sys.argv[1])
+
+    config = json.load(file(sys.argv[1]))
+    host        = config['host']
+    port        = config['port']
+    # hpfeeds protocol has trouble with unicode, hence the utf-8 encoding here
+    channels    = [c.encode('utf-8') for c in config['channels']]
+    ident       = config['ident'].encode('utf-8')
+    secret      = config['secret'].encode('utf-8')
+    logfile     = config['log_file']
+
+    processor = processors.HpfeedsMessageProcessor()
+    formatter = FORMATTERS.get(config['formatter_name'])
+    if not formatter:
+        logger.error('Unsupported data log formatter encountered: %s. Exiting.', config['formatter_name'])
+        return 1
+
+    handler = RotatingFileHandler(logfile, maxBytes=100*1024*1024, backupCount=3)
+    handler.setFormatter(logging.Formatter('%(message)s'))
+    data_logger = logging.getLogger('data')
+    data_logger.setLevel(logging.INFO)
+    data_logger.addHandler(handler)
+
+    logger.info('Writing events to %s', logfile)
+
+    try:
+        hpc = hpfeeds.new(host, port, ident, secret)
+    except hpfeeds.FeedException, e:
+        logger.error('feed exception', e)
+        return 1
+
+    logger.info('connected to %s', hpc.brokername)
+
+    def on_message(identifier, channel, payload):
+        for msg in processor.process(identifier, channel, payload, ignore_errors=True):
+            data_logger.info(formatter(msg))
+
+    def on_error(payload):
+        logger.error('Error message from server: %s', payload)
+        hpc.stop()
+
+    hpc.subscribe(channels)
+    try:
+        hpc.run(on_message, on_error)
+    except hpfeeds.FeedException, e:
+        logger.error('feed exception:')
+        logger.exception(e)
+    except KeyboardInterrupt:
+        logger.error('KeyboardInterrupt encountered, exiting ...')
+    except Exception as e:
+        logger.error('Unknown error encountered, exiting ...')
+        logger.exception(e)
+    finally:
+        hpc.close()
+    return 0
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        logger.error('KeyboardInterrupt encountered, exiting ...')
+        sys.exit(0)
