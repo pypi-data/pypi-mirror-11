@@ -1,0 +1,42 @@
+TEST_TARGET_DIRS = reseasdk tests
+
+debug:
+	py.test -v --doctest-modules --pdb $(TEST_TARGET_DIRS)
+
+test:
+	py.test -v --doctest-modules $(TEST_TARGET_DIRS)
+
+cov_test:
+	py.test -v --doctest-modules --cov-report html --cov-report term \
+                --cov reseasdk $(TEST_TARGET_DIRS)
+
+
+install:
+	python3 setup.py install
+	make clean
+
+clean:
+	rm -rf build dist ReseaSDK.egg-info sandbox
+
+pep8:
+	pep8 .
+
+
+register:
+	python3 setup.py register
+
+release:
+	if [ "$(RELEASE_VERSION)" = "" ] ; then \
+        echo "error: set RELEASE_VERSION"; \
+        exit 1 ; \
+    fi
+	echo "__version__ = '$(RELEASE_VERSION)'" > reseasdk/version.py
+	git add .
+	git commit -m "version $(RELEASE_VERSION)"
+	git tag "v$(RELEASE_VERSION)"
+
+upload:
+	python3 setup.py sdist upload
+	make clean
+	git push
+	git push --tags
