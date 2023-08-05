@@ -1,0 +1,280 @@
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal"
+      xmlns:i18n="http://xml.zope.org/namespaces/i18n"
+      lang="en"
+      i18n:domain="ps.plone.jssor"
+      tal:omit-tag="">
+
+<tal:slider tal:define="results view/results|nothing;
+                  viewletClass string:featured-listing-top ps_slider top ${view/get_PositionClass}" >
+<div tal:attributes="class viewletClass" tal:condition="results">
+  <div class="slider_title" tal:define="title view/get_title" tal:condition="title">
+    <h2 tal:content="title" />
+  </div>
+  <!-- include gallery JS -->
+  <div class="fls-script" id="fls-script-top" 
+    tal:define="script view/get_code|nothing" tal:condition="script"
+    tal:content="structure script" />
+
+<div class="fls-wrapper" id="fls-top-wrapper"
+    tal:define="stageCSS view/StageCss;
+                slidesCSS view/StageCss">
+  <div class="slider_collection slider1_container" id="slider1_container" 
+    tal:attributes="style string:${stageCSS};">
+      <tal:results
+          tal:define="toLocalizedTime nocall:context/@@plone/toLocalizedTime;
+                      wraplink python:True;">
+
+      <!-- Loading Screen     -->  
+      <tal:loader tal:condition="view/haveLoader">   
+        <div u="loading" style="position:absolute;top:0px;left:0px;">
+          <div class="loader_background"></div>
+          <div class="loader_image" ></div>
+        </div>
+      </tal:loader>
+      
+
+      <div u="slides" class="fls-slides"
+        tal:attributes="style string:${slidesCSS};">
+        <div class="collection-item visualIEFloatFix"
+             tal:repeat="listing results">
+          <tal:items
+              tal:define="listing_title listing/title/value;
+                          provider_url view/ProviderUrl|nothing;
+                          listing_url string:${provider_url}/${listing/id/value};">
+            <tal:fields>
+                
+              <tal:image
+                  tal:define="image listing/lead_image | nothing">
+                  <a  u="image"
+                      tal:attributes="href listing_url;
+                                      title listing_title">
+                    <img
+                      tal:condition="image"
+                      tal:attributes="src image;
+                                      alt listing_title" />
+                    <img
+                      tal:condition="not:image" alt="" title=""
+                      src="++resource++plone.mls.listing.images/no-image.png" />
+                  </a>
+                  <img u="thumb" tal:condition="view/haveThumbnailNavigator"
+                    tal:attributes="src listing/lead_image_thumb"/>
+              </tal:image>
+
+              <div
+                tal:condition="view/showCaption"
+                u="caption" t="0" t2="0"
+                tal:attributes="class view/CaptionCSSClass"
+                tal:define="layout view/CaptionDataLayout;
+                            bath_val listing/rooms_baths/value|nothing;
+                            bath python: True if bath_val is not None else False;
+                            bed_val listing/rooms_beds/value|nothing;
+                            bed python: True if bed_val is not None else False;
+                            bedbath_val listing/beds_baths/value|nothing;
+                            bedbath python: True if bedbath_val is not None else False;
+                            location_raw listing/location/value;
+                            ll python:location_raw.split(',');
+                            location_length python:len(ll)-1;
+                            location python:ll[0]+', '+ll[location_length-1]+', '+ll[location_length];
+                            isLongCaption view/isLongCaption;
+                            id listing/id/value;
+                            type python: id[0];
+                            lot_size listing/lot_size/value;
+                            view_type listing/view_type/value;
+                            info python:lot_size if type=='l' else view_type;
+                            price listing/price/value;">
+                <div class="fls_caption">
+                  <div 
+                    tal:attributes="class layout"
+                    tal:condition="python: layout=='price_title_location_bed_bath'">
+                    
+                    <h3 class="highlight price" tal:content="price"/>
+                    <div class="content">
+                      <div class="title" tal:content="listing/title/value"/>
+                        <div class="location" tal:content="location"/>
+                        <div class="bedbath">
+                          <span class="baths icons-on" tal:condition="bath"><span tal:content="bath_val"/></span>
+                          <span class="beds icons-on"  tal:condition="bed"><span tal:content="bed_val"/></span>
+                        </div>
+                    </div>
+                  </div>
+                  <div 
+                    tal:attributes="class layout"
+                    tal:condition="python: layout=='title_bath_bed_location_price'">
+                    <div class="row01">
+                      <div class="title" tal:content="listing/title/value"/>
+                    </div>
+                    <div class="row02">
+                      <div class="bath_bed" tal:condition="python: bath_val or bed_val">
+                        <span class="baths icons-on" tal:condition="bath"><span tal:content="bath_val"/></span>
+                        <span class="beds icons-on"  tal:condition="bed"><span tal:content="bed_val"/></span>
+                        <span class="v_devider"/>
+                      </div>
+                      
+                      <div class="location" tal:content="location"/>
+                      <div class="highlight price" tal:content="price"/>
+                    </div>
+                  </div>
+                  <div 
+                    tal:attributes="class string:${layout} content"
+                    tal:condition="python: layout=='title_object-type_bath_bed_price'">
+                      <span class="title" tal:content="listing/title/value" />
+                      <span class="type icons-on" tal:content="listing/object_type/value"/>
+                      <span class="beds icons-on"  tal:condition="bed" tal:content="bed_val" />
+                      <span class="baths icons-on" tal:condition="bath" tal:content="bath_val"/>
+                      <span class="price" tal:content="price"/>  
+                  </div>
+                  <div 
+                    tal:attributes="class string:${layout} content"
+                    tal:condition="python: layout=='location_object-type_price'">
+                    <div class="location" tal:content="location"/>
+                    <div class="type icons-on" tal:content="listing/object_type/value"/>
+                    <div class="price" tal:content="price"/>
+                    <p class="title" tal:condition="isLongCaption" tal:content="listing/title/value" />
+                    <p class="bed_bath" tal:condition="isLongCaption" >
+                      <span class="beds icons-on"  tal:condition="bed" tal:content="bed_val" />
+                      <span class="baths icons-on" tal:condition="bath" tal:content="bath_val"/>
+                    </p>
+                      
+                  </div>
+                  <div 
+                    tal:attributes="class string:${layout}"
+                    tal:condition="python: layout=='price'">
+                      <h3 tal:content="price" class="highlight"/>
+                  </div>
+
+                  <div 
+                    tal:attributes="class string:${layout} content"
+                    tal:condition="python: layout=='price_property-type'">
+                    <div class="price">
+                      <h3 tal:content="price"></h3>
+                    </div>
+                    <div class="property_type" tal:content="listing/object_type/value" />
+                  </div>
+
+                  <div tal:attributes="class string:${layout} content"
+                    tal:condition="python: layout=='location_price'">
+                    <div class="location" tal:content="location" />
+                    <h3  class="location_price highlight price" tal:content="price" />
+                  </div>
+                  
+
+                  <div 
+                    tal:attributes="class string:${layout} content"
+                    tal:condition="python: layout=='title_price'">
+                    <div class="title">
+                      <div tal:content="listing/title/value"></div>
+                    </div>
+                    <h3 class="title_price highlight price" tal:content="price" />
+                  </div>
+                  
+
+                  <div 
+                    tal:attributes="class string:${layout} content"
+                    tal:condition="python: layout=='title_location_price'">
+                    <div class="title">
+                      <h3 tal:content="listing/title/value"/>
+                    </div>
+                    <div class="location" tal:content="location" />
+                    <h3 class="price" tal:content="price" />
+                  </div>
+
+                  <div 
+                    tal:attributes="class string:${layout} content"
+                    tal:condition="python: layout=='title_location_info_price'">
+                    <div class="title">
+                      <h3 tal:content="listing/title/value"/>
+                    </div>
+                    <div class="location" tal:content="location" />
+                    <div class="info" tal:content="info" />
+                    <h3 class="price" tal:content="price" />
+                  </div>
+
+                  <div 
+                    tal:attributes="class string:${layout} content"
+                    tal:condition="python: layout=='location_info_price'">
+                    <div class="location">
+                      <h3 tal:content="location" />
+                    </div>
+                    <div class="info" tal:content="info" tal:condition="python: True if not type=='r' else False" />
+                    <div class="bedbath" tal:condition="python: True if type=='r' else False">
+                          <span class="baths icons-on" tal:condition="bath"><span tal:content="bath_val"/></span>
+                          <span class="beds icons-on"  tal:condition="bed"><span tal:content="bed_val"/></span>
+                    </div>
+                    <h3 class="price" tal:content="price" />
+                  </div>
+
+                  <div 
+                    tal:attributes="class string:${layout} content"
+                    tal:condition="python: layout=='title_location_property-type_info_price'">
+                    <div class="title">
+                      <h3 tal:content="listing/title/value"/>
+                    </div>
+                    <div class="location" tal:content="location" />
+                    <div class="property_type" tal:content="listing/object_type/value" />
+                    <div class="info" tal:content="info" tal:condition="python: True if not type=='r' else False" />
+                    <div class="bedbath" tal:condition="python: True if type=='r' else False">
+                          <span class="baths icons-on" tal:condition="bath"><span tal:content="bath_val"/></span>
+                          <span class="beds icons-on"  tal:condition="bed"><span tal:content="bed_val"/></span>
+                    </div>
+                    <h3 class="price" tal:content="price" />
+                  </div>
+
+                  <div 
+                    tal:attributes="class string:${layout} content"
+                    tal:condition="python: layout=='location_property-type_info_price'">
+                    <h3 class="location" tal:content="location" />
+                    <div class="property_type" tal:content="listing/object_type/value" />
+                    <div class="info" tal:content="info" tal:condition="python: True if not type=='r' else False" />
+                    <div class="bedbath" tal:condition="python: True if type=='r' else False">
+                          <span class="baths icons-on" tal:condition="bath"><span tal:content="bath_val"/></span>
+                          <span class="beds icons-on"  tal:condition="bed"><span tal:content="bed_val"/></span>
+                    </div>
+                    <h3 class="price" tal:content="price" />
+                  </div>
+
+                  <div 
+                    tal:attributes="class string:${layout} content"
+                    tal:condition="python: layout=='price_bed_bath'">
+                    <span class="price" tal:content="price" ></span>
+                    <span class="baths icons-on" tal:condition="bath"><span tal:content="bath_val"/></span>
+                    <span class="beds icons-on"  tal:condition="bed"><span tal:content="bed_val"/></span>
+                  </div>
+
+                  <div 
+                    tal:attributes="class string:${layout} content"
+                    tal:condition="python: layout=='property-type_bed_bath_price'">
+                    <div class="first_line">
+                      <span class="property_type" tal:content="listing/object_type/value" ></span>
+                      <span class="baths icons-on" tal:condition="bath"><span tal:content="bath_val"/></span>
+                      <span class="beds icons-on"  tal:condition="bed"><span tal:content="bed_val"/></span>
+                    </div>
+                    <h3 class="price second_line" tal:content="price" />
+                  </div>
+
+                </div>
+              </div>
+
+            </tal:fields>
+          </tal:items>
+          
+        </div>
+        <!-- ??? -->
+      </div>
+      </tal:results>
+      <!-- Navigators -->
+      <tal:bulletnav tal:condition="view/haveBulletPointNavigator"
+          tal:content="structure view/get_BulletPointNavigator|nothing"/>
+      <tal:thumbnav tal:condition="view/haveThumbnailNavigator"
+          tal:content="structure view/get_ThumbnailNavigator|nothing"/>
+
+      <tal:arrownav tal:condition="view/haveArrowNavigator" 
+          tal:content="structure view/get_ArrowNavigator|nothing"/>
+      
+    </div>
+    
+  </div>
+</div>
+</tal:slider>
+</html>
