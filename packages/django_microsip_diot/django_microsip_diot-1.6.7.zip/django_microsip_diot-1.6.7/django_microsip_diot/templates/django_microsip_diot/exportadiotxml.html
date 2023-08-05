@@ -1,0 +1,311 @@
+{% extends "django_microsip_diot\base.html" %}
+{% load humanize %}
+{% block title %}DIOT{% endblock %}
+
+<!-- CSS Code -->
+{% block style_css %}
+  <link rel="stylesheet" href="{{ STATIC_URL}}django_microsip_diot/css/style.css">
+{% endblock %}
+
+<!-- JavaScript Code -->
+{% block js_code %}
+{{ block.super }}
+{% include 'autocomplete_light/static.html' %}
+<script>
+    var fecha_inicio = "{{fecha_inicio}}";
+    var fecha_fin = "{{fecha_fin}}";
+    var inicio_ext = "{{inicio_ext}}";
+    var repos_ext = "{{repos_ext}}";
+    var total = "{{repo_dic|length}}"
+    var tasa_no_iva = "{{tasa_no_iva}}";
+  $(document).ready(function(){
+    $("#id_fecha_inicio, #id_fecha_fin, #id_inicio_ext, #id_fecha_manual").datepicker({dateFormat:'dd/mm/yy',altField: "#alternate", altFormat: "DD, d MM, yy"});
+    
+  });
+</script>
+<script src="{{STATIC_URL}}django_microsip_diot/js/diot.js"></script>
+{% endblock %}
+
+{% block breadcrumb %}{{ block.super }} <li class="active">Generacion de DIOT</li> {% endblock %}
+{% block content %}
+<div class="page-header">
+    <h3>Generacion de DIOT </h3>
+  </div>
+<form method="post" class="form-horizontal" action="" width="300px"  enctype='multipart/form-data'>{% csrf_token %}
+  {{ form.errors }}
+  <div align="left" class="row">
+    <div class="col-md-8"> 
+        <button type="submit" class="btn" id="btn-form" onclick="this.disabled=true,this.form.submit(), this.value='Exportando...';"><i class="glyphicon glyphicon-search"></i> Buscar Facturas Recibidas </button>
+        {% if button %}<button type="button" class="btn" id="crear_txt"><i class="glyphicon glyphicon-list-alt"></i> Crear archivo TXT</button>{% endif %}
+    </div>
+
+  </div>
+  <br><br>
+  <div class ="row">
+  <div class="col-md-2 col-xs-2 col-sm-4">
+      <label>Fecha de Inicio</label>
+      <div>{{ form.fecha_inicio }}</div>  
+  </div>
+  <div class="col-md-2 col-xs-2 col-sm-4">
+      <label>Fecha de Fin</label>
+      <div>{{ form.fecha_fin }}</div>
+  </div>
+  <div class="col-md-4 col-xs-4 col-sm-4">
+      <div>{{ form.repos_ext }} <label>Facturas de Periodos anteriores</label></div>
+      <div id="inicio_ext" {%if mostrar_fecha == 0%}style="display:none;"{% endif %}><label>A partir de </label> {{ form.inicio_ext }} </div>
+      <div {% if mostrar_check_integrar == 0%} class='hidden' {% endif %} ><input type="checkbox" id="integradas" checked="checked"> <label>Mostrar ya Integradas</label></div>
+  </div>
+  
+      {% if button %} 
+      <div class="col-md-3 col-xs-3 col-sm-3">
+        <button type="button" class="btn options" data-toggle="modal" data-target="#manual_Modal" ><i class="glyphicon glyphicon-usd"></i> Captura Manual </button>
+        <button type="button" class="btn" id="export_excel"><i class="glyphicon glyphicon-paperclip"></i> Exportar a Excel</button><br><br>
+        <button type="button" class="btn" id="remove_repos"><i class="glyphicon glyphicon-trash"></i> Eliminar Seleccionados</button>
+        <div align="right"><strong>Total Importes:    <span id="id_total_importes"></span></strong></div>
+        <div align="right"><strong>Total Iva:    <span id="id_total_ivas"></span></strong></div>
+      </div>
+      {% endif %}
+  </div>
+  <br>
+</form>
+{% if button %} 
+<table>
+  <tr>
+    <td class="celda_colores captura_manual">Captura Manual</td>
+    <td class="celda_colores extemporanea">Fuera de Periodo</td>
+    <td class="celda_colores diot_xml">Generada en Archivo</td>
+    <td class="celda_colores" style="background-color: bisque;">Pagada Parcialmente</td>
+    <td class="celda_colores genero_ext">Generada en un periodo distinto</td>
+  </tr>
+</table><br>
+<table class="table" id="tabla_repositorios">
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="integrar"></input></th>
+          <th>Fecha</th>
+          <th>Folio</th>
+          <th>Nombre</th>
+          <th>RFC</th>
+          <th class="text-right">Pagado</th>
+          <th class="text-right">Importe</th>
+          <th class="text-right">IVA</th>
+          <th></th>
+          <th></th>
+          <th><input type="checkbox" id="remove_repo_main"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for repo in repo_dic %}
+          <tr {% if repo.0.diot_pagado < repo.0.importe and repo.0.diot_pagado > 0%} style="background-color: bisque;" {% endif %} {% if repo.0.diot_pagado >= repo.0.importe %}class="diot_xml"{% endif %} >
+            <td><input type="checkbox" value="{{repo.0.id}}" class="chk_repo" {% if repo.0.diot_integrar == 'S' and repo.0.diot_pagado < repo.0.importe %}checked="checked"{% endif %} {%if repo.0.diot_pagado < repo.0.importe and repo.0.diot_pagado %}disabled="disabled"{%endif%}> </td>
+            <td id="fecha" {% if repo.0.diot_genero_ext == 'S' %}class="genero_ext" {% else %} {%if repo.0.fecha < f_i %}class="extemporanea"{%endif%}{%endif%}><small>{{repo.0.fecha|date:"d/m/Y"}}</small></td>
+            <td id="folio"> {{repo.0.folio}} <input type="hidden" id="tipo_comprobante" value="{{repo.0.tipo_comprobante}}"> </td>
+            <td id="nombre"><small>{{repo.0.nombre}}</small><input type="hidden" id="pagado_h" value="{{repo.0.diot_pagado}}"><input type="hidden" id="pago" value="0"></td>
+            <td id="rfc">{{repo.0.rfc}} <input type="hidden" id="id_fiscal" value="{{repo.0.taxid}}"></td>
+            <td id="pagado" class="text-right">$ {{repo.0.diot_pagado|floatformat:-2}}</td>
+            <td id="importe" class="text-right">$ {{repo.0.importe|floatformat:2|intcomma}}</td>
+            <td id="iva" class="text-right" >$ {{repo.1|floatformat:-2}}
+              <input type="hidden" id="subtotal" value="{{repo.2|floatformat:-2}}">
+              <input type="hidden" id="descuento" value="{{repo.3|floatformat:-2}}">
+              <input type="hidden" id="iva_retenido" value="{{repo.4|floatformat:-2}}">
+              <input type="hidden" id="ieps" value="{{repo.5|floatformat:-2}}">
+              <input type="hidden" id="iva_descuentos" value="0">
+              <input type="hidden" id="iva_acreditable" value="0">
+              <input type="hidden" id="iva_no_acreditable" value="0">
+              <input type="hidden" id="tasa_exento" value="0">
+              <input type="hidden" id="tasa0" value="0">
+            </td>
+            <td>{% if repo.0.diot_pagado != repo.0.importe %} <button class="btn options" data-toggle="modal" data-target="#options_Modal" ><i class="glyphicon glyphicon-usd"></i></button>{% endif %}</td>
+            <td>{% if repo.0.diot_pagado != repo.0.importe %} <button class="btn remove" ><i class="glyphicon glyphicon-trash"></i></button>{% endif %}</td>
+            <td>{% if repo.0.diot_pagado != repo.0.importe %}<input type="checkbox" value="{{repo.0.id}}" class="remove_repo">{% endif %}</td>
+          </tr>
+        {% endfor %}
+
+        {% for manual in manuales %}
+          <tr class="captura_manual">
+            <td><input type="checkbox" value="{{manual.id}}" class="chk_repo"> </td>
+            <td id="fecha"><small>{{manual.fecha|date:"d/m/Y"}}</small></td>
+            <td id="folio"> {{manual.folio}}</td>
+            <td id="nombre"><small>{{manual.proveedor.nombre}}</small><input type="hidden" id="pagado_h" value="0"><input type="hidden" id="pago" value="0"></td>
+            <td id="rfc">{{manual.proveedor.rfc_curp}} <input type="hidden" id="id_fiscal" value="0"></td>
+            <td id="pagado" class="text-right">-</td>
+            <td id="importe" class="text-right">$ {{manual.importe|floatformat:-2}}</td>
+            <td id="iva" class="text-right" >$ {{manual.iva|floatformat:-2}}
+              <input type="hidden" id="subtotal" value="{{manual.subtotal}}">
+              <input type="hidden" id="descuento" value="0">
+              <input type="hidden" id="iva_retenido" value="{{manual.iva_retenido}}">
+              <input type="hidden" id="ieps" value="0">
+              <input type="hidden" id="iva_descuentos" value="{{manual.iva_descuentos}}">
+              <input type="hidden" id="iva_no_acreditable" value="{{manual.iva_no_acreditable}}">
+            </td>
+            <td></td>
+            <td><button class="btn remove" ><i class="glyphicon glyphicon-trash"></i></button></td>
+            <td><input type="checkbox" value="{{manual.id}}" class="remove_repo"></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+</table>
+
+    <div id="paginacion" align="center"><strong></strong></div>
+    <br style="clear:both">
+    
+    <!-- MODAL DE PAGOS PARCIALES -->
+    <div class="modal fade tags-modal-md" id="options_Modal" tabindex="-1" role="dialog" aria-labelledby="mySmallModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-md">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">×</span><span class="sr-only">Close</span></button>
+            <h3>Datos de XML</h3><input type="hidden" id="id_xml">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Cancelar</button>
+            <a href="#" id="modificar_xml" class="btn btn-default">Seleccionar</a>
+            
+          </div>
+          <div class="modal-body">
+            <table class="table">
+              <thead>
+                <th>
+                  <td></td>
+                  <td></td>
+                </th>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Tasa de IVA</td>
+                  <td>
+                    <select name="" id="tasa_iva_modal">
+                      <option value="16">16%</option>
+                      <option value="0">0%</option>
+                    </select>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Importe sin IVA</td>
+                  <td><input type="text" id="importe_sin_iva_modal" class="form-control" size="5"></td>
+                </tr>
+                <tr>
+                  <td>Proporcion Acredit. IVA</td>
+                  <td><input type="text" id="proporcion_modal" class="form-control" size="5"></td>
+                </tr>
+                <tr>
+                  <td>IVA Acreditable</td>
+                  <td><input type="text" id="iva_acreditable_modal" class="form-control" size="5"></td>
+                </tr>
+                <tr>
+                  <td>IVA sin Acreditar</td>
+                  <td><input type="text" id="iva_sin_acreditar_modal" class="form-control" size="5"></td>
+                </tr>
+                <tr>
+                  <td>IVA Retenido</td>
+                  <td><input type="text" id="iva_retenido_modal" class="form-control" size="5"></td>
+                </tr>
+                <tr>
+                  <td>Descuento</td>
+                  <td><input type="text" id="descuento_modal" class="form-control" size="5"></td>
+                </tr>
+                <tr></tr>
+                <tr>
+                  <td><label for="">0% </label><input type="text" id="tasa0_modal" class="form-control"></td>
+                  <td><label for="">Exento </label><input type="text" id="tasa_exento_modal" class="form-control"></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL DE CAPTURA MANUAL DE MOVIMIENTOS -->
+    <div class="modal fade tags-modal-md" id="manual_Modal" tabindex="-1" role="dialog" aria-labelledby="mySmallModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-md">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">×</span><span class="sr-only">Close</span></button>
+            <h3>Captura Manual</h3><input type="hidden" id="id_xml">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Cancelar</button>
+            <a href="#" id="captura_manual" class="btn btn-default">Seleccionar</a>
+          </div>
+          <div class="modal-body">
+            <table class="table">
+              <thead>
+                <th>
+
+                  <td></td>
+                  <td></td>
+                </th>
+              </thead>
+              <tbody>
+                <tr id="proveedor_manual">
+                  <td>Proveedor</td>
+                  <td>
+                    {{form_manual.proveedor}}
+                  </td>
+                </tr>
+                <tr>
+                  <td>Fecha</td>
+                  <td>
+                    {{form_manual.fecha_manual}}
+                  </td>
+                </tr>
+                <tr>
+                  <td>Folio</td>
+                  <td>
+                    <input type="text" id="folio_manual">
+                  </td>
+                </tr>
+                <tr>
+                  <td>Tasa de IVA</td>
+                  <td>
+                    <select name="" id="tasa_iva_manual">
+                      <option value="16">16%</option>
+                      <option value="0">0%</option>
+                    </select>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Importe sin IVA</td>
+                  <td><input type="text" id="importe_sin_iva_manual" class="form-control" size="5"></td>
+                </tr>
+                <tr>
+                  <td>Proporcion Acredit. IVA</td>
+                  <td><input type="text" id="proporcion_manual" class="form-control" size="5" value="1"></td>
+                </tr>
+                <tr>
+                  <td>IVA Acreditable</td>
+                  <td><input type="text" id="iva_acreditable_manual" class="form-control" size="5" value="0"></td>
+                </tr>
+                <tr>
+                  <td>IVA sin Acreditar</td>
+                  <td><input type="text" id="iva_sin_acreditar_manual" class="form-control" size="5" value="0"></td>
+                </tr>
+                <tr>
+                  <td>IVA Retenido</td>
+                  <td><input type="text" id="iva_retenido_manual" class="form-control" size="5" value="0"></td>
+                </tr>
+                <tr>
+                  <td>Descuento</td>
+                  <td><input type="text" id="descuento_manual" class="form-control" size="5" value="0"></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+{% endif %} 
+    <!-- MODAL DE ESPERA -->
+    <div class="modal fade tags-modal-md" id="wait" tabindex="-1" role="dialog" aria-labelledby="mySmallModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-md">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h4><strong>Procesando Peticion. Espere por favor.</strong></h4>
+          </div>
+          <div class="modal-body">
+            <div class="progress">
+              <div class="progress-bar progress-bar-striped active" role="progressbar" aria-valuenow="45" aria-valuemin="0" aria-valuemax="100" style="width: 95%">
+              </div>
+            </div>  
+          </div>
+        </div>
+      </div>
+    </div>
+{% endblock %}
