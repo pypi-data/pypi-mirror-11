@@ -1,0 +1,83 @@
+Sharepoint Cache Primer
+========================
+
+Overview
+--------
+The first time a browser hits a sharepoint site after a restart, the caches are
+empty, so the page can take a while to load. One can script something to
+silently hit a sharepoint web-frontend, causing it to build caches
+and preventing any real people from experiencing that. 
+
+This tool does this for a specific circumstance where it's kind of hard to
+script it without better tools - where normal NTML authentication doesn't work,
+because there is ADFSv3 authentication configured, and where there may be
+a number of web-frontends behind a load balancer. 
+
+*I don't know why this is required. I'm not a sharepoint admin. Maybe it's
+an artifact of a particular setup.*
+
+Installation
+------------
+Simple install:
+    pip install sharepointcacheprimer
+
+Usage
+-----
+    usage: sharepointcacheprimer [-h] config site [site ...]
+
+    Connect to sharepoint site, authenticate, and load a page, thereby priming the
+    caches. The configuration file should contain a section defining each site you
+    are priming.
+
+    positional arguments:
+      config      configuration ini file
+      site        sites (section names) in configuration ini file to prime
+
+    optional arguments:
+      -h, --help  show this help message and exit
+
+Configuration
+-------------
+
+>From the included `doc/example.ini`:
+
+    # Each section is either a site definition or a cookieset definition
+
+    #### A Site Definition
+    # This is a set sharepoint site, with ADFS credentials and an optional
+    # reference to a cookieset to use.
+    [example.com]               ; Site: example.com
+    username = domain\user1     ; ADFS username
+    password = password1        ; ADFS password
+    url = http://example.com    ; URL that for site to prime
+    cookielist = examplecookies ; Optional sectionname for Cookie Sets
+
+    #### A Cookieset Definition
+    # Every line is a cookie
+    # NAME = value1,value2,valuen
+    # For each value of each cookie, the site will be primed once. This
+    # allows a site pool that uses a cookie-based load balancer to force
+    # iterating through every web frontend via cookies.
+    # In the below example, the cookie "LB-COOKIE" will be set for each of
+    # three attempts, using the values abc1, abc2, and abc3 respectively.
+    #
+    # If more than one list of cookies is below, that will just be an
+    # additional iteration. For example, another line with 2 more values
+    # would cause a total of 5 priming attempts with 5 unique cookie values.
+    [examplecookies]            ; The label referenced above
+    LB-COOKIE = abc1,abc2,abc3  ; A cookie list, comma-delimited
+
+
+
+
+    #### The same settings as above, without comments:
+    [example.com]              
+    username = domain\user1    
+    password = password1       
+    url = http://example.com   
+    cookielist = examplecookies
+
+    [examplecookies]           
+    LB-COOKIE = abc1,abc2,abc3 
+
+
