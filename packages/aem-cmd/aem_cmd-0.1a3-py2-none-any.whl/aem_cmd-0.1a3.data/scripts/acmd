@@ -1,0 +1,35 @@
+#!python
+import sys
+import optparse
+import acmd
+
+parser = optparse.OptionParser("acmd [options] <command> <args>")
+parser.add_option("-s", "--server", dest="server",
+                  help="server name", metavar="str")
+
+
+def split_argv(argv):
+    """ Split argument list into system arguments before the command
+    and command arguments afterwards.
+    ['foo', 'bar', 'inspect', 'bink', 'bonk']
+        => (['foo', 'bar', 'inspect'], ['inspect', 'bink', 'bonk'])"""
+    for i, arg in enumerate(argv):
+        if acmd.get_command(arg) is not None:
+            return argv[0:i+1], argv[i:]
+    raise Exception("No command located in command line.")
+
+
+if __name__ == '__main__':
+    sysargs, cmdargs = split_argv(sys.argv)
+    (options, args) = parser.parse_args(sysargs)
+    if len(args) == 1:
+        optparse.print_usage()
+        sys.exit(0)
+    else:
+        cmd_name, args = args[1], []
+
+    server = acmd.get_server(options.server)
+
+    cmd = acmd.get_command(cmd_name)
+    status = cmd.execute(server, cmdargs)
+    sys.exit(status)
