@@ -1,0 +1,406 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+"""
+Open and edit files from a remote machine in your local Sublime Text or
+TextMate 2. To get it work on Sublime Text you need the rsub plugin.
+
+Usage:
+  rsub [options] [-l NUM] [-m NAME] [-t TYPE] -
+  rsub [options] [-l NUM...] [-m NAME...] [-t TYPE...] FILE...
+
+  -                     Read from the standard input.
+  FILE                  File to open (will be created if does not exist yet).
+
+  -l NUM --line=NUM     Place caret on line [NUM] after loading the file.
+  -m NAME --name=NAME   The display name shown in editor.
+  -t TYPE --type=TYPE   Treat file as having [TYPE] (e.g. rb, py, md).
+
+Options:
+  -H HOST --host=HOST   Connect to host. Use 'auto' to detect the host from SSH.
+  -p PORT --port=PORT   Port number to use for connection.
+  -w --wait             Wait for file(s) to be closed by the editor.
+  -f --force            Open even if the file is not writable.
+  -v --verbose          Verbose logging messages.
+  -h --help             Show this message and exit.
+  --version             Show version and exit.
+
+More information can be found on https://github.com/jirutka/rsub-client.
+"""
+
+import logging
+import os
+import socket
+import sys
+from contextlib import contextmanager
+from logging import DEBUG, INFO, StreamHandler
+from os import W_OK
+from os.path import isfile, expanduser
+
+from docopt import docopt
+
+if sys.version_info >= (3, 0):
+    from configparser import ConfigParser, NoOptionError, NoSectionError
+    from io import StringIO
+else:
+    from ConfigParser import ConfigParser, NoOptionError, NoSectionError
+    from StringIO import StringIO
+
+__version__ = '1.0.1'
+
+log = logging.getLogger(__name__)
+
+
+@contextmanager
+def atomic_write(filepath):
+    """ Writeable file object that atomically updates a file.
+
+    :param filepath: path of the file to be opened for writing (in binary mode)
+    """
+    tmppath = filepath + '~'
+    while isfile(tmppath):
+        tmppath += '~'
+    try:
+        with open(tmppath, 'wb') as file:
+            yield file
+        os.rename(tmppath, filepath)
+    finally:
+        try:
+            os.remove(tmppath)
+        except EnvironmentError:
+            pass
+
+
+def enc(string):
+    """ Return an encoded (binary) version of the string. """
+    if not isinstance(string, bytes) and sys.version_info >= (3, 0):
+        return bytes(string, 'utf-8')
+    else:
+        return string
+
+
+def parse_cli_args():
+    """ Parse command line arguments and return settings, or exit. """
+
+    kwargs = docopt(__doc__, version="rsub %s" % __version__)
+
+    # Remove '--' from options name.
+    kwargs = {k.replace('--', ''): v for k, v in kwargs.items()}
+
+    # Pluralize names of repeated options.
+    for key in ['FILE', 'line', 'name', 'type']:
+        kwargs[key.lower() + 's'] = kwargs.pop(key)
+
+    if kwargs.pop('-'):
+        kwargs['files'] = [sys.stdin]
+
+    # Remove items with value None.
+    return {k: v for k, v in kwargs.items() if v is not None}
+
+
+def read_settings_env():
+    """ Return settings from environment variables. """
+    dic = {
+        'host': os.getenv('RSUB_HOST', os.getenv('RMATE_HOST', None)),
+        'port': os.getenv('RSUB_PORT', os.getenv('RMATE_PORT', None))
+    }
+    # Remove items with empty value.
+    return {k: v for k, v in dic.items() if v}
+
+
+def read_settings_rcfiles():
+    """ Return settings read from rcfiles on disk. """
+
+    config = SectionLessConfigParser()
+    try:
+        config.read('/etc/rmate.rc', '/etc/rsubrc',
+                    expanduser('~/.rmate.rc'), expanduser('~/.rsubrc'))
+    except:
+        log.debug('Could not read settings from disk.')
+
+    return config.to_dict()
+
+
+# Based on http://stackoverflow.com/a/14620633/2217862
+class AttrDict(dict):
+
+    """ Dictionary that allows attributes-like access to its items. """
+
+    def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
+
+
+class ConnectionError(Exception):
+
+    def __init__(self, msg, cause=None):
+        self.msg = msg
+        self.cause = cause
+
+    def __str__(self):
+        return self.msg
+
+
+class SectionLessConfigParser(ConfigParser, object):
+
+    """ ConfigParser for reading config files without sections. """
+
+    FAKE_SECTION = 'NOSECTION'
+
+    def read(self, *filenames):
+        """ Override superclass method to read & parse file(s) without section.
+
+        This implementation is quite a hack, it just inserts fake section at
+        the beginning of the file object being parsed.
+        """
+        read_ok = []
+        for filename in filenames:
+            try:
+                with open(filename) as f:
+                    fp = StringIO("[%s]\n%s" % (self.FAKE_SECTION, f.read()))
+                    self._read(fp, filename)
+            except EnvironmentError:
+                continue
+            read_ok.append(filename)
+
+        return read_ok
+
+    def to_dict(self):
+        """ Return options for the fake section as a dict. """
+        return dict(self.items(self.FAKE_SECTION))
+
+    def __getitem__(self, option):
+        """ Get an option value for the fake section. """
+        try:
+            return self.get(self.FAKE_SECTION, option)
+        except (NoOptionError, NoSectionError):
+            return None
+
+
+class FileInfo(object):
+
+    """ This class represents a file to be opened in the remote editor. """
+
+    def __init__(self, data, filepath=None):
+        self.data = data
+        self.file_path = filepath
+        self.display_name = "%s:%s" % (socket.gethostname(), filepath or 'untitled (stdin)')
+        self.file_type = None
+        self.line_num = None
+
+    @staticmethod
+    def from_stdin():
+        """ Read data from the stdin and return FileInfo object. """
+
+        log.info('Reading from stdin, press ^D to stop')
+        return FileInfo(enc(sys.stdin.read()))
+
+    @staticmethod
+    def from_file(filepath):
+        """ Create FileInfo object from the file path.
+
+        If path of an existing file is given, then it reads the file. Otherwise
+        the file will be created during first save.
+        """
+        data = b''
+        if isfile(filepath):
+            with open(filepath, 'rb') as f:
+                data = f.read()
+        return FileInfo(data, filepath)
+
+    def variables(self):
+        """ Return a dict of variables as specified in rmate. """
+        dic = {
+            'display-name': self.display_name,
+            'file-type': self.file_type,
+            'real-path': os.path.abspath(self.file_path) if self.file_path else None,
+            'selection': self.line_num or None,
+            'token': self.file_path or '-',
+            # to be compatible with TextMate
+            'data-on-save': 'yes',
+            're-activate': 'yes'
+        }
+        return {k: v for k, v in dic.items() if v is not None}.items()
+
+
+class RSubClient(object):
+
+    """ Client that handles communication with a remote editor via sockets. """
+
+    def __init__(self, host, port):
+        """ Initialize connection with a remote editor.
+
+        :param host: IP address or domain name of the remote editor
+        :param port: port number that the remote editor listens on
+        :raises ConnectionError: if failed to connect to the editor
+        """
+        try:
+            self._socket = socket.create_connection((host, port))
+            self._rfile = self._socket.makefile('rb')
+            self._wfile = self._socket.makefile('wb')
+        except EnvironmentError as e:
+            raise ConnectionError('Could not connect to editor!', e)
+
+        server_hello = next(self._readlines())
+        if not server_hello:
+            self.close()
+            raise ConnectionError('No response from editor!')
+
+        log.debug("Connected to: %s", server_hello)
+
+    def send_files(self, files):
+        """ Open files in the remote editor.
+
+        :param files: list of :class:`FileInfo` instances
+        """
+        def send(data):
+            self._wfile.write(enc(data))
+
+        for file in files:
+            send('open\n')
+            for name, value in file.variables():
+                send("%s: %s\n" % (name, value))
+            send("data: %d\n" % len(file.data))
+            if file.data != b'':
+                send(file.data)
+            send('\n')
+        send('.\n')
+        self._wfile.flush()
+
+    def listen(self):
+        """ Start listening on the socket for commands from the editor.
+
+        This method is blocking; it finish when the socket is closed.
+        """
+        for line in self._readlines():
+            if line == 'save':
+                self._handle_save()
+            elif line == 'close':
+                self._handle_close()
+            else:
+                log.debug("Unknown command: %s", line)
+        self.close()
+
+    def close(self):
+        """ Close the socket and all the opened file objects. """
+
+        log.debug('Closing connection...')
+        if self._wfile:
+            self._wfile.close()
+        if self._rfile:
+            self._rfile.close()
+        try:
+            self._socket.shutdown(socket.SHUT_RDWR)
+            self._socket.close()
+        except EnvironmentError:
+            pass
+        self._socket = None
+
+    def _handle_save(self):
+        """ Handle *save* command; write received file. """
+
+        variables, data = self._read_response()
+        path = variables['token']
+
+        log.debug("Received update: %s", path)
+        try:
+            with atomic_write(path) as f:
+                f.write(data)
+        except EnvironmentError:
+            log.debug("Failed to write file: %s", path)
+
+    def _handle_close(self):
+        """ Handle *close* command; just log it. """
+        variables, data = self._read_response()
+        path = variables['token']
+        log.debug("Closed: %s", path)
+
+    def _read_response(self):
+        """ Return tuple of variables and data read from the socket. """
+
+        variables = {}
+        data = b''
+
+        for line in self._readlines():
+            if line == '':
+                break
+            name, value = (s.strip() for s in line.split(':', 1))
+            if name == 'data':
+                data += self._rfile.read(int(value))
+            else:
+                variables[name] = value
+
+        return (variables, data)
+
+    def _readlines(self):
+        """ Read lines from the socket.
+
+        :returns: generator that reads line by line from the socket, decodes
+                  lines as UTF-8 and strips white spaces
+        """
+        return (line.decode('utf-8').strip() for line in self._rfile)
+
+
+# #########################  M a i n  ######################## #
+
+def main():
+    # Defaults
+    conf = AttrDict({'host': 'localhost', 'port': 52698})
+
+    conf.update(read_settings_rcfiles())
+    conf.update(read_settings_env())
+    conf.update(parse_cli_args())
+
+    if conf.host == 'auto' and os.getenv('SSH_CONNECTION', None):
+        conf.host = os.getenv('SSH_CONNECTION', 'localhost').split(' ')[0]
+
+    log.setLevel(DEBUG if conf.verbose else INFO)
+    log.addHandler(StreamHandler())
+
+    files = []
+    for idx, path in enumerate(conf.files):
+        if path is sys.stdin:
+            file = FileInfo.from_stdin()
+        elif os.path.isdir(path):
+            log.warning("'%s' is a directory!", path)
+            continue
+        else:
+            if isfile(path) and not os.access(path, W_OK):
+                if conf.force:
+                    log.debug("File %s is not writable. Opening anyway.", path)
+                else:
+                    log.warning("File %s is not writable! Use -f/--force to open anyway.", path)
+                    continue
+            file = FileInfo.from_file(path)
+
+        if len(conf.names) > idx:
+            file.display_name = conf.names[idx]
+        if len(conf.types) > idx:
+            file.file_type = conf.types[idx]
+        if len(conf.lines) > idx:
+            file.line_num = conf.lines[idx]
+
+        files.append(file)
+
+    try:
+        client = RSubClient(conf.host, conf.port)
+        client.send_files(files)
+
+        if sys.stdin in conf.files:
+            client.close()
+            sys.exit()
+
+        if not conf.wait:
+            # exit itself after child forked
+            os.fork() and sys.exit()
+            log.debug("Forked PID: %d" % os.getpid())
+
+        client.listen()
+
+    except ConnectionError as e:
+        log.error(e.msg)
+        sys.exit(2)
+
+
+if __name__ == '__main__':
+    main()
