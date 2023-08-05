@@ -1,0 +1,67 @@
+Jigfyp is a query-builder for leveldb.
+It lets you specify leveldb ranges as tuples of strings.
+
+Initializing
+---------------
+Initalize a Jigfyp with a LevelDB object. ::
+
+    import leveldb, Jigfyp
+
+    db = leveldb.LevelDB()
+    j = jigfyp.Jigfyp(db)
+
+Working with individual keys
+-------------------------------
+The key in these examples is ``b'one!two!three'``. ::
+
+    j.put_one((b'one', b'two', b'three'), b'Hi')
+    j.get_one((b'one', b'two', b'three'))
+    j.delete_one((b'one', b'two', b'three'))
+
+Working with ranges of keys
+-------------------------------
+Here's one way of adding a few records. ::
+
+    j.put_one((b'one', b'two', b'three'), b'Hi')
+    j.put_one((b'one', b'two', b'four'), b'Hi')
+    j.put_one((b'one', b'two', b'seven), b'Hi')
+    j.put_one((b'over', b'nine', b'thousand'), b'Hi')
+
+If you're writing several records, you can use the ``put_many`` method to save
+the same data but with a ``leveldb.WriteBatch``, which is usually faster. ::
+
+    records = [
+        ((b'one', b'two', b'three'), b'Hi'),
+        ((b'one', b'two', b'four'), b'Hi'),
+        ((b'one', b'two', b'seven), b'Hi'),
+        ((b'over', b'nine', b'thousand'), b'Hi'),
+    ]
+    j.put_many(records)
+
+The cool part is the ``get_many`` and ``delete_many`` methods. With these,
+you specify a partial key, and everything that starts with that key is emitted.
+Consider a database containing the four above records. If we pass no arguments
+to ``get_many``, we'll read all the data. ::
+
+    j.get_many()
+
+If we pass ``(b'one', b'two')``, ::
+
+    j.get_many(b'one', b'two')
+
+we'll get three records with these keys ::
+
+* ``(b'one', b'two', b'three')``
+* ``(b'one', b'two', b'four')``
+
+and not the record with these keys
+
+* ``(b'one', b'two', b'seven)``
+* ``(b'over', b'nine', b'thousand')``
+
+Similarly, if we run the following command, ::
+
+    j.delete_many(b'one')
+
+we delete all the records whose keys begin with ``b'one'``, leaving us with a
+single record in the database, with the key ``(b'over', b'nine', b'thousand')``.
