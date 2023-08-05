@@ -1,0 +1,31 @@
+# Create a custom agent container from local sources. The command to run (from INGInious root) is:
+# docker build -t ingi/inginious-agent --file=inginious/utils/agent_container/DockerfileLocal .
+
+FROM centos
+
+RUN \
+    yum -y update && \
+    yum -y install epel-release && \
+    yum -y install docker python-pip gcc python-devel && \
+    pip install pytidylib docutils rpyc cgroup-utils pyyaml
+
+# temp workaround for Docker 1.7 (TODO: revert me!)
+RUN \
+    yum -y install git && \
+    git clone https://github.com/GuillaumeDerval/docker-py.git /docker-py && \
+    cd /docker-py && \
+    pip install . && \
+    cd .. && \
+    rm -Rf /docker-py
+    
+VOLUME /agent_volume
+VOLUME /sys/fs/cgroup
+
+ADD inginious/common /agent/inginious/common
+ADD inginious/backend/agent /agent/inginious/backend/agent
+RUN touch /agent/inginious/__init__.py && \
+    touch /agent/inginious/backend/__init__.py
+WORKDIR /agent
+CMD ["/agent/inginious/backend/agent/start_container_agent.py"]
+
+LABEL agent-version=0.4
