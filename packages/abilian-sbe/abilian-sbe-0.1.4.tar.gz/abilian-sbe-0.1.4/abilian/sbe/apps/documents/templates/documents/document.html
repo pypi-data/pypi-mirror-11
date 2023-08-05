@@ -1,0 +1,140 @@
+{% extends "community/_base.html" %}
+
+{% from "macros/box.html" import m_box_content, m_box_menu with context %}
+{% from "macros/audit.html" import m_audit_log %}
+{% from "macros/table.html" import m_table %}
+
+{% from "documents/_macros.html" import m_docs_table, m_breadcrumbs2 with context %}
+
+{% block content %}
+  {% call m_box_content(title=_("Document view")) %}
+
+    <div style="margin: 5px 0;">
+      <i class="fa fa-file-o fa-lg"></i>
+      {{ m_breadcrumbs2(breadcrumbs) }}
+    </div>
+
+    <hr>
+
+    {%- if doc.antivirus_required %}
+      <p class="small alert alert-warning">
+      <span class="fa-stack">
+        <i class="fa fa-search fa-stack-2x"></i>
+        <i class="fa fa-bug fa-stack-1x text-danger"></i>
+      </span>
+      {% trans %}Waiting for virus check...{% endtrans %}
+      </p>
+    {%-  elif not doc.antivirus_ok %}
+      <p class="alert alert-danger">
+        <i class="fa fa-exclamation-triangle"></i>
+        {%- trans %}Virus found. Access disabled.{%- endtrans %}
+      </p>
+    {%- endif %}
+
+
+    <h2 style="margin-top: 0;">{{ doc.title }}</h2>
+
+    {%- if doc.description %}
+      <p>{{ doc.description }}</p>
+      <p>&nbsp;</p>
+    {%- endif %}
+
+    <h3 class="main">{{ _('Preview') }}</h3>
+
+    <div class="preview" style="max-width: {{ doc.preview_size }}px;">
+      <img src="{{ url_for(".document_preview_image",
+          community_id=g.community.slug, doc_id=doc.id,
+          size=doc.preview_size) }}"  alt="" class="preview" data-page="0"/>
+
+      {%- if has_preview %}
+        <div class="preview-nav">
+          <a class="preview-prev"
+              title="{{ _('Previous') }}">{{ _('Previous') }}</a>
+          <a class="preview-next" title="{{ _('Next') }}">{{ _('Next') }}</a>
+        </div>
+      {%- else %}
+        {{ _("Document preview not yet available") }}
+      {%- endif %}
+    </div>
+
+    <div class="collapsable">
+      <h3 class="main collapsed" data-toggle="collapse"
+          href="#doc_properties">{{ _('Properties') }}</h3>
+
+      <div id="doc_properties" class="collapse">
+        {{ m_table([
+          (_('File name'), doc.title),
+          (_('Size'), doc.content_length|filesize),
+          (_('Content type (MIME)'), doc.content_type or ''),
+          (_('Language'), doc.language or ''),
+         ]) }}
+      </div>
+
+      {%- if doc.extra_metadata %}
+        <h3 class="main collapsed" data-toggle="collapse"
+            href="#doc_extra_metadata">Extra Metadata</h3>
+        <div id="doc_extra_metadata" class="collapse">
+          {%- set sorted = doc.extra_metadata|dictsort %}
+          {{ m_table(sorted) }}
+        </div>
+      {%- endif %}
+
+      <h3 class="main collapsed" data-toggle="collapse"
+          href="#doc_dates">{{ _('Dates') }}</h3>
+
+      <div id="doc_dates" class="collapse">
+        <p>{{ _('Created on') }}: {{ doc.created_at|date_age }}</p>
+
+        <p>{{ _('Last modified on') }}: {{ doc.updated_at|date_age }}</p>
+      </div>
+
+      <h3 class="main collapsed" data-toggle="collapse"
+          href="#doc_people">{{ _('People') }}</h3>
+
+      <div id="doc_people" class="collapse">
+        <p>
+          {{ _('Creator') }}: <a
+            href="{{ url_for("social.user", user_id=doc.creator.id) }}"><img
+            alt=""
+            src="{{ user_photo_url(doc.creator, size=16) }}"/>
+          {{ doc.creator }}</a>
+        </p>
+
+        <p>
+          {{ _('Owner') }}: <a
+            href="{{ url_for("social.user", user_id=doc.owner.id) }}"><img
+            alt=""
+            src="{{ user_photo_url(doc.owner, size=16) }}"/>
+          {{ doc.owner }}</a>
+        </p>
+      </div>
+
+      {{ m_audit_log(audit_entries) }}
+
+    </div>
+  {% endcall %}
+{% endblock %}
+
+{% block sidebar %}
+  {%- set content_actions = actions.for_category('documents:content') %}
+  {%- if content_actions %}
+    {% call m_box_menu() %}
+      <ul class="nav nav-list">
+        {%- for action in content_actions %}
+          <li>{{ action.render() }}</li>
+        {%- endfor %}
+      </ul>
+    {% endcall %}
+  {%- endif %}
+{% endblock %}
+
+{% block modals %}
+  {% include "documents/_modals_document.html" %}
+{% endblock %}
+
+
+{% block js %}
+  <script type="text/javascript">
+    {% include "documents/_modals.js" %}
+  </script>
+{% endblock %}
