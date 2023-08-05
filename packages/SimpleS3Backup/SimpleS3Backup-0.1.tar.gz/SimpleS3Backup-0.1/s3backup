@@ -1,0 +1,67 @@
+#!/usr/bin/python
+
+# Purpose:  Quickie backup script 
+
+import sys
+import os
+import argparse
+import subprocess
+import time
+import boto
+import boto.s3
+
+def run(string):
+    if os.system(string) > 0:
+        raise Exception("Error running {}".format(string))
+
+Frequency = {
+    "minute": 60,
+    "hour": 3600,
+    "day": 86400,
+    "week": 604800,
+}
+
+def main():
+    p = argparse.ArgumentParser()
+
+    p.add_argument("-profile", help="boto profile name", required=False)
+    p.add_argument("-bucket", help="bucket name.  defaults to 'backups'", default="backups")
+    p.add_argument("-count", type=int, help="count of daily backups to keep.  Default 3", default=3)
+    p.add_argument("-frequency", help="Frequency of rotation.  Default 'day'.",
+                   choices=['minute', 'hour', 'day', 'week'], default='day')
+    p.add_argument("-path", help="path in bucket.  Defaults to root of bucket.", default="/")
+    p.add_argument("-filename", help="backup name", required=True)
+    p.add_argument("command", help="command to run, with all arguments", nargs=argparse.REMAINDER)
+
+    args = p.parse_args()
+
+    divisor= Frequency[args.frequency]
+
+    count = int((time.time()/ divisor) % args.count)
+    filename= "{name}.{count}".format(name=args.filename, count=count)
+
+    c = boto.connect_s3(profile_name=args.profile)
+    b = c.get_bucket(args.bucket)
+    k = b.get_key("{prefix}/{filename}".format(prefix = args.path, filename = filename), validate=False)
+
+    process = subprocess.Popen(args.command, stdout=subprocess.PIPE)
+    try:
+        with open(filename, "wb") as f:
+            buf = process.stdout.read(1024*16)
+            while not buf == "":
+                f.write(buf)
+                buf = process.stdout.read(1024*16)
+
+        k.set_contents_from_filename(filename)
+
+        if process.wait() > 0:
+            raise Exception("Command {} did not complete successfully".format(" ".join(args.command)))
+
+    finally:
+        os.remove(filename)
+
+                  
+                
+if __name__ == "__main__":
+    main()
+
