@@ -1,0 +1,390 @@
+..
+   Copyright 2009-2015 Ram Rachum. This work is licensed under a Creative
+   Commons Attribution-ShareAlike 3.0 Unported License, with attribution to
+   "Ram Rachum at ram.rachum.com" including link. The license may be obtained
+   at http://creativecommons.org/licenses/by-sa/3.0/
+
+.. _bags:
+
+Bags
+====
+
+  `"This sort of thing is my bag, baby!"`_
+ 
+  -- Austin Powers
+
+Combi provides 4 bag classes for you to choose from according to your needs: 
+
+* :class:`Bag` - The simplest bag class
+* :class:`FrozenBag` - An immutable (and thus hashable) bag class
+* :class:`OrderedBag` - A bag class where items are ordered by insertion order
+* :class:`FrozenOrderedBag` - An immutable, ordered bag class
+
+
+:class:`Bag`
+------------
+
+.. class:: Bag(iterable={})
+
+   The :class:`Bag` class is an implementation of the mathematical concept of a
+   `multiset`_; meaning something like a set, except that every item could
+   appear multiple times, and crucially, we only save the *count* of the item
+   in memory instead of saving multiple copies of the same item, which would be
+   a waste of memory.
+   
+   You may know the :class:`collections.Counter` class from Python's standard
+   library; the bag classes provided by Combi are very similar, except that
+   they are more strictly defined as multisets, meaning that counts must be
+   positive integers. (Zeros are allowed in input but they are weeded out.) By
+   contrast, :class:`collections.Counter` allows any value as an item's count.
+   
+   This restriction makes the bag classes more powerful than
+   :class:`collections.Counter` because it allows more methods to be defined.
+   More arithmetical operations are defined, comparison between bags is
+   supported, and more.
+   
+   When you create a bag, it will be populated with the ``iterable`` argument.
+   If ``iterable`` is a plain sequence, its items will be added one-by-one:
+       
+      >>> Bag('abracadabra')
+      Bag({'c': 1, 'b': 2, 'd': 1, 'a': 5, 'r': 2})
+       
+   If ``iterable`` is a mapping, its values will be taken as item counts:
+   
+      >>> Bag({'meow': 2, 'woof': 5,})
+      Bag({'meow': 2, 'woof': 5})
+
+   
+   :class:`Bag` can be accessed similarly to a :class:`dict` or :class:`Counter
+   <collections.Counter>`:
+   
+      >>> my_bag = Bag('abracadabra')
+      >>> my_bag['b']
+      2
+      >>> 'x' in my_bag
+      False
+      >>> my_bag['x'] = 7
+      >>> my_bag
+      Bag({'r': 2, 'x': 7, 'b': 2, 'a': 5, 'd': 1, 'c': 1})
+      >>> 'x' in my_bag
+      True
+      >>> my_bag['y'] # If it's not in the bag, the count is zero:
+      0
+      >>> for key, count in my_bag.items():
+      ...     print((key, count))
+      ... 
+      ('r', 2)
+      ('x', 7)
+      ('b', 2)
+      ('a', 5)
+      ('d', 1)
+      ('c', 1)
+
+      
+   .. attribute:: elements
+
+      An iterator over the elements in the bag. If an item has a count of 7 in
+      the bag, it will repeat 7 times in ``bag.elements``. Example:
+       
+          >>> bag = Bag({'a': 1, 'b': 2, 'c': 3,})
+          >>> for element in bag.elements:
+          ...     print(element)
+          a
+          c
+          c
+          c
+          b
+          b
+
+      If you're using :class:`OrderedBag <combi.OrderedBag>` or
+      :class:`FrozenOrderedBag <combi.FrozenOrderedBag>`, the items will be
+      yielded by their canonical order (usually insertion order), otherwise
+      they'll be yielded in arbitrary order, just like dicts and sets.
+      
+   .. attribute:: n_elements
+   
+      The number of elements in the bag, i.e. the sum of all the counts. 
+      Example:
+      
+          >>> bag = Bag({'a': 1, 'b': 2, 'c': 3,})
+          >>> bag.n_elements
+          6
+
+   .. method:: clear()
+
+      Clear the bag, making it empty.
+      
+   .. method:: copy()
+
+      Create a shallow copy of the bag.
+      
+   .. method:: get(key, default=None)
+
+      Get a key's count with a default fallback, just like :meth:`dict.get`.
+      
+   .. method:: keys()
+
+      Get an iterator over the keys in a bag:
+      
+         >>> bag = Bag({'a': 1, 'b': 2, 'c': 3,})
+         >>> tuple(bag.keys())
+         ('b', 'c', 'a')
+         
+   .. method:: values()
+
+      Get an iterator over the counts in a bag:
+      
+         >>> bag = Bag({'a': 1, 'b': 2, 'c': 3,})
+         >>> tuple(bag.values())
+         (2, 3, 1)
+         
+   .. method:: items()
+
+      Get an iterator over the items in a bag, i.e. keys with counts:
+      
+         >>> bag = Bag({'a': 1, 'b': 2, 'c': 3,})
+         >>> tuple(bag.items())
+         (('b', 2), ('c', 3), ('a', 1))
+
+   .. method:: most_common([n])
+   
+      Get a tuple of the ``n`` most common elements and their counts from the
+      most common to the least. If n is not specified, :meth:`most_common()`
+      returns all elements in the bag. Elements with equal counts are ordered
+      arbitrarily:
+      
+         >>> Bag('abracadabra').most_common(3)
+         (('a', 5), ('r', 2), ('b', 2))
+         
+   .. method:: pop(key[, default])
+   
+      Get the count of ``key`` and remove it from the bag, optionally with a
+      default fallback.
+         
+   .. method:: popitem()
+   
+      Remove a key from the bag, and get a tuple ``(key, count)``.
+      
+   .. method:: setdefault(key, default=None)
+   
+      Get the count of `key`, optionally with a default fallback. If `key` is
+      missing, its count in the bag will be set to the default.
+
+   .. method:: update(mapping)
+      
+      Update the bag with a mapping of key to count.
+      
+   .. method:: get_contained_bags()
+        
+      Get all bags that are subsets of this bag.
+      
+      This means all bags that have counts identical or smaller for each key.
+      
+      Example:
+      
+         >>> bag = Bag({'a': 1, 'b': 2, 'c': 3,})
+         >>> contained_bags = bag.get_contained_bags()
+         >>> len(contained_bags)
+         24
+         >>> contained_bags[7]
+         Bag({'c': 2, 'b': 1})
+         >>> contained_bags[7] < bag # Contained bag is contained.
+         True
+
+
+:class:`FrozenBag`
+------------------
+
+.. class:: FrozenBag(iterable={})
+
+   :class:`FrozenBag` is a multiset just like :class:`Bag`, except it's
+   immutable. After it's created, it can't be modified. It's a subclass over
+   :class:`Bag`.
+   
+   In which cases would you want to use :class:`FrozenBag` rather than
+   :class:`Bag`?
+   
+   - If you want to have your bag as a key in a :class:`set`, :class:`dict`,
+     or any other kind of hashtable. (A normal bag can't be used for this 
+     because it's mutable and thus not hashable.)
+   - If you want to make it clear in your program that a certain bag should 
+     never be changed after it's created.
+     
+   .. method:: get_mutable()
+   
+      Get a mutable version of this frozen bag. Example:
+      
+         >>> frozen_bag = FrozenBag('abracadabra')
+         >>> frozen_bag
+         FrozenBag({'d': 1, 'c': 1, 'b': 2, 'a': 5, 'r': 2})
+         >>> frozen_bag.get_mutable()
+         Bag({'d': 1, 'c': 1, 'b': 2, 'a': 5, 'r': 2})
+         
+         
+:class:`OrderedBag`
+-------------------
+   
+.. class:: OrderedBag(iterable={})
+
+   :class:`OrderedBag` is a multiset just like :class:`Bag`, except it's also
+   ordered. Items have a defined order, which is by default the order in which
+   they were inserted. :class:`OrderedBag` is a subclass over :class:`Bag`.
+   
+   Another way to think of it is that :class:`OrderedBag` is to :class:`Bag`
+   what :class:`collections.OrderedDict` is to :class:`dict`.
+   
+   Example:   
+   
+      >>> ordered_bag = OrderedBag('abbcccdddd')
+      >>> tuple(ordered_bag.elements) # Items ordered by insertion order:
+      ('a', 'b', 'b', 'c', 'c', 'c', 'd', 'd', 'd', 'd')
+      >>> tuple(ordered_bag.items())
+      (('a', 1), ('b', 2), ('c', 3), ('d', 4))
+      >>> ordered_bag.index('b')
+      1
+
+   .. attribute:: reversed
+   
+      Get a version of this ordered bag with order reversed. Example:
+      
+         >>> ordered_bag = OrderedBag('abbcccdddd')
+         >>> ordered_bag
+         OrderedBag(OrderedDict([('a', 1), ('b', 2), ('c', 3), ('d', 4)]))
+         >>> ordered_bag.reversed
+         OrderedBag(OrderedDict([('d', 4), ('c', 3), ('b', 2), ('a', 1)]))
+         
+      This does *not* change the existing bag, but creates a new one. 
+   
+   .. method:: index(key)
+   
+      Get the index number (i.e. position) of ``key`` in the ordered bag.
+   
+   .. method:: move_to_end(key, last=True)
+   
+      Move a key to the end of the order. Specify `last=False` to move it to
+      the start instead.
+      
+   .. method:: sort(key=None, reverse=False)
+   
+      Sort the keys, changing the order in-place.
+      
+      The optional ``key`` argument, (not to be confused with the bag keys,) is
+      a key function. If it's not passed in, default Python ordering will be
+      used.
+      
+      If ``reverse=True`` is used, the keys will be sorted in reverse order.
+
+      
+:class:`FrozenOrderedBag`
+-------------------------
+      
+.. class:: FrozenOrderedBag(iterable={})
+
+   :class:`FrozenOrderedBag` is a multiset just like :class:`Bag`, except it's
+   immutable *and* ordered. You can think of it as a combination of
+   :class:`FrozenBag` and :class:`OrderedBag`.
+   
+   
+.. _bags-comparisons:
+   
+Comparisons between bags
+------------------------
+
+One of the advantages of :class:`Bag` over :class:`collections.Counter` is that
+:class:`Bag` provides comparison methods between bags, that act similarly to
+comparisons between Python's built-in sets. This makes it easy to see whether
+one bag is contained by another. Example:
+
+   >>> sandwich = Bag({'bread': 2, 'cheese': 1, 'tomato': 2, 'burger': 1,})
+   >>> vegan_sandwich = Bag({'bread': 2, 'tomato': 2,})
+   >>> vegan_sandwich < sandwich
+   True
+   >>> salad = Bag({'tomato': 2, 'bell pepper': 1,})
+   >>> salad < sandwich # False because there's no bell pepper in our sandwich
+   False 
+
+A bag is smaller-or-equal to another bag if it's "contained" in it, meaning
+that every key in the contained bag also exists in the containing bag, and with
+a count that's bigger or equal to its count in the contained bag.
+
+A bag is strictly smaller than another bag if the above holds, and there's at
+least one key for which the count in the containing bag is strictly bigger than
+its count in the contained bag.
+
+Please note that unlike most comparisons in Python, this is a `partial order`_
+rather than a total one, meaning that for some pairs of bags, neither ``x >=
+y`` nor ``y >= x`` holds true. This is similar to set comparison in Python.
+
+
+.. _bags-operations:
+
+Arithmetic operations on bags
+-----------------------------
+
+Another advantage of :class:`Bag` over :class:`collections.Counter` is that
+:class:`Bag` provides a *wealth* of arithmetic operations (addition,
+subtraction, etc.) between bags, and between bags and integers.
+
+The basic arithmetic operations do what you expect them to, operating on the
+counts of items:
+
+   >>> sandwich = Bag({'bread': 2, 'cheese': 1, 'tomato': 2, 'burger': 1,})
+   >>> salad = Bag({'tomato': 2, 'bell pepper': 1,})
+   >>> single_tomato = Bag({'tomato': 1,})
+   >>> sandwich + single_tomato # Addition
+   Bag({'cheese': 1, 'bread': 2, 'tomato': 3, 'burger': 1})
+   >>> sandwich - single_tomato # Subtraction 
+   Bag({'cheese': 1, 'bread': 2, 'tomato': 1, 'burger': 1})
+   >>> sandwich * 3 # Multiplication
+   Bag({'cheese': 3, 'bread': 6, 'tomato': 6, 'burger': 3})
+   
+As for division: You can divide one bag by another to get an integer saying how
+many times the second bag would go into the first. You can also divide a bag by
+an integer, which will divide all the counts by that integer, rounding down.
+All bag division is done with the floor-division operator ``//``, because it's
+always rounded-down. Examples:
+
+   >>> sandwich // single_tomato # Floor-division by another bag
+   2
+   >>> sandwich // 2 # Floor-division by integer
+   Bag({'bread': 1, 'tomato': 1})
+   
+The more advanced operations are also supported:
+
+   >>> sandwich % salad # Modulo by bag
+   Bag({'bread': 2, 'cheese': 1, 'burger': 1, 'tomato': 2})
+   >>> divmod(sandwich, salad) # Divmod by bag
+   (0, Bag({'tomato': 2, 'cheese': 1, 'bread': 2, 'burger': 1}))
+   >>> salad % 2 # Modulo by integer
+   Bag({'bell pepper': 1})
+   >>> divmod(salad, 2) # Divmod by integer
+   (Bag({'tomato': 1}), Bag({'bell pepper': 1}))
+   >>> salad ** 3 # Exponentiation
+   Bag({'tomato': 8, 'bell pepper': 1})
+   >>> pow(salad, 3, 5) # Exponentiation with modulo
+   Bag({'tomato': 3, 'bell pepper': 1})
+
+And... Did someone say logical operations? Like in Python sets, these do
+`union`_ and `intersection`_:
+
+   >>> sandwich | salad # Logical or, a.k.a. set union
+   Bag({'bread': 2, 'cheese': 1, 'burger': 1, 'tomato': 2, 'bell pepper': 1})
+   >>> sandwich & salad # Logical and, a.k.a. set intersection
+   Bag({'tomato': 2})
+   
+As a final note about arithmetic operations, augmented assignment is supported
+for all operations, so you can elegantly mutate bags in-place like this:
+
+   >>> sandwich += Bag({'bacon': 2, 'egg': 1,})
+   >>> sandwich
+   Bag({'cheese': 1, 'bacon': 2, 'bread': 2, 'egg': 1, 'burger': 1, 'tomato': 2})
+   >>> sandwich **= 2
+   >>> sandwich
+   Bag({'cheese': 1, 'bacon': 4, 'bread': 4, 'egg': 1, 'burger': 1, 'tomato': 4})
+   
+
+.. _multiset: https://en.wikipedia.org/wiki/Multiset
+.. _partial order: https://en.wikipedia.org/wiki/Partially_ordered_set
+.. _union: http://en.wikipedia.org/wiki/Union_(set_theory)
+.. _intersection: http://en.wikipedia.org/wiki/Intersection_(set_theory)
+.. _"This sort of thing is my bag, baby!": https://www.youtube.com/watch?v=3WCvULMRUq8
