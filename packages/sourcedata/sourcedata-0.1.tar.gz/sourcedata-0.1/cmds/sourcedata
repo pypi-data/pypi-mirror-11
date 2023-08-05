@@ -1,0 +1,46 @@
+#!/usr/bin/env python
+
+# Usage: sourcedata mygenerators.py -lang c++ -o testdata/MyTestdata.h
+
+import os
+import sys
+import imp
+import random
+import argparse
+
+import sourcedata
+
+def main():
+	parser = argparse.ArgumentParser()
+	parser.add_argument('path', type=str)
+	parser.add_argument('--output', '-o', type=str)
+	parser.add_argument('--lang', choices=['cpp', 'golang'], default=None)
+	parser.add_argument('--package', default='main')
+	args = parser.parse_args()
+
+	name, ext = os.path.splitext(os.path.basename(args.path))
+	imp.load_source(name, args.path)
+
+	lang = args.lang
+	outstream = sys.stdout
+	if args.output:
+		try:
+			os.makedirs(os.path.dirname(args.output))
+		except:
+			pass
+
+		outstream = open(args.output, "w")
+		if lang is None:
+			_, output_ext = os.path.splitext(args.output)
+			if output_ext.lower() in ['.h', '.cpp']:
+				lang = "cpp"
+			elif output_ext.lower() == '.go':
+				lang = "golang"
+			else:
+				print("Could not deduce language from file extension %s. Try specifying --lang manually." % ext)
+
+	sourcedata.main(lang, package=args.package, stream=outstream)
+
+
+if __name__ == '__main__':
+	main()
