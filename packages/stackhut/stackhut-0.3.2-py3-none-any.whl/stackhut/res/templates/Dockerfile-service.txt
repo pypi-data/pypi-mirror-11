@@ -1,0 +1,40 @@
+FROM stackhut/{{ service.from_image }}:latest
+MAINTAINER "{{ service.usercfg.email }}" <{{ service.usercfg.username }}>
+LABEL description="{{ service.hutcfg.description }}"
+
+{% if service.hutcfg.os_deps %}
+# install OS packages needed for service
+RUN echo "Starting..." && \
+    {% for cmd in service.baseos.install_os_pkg(service.hutcfg.os_deps) -%}
+    {{ cmd }} && \
+    {% endfor -%}
+    echo "...done" && exit
+{% endif %}
+
+# setup the env and copy all files and dirs across
+WORKDIR /workdir
+COPY Hutfile {{ service.stack.entrypoint }} {{ service.stack.install_service_file }} {{ service.hutcfg.files|join(' ') }} ./
+COPY .stackhut ./.stackhut
+{% for d in service.hutcfg.dirs -%}
+COPY {{ d }} ./{{ d }}
+{% endfor -%}
+
+{% if service.stack.install_service_file %}
+# install lang packages needed for stack
+RUN {{ service.stack.install_service_pkgs() }} # cache bust - {{ service.build_date }}
+{% endif %}
+
+# any other Docker toolkit.commands
+{% for cmd in service.hutcfg.docker_cmds -%}
+{{ cmd }}
+{% endfor -%}
+
+# OK - now setup stackhut runner
+# TODO - move into Docker-runtime.txt, inject stackhut cmd in on server?
+# following toolkit.commands never cached
+
+# setup the entrypoint (using -vv for now)
+ENTRYPOINT ["/usr/bin/python3", "/usr/bin/stackhut", "-vv", "run"]
+
+# install stackhut app
+RUN pip3 install --no-cache-dir --compile stackhut  # cache bust - {{ service.build_date }}
