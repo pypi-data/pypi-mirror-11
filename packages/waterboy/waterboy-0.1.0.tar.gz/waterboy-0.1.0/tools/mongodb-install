@@ -1,0 +1,129 @@
+#!/bin/bash
+
+################################
+# download and install mongodb #
+################################
+
+mongo_version="3.0.5"
+
+usage() {
+    echo "USAGE:"
+    echo ""
+    echo "    $ mongodb-install <INSTALL_ROOT> [BIN_ROOT]"
+    echo ""
+}
+
+set -e
+
+###############################################################################
+# 1. Determine $TOOLS_HOME
+###############################################################################
+
+# find directory containing current script
+# do this so that the script can be easily relocated or symlinked
+
+SCRIPT="$0"
+
+# SCRIPT may be an arbitrarily deep series of symlinks. Loop until we have the concrete path.
+while [ -h "$SCRIPT" ] ; do
+  ls=`ls -ld "$SCRIPT"`
+  # Drop everything prior to ->
+  link=`expr "$ls" : '.*-> \(.*\)$'`
+  if expr "$link" : '/.*' > /dev/null; then
+    SCRIPT="$link"
+  else
+    SCRIPT=`dirname "$SCRIPT"`/"$link"
+  fi
+done
+
+TOOLS_HOME=$(dirname "$SCRIPT")
+
+# make TOOLS_HOME absolute
+TOOLS_HOME=$(cd "$TOOLS_HOME"; pwd)
+
+###############################################################################
+# 2. Setup
+###############################################################################
+
+INSTALL_ROOT="$1"
+BIN_ROOT="$2"
+
+if [ -z "$INSTALL_ROOT" ]; then
+    usage;
+    exit 1;
+fi
+
+mkdir -p $INSTALL_ROOT
+
+# make INSTALL_ROOT absolute
+INSTALL_ROOT=$(cd $(dirname $INSTALL_ROOT) && pwd)/$(basename $INSTALL_ROOT)
+
+if [ -n "$BIN_ROOT" ]; then
+    mkdir -p $BIN_ROOT
+    # make BIN_ROOT absolute
+    BIN_ROOT=$(cd $(dirname $BIN_ROOT) && pwd)/$(basename $BIN_ROOT)
+fi
+
+DOWNLOAD_CACHE="$TOOLS_HOME/.downloads"
+
+###############################################################################
+# 3. Install MongoDB
+###############################################################################
+platform=$(uname)
+
+if [ $platform = "Darwin" ]; then
+    mongo_archive="mongodb-osx-x86_64-${mongo_version}"
+    mongo_url="https://fastdl.mongodb.org/osx/${mongo_archive}.tgz"
+else
+    mongo_archive="mongodb-linux-x86_64-ubuntu1404-${mongo_version}"
+    mongo_url="https://fastdl.mongodb.org/linux/${mongo_archive}.tgz"
+fi
+
+mongo_download="$DOWNLOAD_CACHE/$mongo_archive.tgz"
+mongo_install_dest="$INSTALL_ROOT/mongodb-$mongo_version"
+mongo_binaries="mongo mongod mongodump mongoexport mongofiles mongoimport mongorestore mongos mongosniff mongostat"
+
+
+# don't clobber existing directory
+if [ -e $mongo_install_dest ]; then
+    echo "MongoDB installation found - $mongo_install_dest"
+else
+    mkdir -p $DOWNLOAD_CACHE
+
+    # download tarball if it doesn't exist in $DOWNLOAD_CACHE
+    if [ ! -e $mongo_download ]; then
+        pushd /tmp
+        rm -f $mongo_archive
+        echo "::::: Downloading $mongo_url"
+        curl -o $mongo_archive $mongo_url
+        mv $mongo_archive $mongo_download
+        popd
+    fi
+
+    # uncompress and move to INSTALL_ROOT
+    pushd $DOWNLOAD_CACHE
+    echo "::::: Uncompressing $mongo_download"
+    tar -xzvf $mongo_download
+    echo "::::: Installing mongodb to $mongo_install_dest"
+    mkdir -p $INSTALL_ROOT
+    mv $mongo_archive $mongo_install_dest
+    popd
+fi
+
+# if a $BIN_ROOT was specified, symlink all binaries
+if [ -n "$BIN_ROOT" ]; then
+    mkdir -p "$BIN_ROOT"
+    for f in $mongo_binaries; do
+        src=$mongo_install_dest/bin/$f
+        dst=$BIN_ROOT/$f
+        if [ -e $src ]; then
+            if [ -e $dst ]; then rm -f $dst; fi
+            echo "::::: Creating symlink to binary $dst"
+            ln -s $src $dst
+        else
+            echo "::::: Not found - $src"
+        fi
+    done
+fi
+
+
