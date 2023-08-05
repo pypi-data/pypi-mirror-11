@@ -1,0 +1,107 @@
+
+Coltron
+=======
+
+
+Overview
+--------
+
+Coltron is an application designed to build transcriptional regulatory networks.
+
+
+Installation
+------------
+
+Installation of Coltron has only been vetted on Ubuntu 12.04 LTS and Ubuntu 14.04 LTS. If you encounter \
+any errors in the installation process, please contact drpolaskijr@gmail.com for additional help.
+
+**Confirm PIP Installation**::
+
+      pip --version                                                                                            
+      pip 1.5.6 from /usr/local/lib/python2.7/dist-packages/pip-1.5.6-py2.7.egg (python 2.7)
+
+If the pip --version command generates a command not found error, you will have to download PIP. Instructions for the installation can be found at the following `location
+<https://pip.pypa.io/en/latest/installing.html>`_. 
+
+Run the following command to start the module download::
+
+      $ sudo pip install coltron
+
+This command should produce output that looks like this::
+
+      $ sudo pip install coltron
+
+Once the PIP installation is complete, the data files that Coltron uses to operate must be downloaded.
+
+**Data Download**
+
+Coltron provides a command for downloading its required files. The command can be executed as follows::
+      
+      $ sudo coltron-get-data
+
+The required data is downloaded from the web and stored in Coltron's data repository. This process can be time consuming.
+
+Usage
+-----
+The following command is used to run the main Coltron executable::
+
+$ coltron [options] -e [ENHANCER_FILE] -b [BAM_FILE] -g [GENOME] -o [OUTPUTFOLDER] -n [NAME]
+
+Options::
+
+  -h HELP, --help            show this help message and exit
+  -e ENHANCERS, --enhancer_file=ENHANCERS
+                        Provide a ROSE generated enhancer table
+                        (_AllEnhancers.table.txt)
+  -b BAM, --bam=BAM     Provide a bam that corresponds to the super enhancer
+                        table
+  -g GENOME, --genome=GENOME
+                        Provide the build of the genome to be used for the
+                        analysis. Currently supports HG19, HG18 and MM9
+  -o OUTPUT, --output=OUTPUT
+                        Enter an output folder
+  -n NAME, --name=NAME  Provide a name for the job
+  -s SUBPEAKS, --subpeaks=SUBPEAKS
+                        Enter a BED file of regions to search for motifs
+  -x EXPCUTOFF, --expCutoff=EXPCUTOFF
+                        Enter the expression cutoff to be used to define
+                        canidate TFs
+  -l EXTENSION, --extension-length=EXTENSION
+                        Enter the length to extend subpeak regions for motif
+                        finding
+  -a ACTIVITY, --activity=ACTIVITY
+                        A table with refseq in the first column and activity
+                        (expression or promoter acetylation) in second
+  -E ENUMBER, --enhancer_number=ENUMBER
+                        Enter the number of top ranked enhancers to include in
+                        the anlaysis. Default is all super-enhancers
+  --promoter=PROMOTER   Enter True if the promoters should be included in the
+                        analysis
+  --motifs=MOTIFS       Enter an alternative PWM file for the analysis
+  -t TFS, --tfs=TFS     Enter additional TFs (comma separated) to be used in
+                        the bindinf analysis
+  -v VALLEY, --valley=VALLEY
+                        Paramater for valley calling threshold, default = 0.3
+
+Dependencies
+------------
+
+Coltron has a number of software dependencies for full operation:
+
+`Bamliquidator
+<https://github.com/BradnerLab/pipeline/wiki/bamliquidator>`_ – version 1.2.0
+
+`Samtools
+<http://samtools.sourceforge.net>`_
+– version 0.1.19
+
+`FIMO 
+<http://meme-suite.org/doc/install.html>`_
+– version 4.91
+
+`NetworkX 
+<https://networkx.github.io>`_
+version 1.8.1
+
+PIP installation will take care of the NetworkX dependency. Installation guides
+for the remaining dependecies can be found at the links provided.
