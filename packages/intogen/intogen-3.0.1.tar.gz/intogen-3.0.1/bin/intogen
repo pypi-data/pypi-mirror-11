@@ -1,0 +1,367 @@
+#!/usr/bin/env python
+import logging
+import sys
+
+from functools import partial
+from intogen.constants.help_strings import *
+from intogen.constants.configuration import MAIN_SCRIPT_CONFIGURATION
+from intogen.constants.data_headers import TRANSCRIPT, GENE, MOST_SEVERE_CONSEQUENCE, PROTEIN_POS, CHR, STRAND, START, REF, ALT, AA_CHANGE
+from intogen.generators import ALL_PROJECTS, POOL_PREFIX, PROJECTS_DIR
+from ruffus import *
+from ruffus.combinatorics import product
+from intogen import tasks
+from intogen.config import get_config
+from intogen.setup import intogen_setup
+from intogen.utils import check_file_exists_and_mod_time, scheduler
+from intogen import __version__
+
+
+# PIPELINE PREPARATION
+# -----------------------
+
+# Parser arguments
+parser = cmdline.get_argparse(description='Intogen tasks', ignored_args=['jobs', 'use_threads'], version="IntOGen version {}".format(__version__))
+parser.add_argument('-i', action='append', default=[], dest='input_files', help=INPUT_FILES)
+parser.add_argument('-o', '--output', dest='results_dir', default='output', help="By default 'output'")
+parser.add_argument("-g", "--group-by", default=[], action="append", dest="group_by", help=GROUP_BY)
+parser.add_argument("-A", "--group-by-all", dest="group_all", action="store_true", help=GROUP_BY_ALL)
+parser.add_argument("-a", "--annotation-file", dest="annotation_file", help=ANNTOTATION_FILES)
+parser.add_argument("-c", "--configuration-file", dest="configuration_files", action="append", default=[], help=CONFIGURATION_FILES)
+parser.add_argument("--no-time-check", action="store_true", default=False, dest="no_time_check", help=OUTPUT_TIME_CHECK)
+parser.add_argument('--split-size', default=500, dest="split_size", help="By default 500")
+parser.add_argument('-q', action='append', default=[], dest="queue", help=DRMAA_QUEUES)
+parser.add_argument('--skip-pathways', dest='skip_pathways', default=False, action="store_true", help="Don't compute pathways results, only genes.")
+parser.add_argument('--skip-indels', dest='skip_indels', default=False, action="store_true", help="Don't compute indel variants.")
+parser.add_argument('--plots', dest="plots", default=False, action="store_true", help="Generate some qq-plots")
+parser.add_argument('--oncodrivefm-samplings', default=10000, dest="oncodrivefm_samplings", help="Random samplings at OncodriveFM. By default 10000.")
+parser.add_argument('--setup', dest='setup', default=False, action="store_true", help="Download or update all the data dependencies.")
+parser.add_argument("-j", "--jobs", default=None, type=int, help=JOBS_PARALLEL)
+options = parser.parse_args()
+
+# Check datasets downloaded and configuartion present
+intogen_setup(download=options.setup)
+
+# Build config and create files if not exists
+config = get_config(options)
+
+# Exit if we are in setup mode
+if options.setup:
+    logging.info("Intogen setup finished. Check 'intogen --help' for more details.")
+    sys.exit(0)
+
+# Build task executor
+if options.group_all:
+    options.group_by.append(ALL_PROJECTS)
+
+main_script_conf = MAIN_SCRIPT_CONFIGURATION
+logging.info("INTOGEN PIPELINE {} called as follows:\n\tintogen {}".format(__version__, " ".join(sys.argv[1:])))
+exec_config = config.get_bulk_config(main_script_conf.keys())
+executor = config.get_executor()
+
+is_up_to_date = partial(check_file_exists_and_mod_time, check_time=not options.no_time_check)
+
+# RUFFUS PIPELINE TASKS
+# -----------------------------
+
+
+# Parse variant files
+@check_if_uptodate(is_up_to_date)
+@files(config.get_projects_generator())
+def parse_variants(input_files, output_file, project_key):
+    executor.submit(
+        tasks.variants,
+        input_files,
+        output_file,
+        input_assembly=config.get_project_config(project_key, 'annotation.assembly'),
+        skip_indels=options.skip_indels,
+        scheduler=scheduler('parse_variants', project_key)
+    )
+
+
+# Split in small files to parallellize
+@check_if_uptodate(is_up_to_date)
+@subdivide(parse_variants, formatter(), "{path[0]}/{basename[0]}.*.step0", "{subdir[0][1]}")
+def split(input_file, output_files, project_key):
+    executor.submit(
+        tasks.split,
+        input_file,
+        output_files,
+        pattern='*.step0',
+        max_rows=options.split_size,
+        scheduler=scheduler('split', project_key)
+    )
+
+
+# Calculate transcript impact
+@check_if_uptodate(is_up_to_date)
+@transform(split, formatter(), "{path[0]}/{basename[0]}.step1", "{subdir[0][1]}", "{basename[0]}")
+def functional_impact(input_file, output_file, project_key, split_num):
+    executor.submit(
+        tasks.functional_impact,
+        input_file, output_file,
+        scheduler=scheduler('functional_impact', project_key, split_num.replace("variants.", ""))
+    )
+
+
+# Join transcript impact group by project
+@check_if_uptodate(is_up_to_date)
+@collate(functional_impact, formatter(), "{subpath[0][1]}/sample_variant+transcript.impact", "{subdir[0][0]}")
+def transcript_impacts(input_file, output_file, project_key):
+    executor.submit(
+        tasks.concat,
+        input_file,
+        output_file,
+        scheduler=scheduler('transcript_impacts', project_key)
+    )
+
+# Create a artificial dataset for a pooled analysis
+# preparation
+pool_name = ""
+pool_projects_matcher = ""
+if exec_config["pool_analysis_enabled"]:
+    pool_name = POOL_PREFIX + exec_config["pool_name"]
+    pool_projects = "|".join([p for p in exec_config["pool_projects"]])
+    pool_projects_matcher = ".+" + PROJECTS_DIR + "/({})/.*".format(pool_projects)
+    logging.info("Pool projects-matcher: {}".format(pool_projects_matcher))
+
+
+@check_if_uptodate(is_up_to_date)
+@active_if(exec_config["pool_analysis_enabled"])
+@collate(transcript_impacts, formatter(pool_projects_matcher), "{subpath[0][1]}/" + pool_name + "/sample_variant+transcript.impact", "")
+def create_pool(input_file, output_file, project_key):
+
+    executor.submit(
+        tasks.concat,
+        input_file,
+        output_file,
+        scheduler=scheduler('create_pool', project_key)
+    )
+
+
+# Calculate gene impact group by project
+@check_if_uptodate(is_up_to_date)
+@transform([transcript_impacts, create_pool], formatter(), "{path[0]}/sample_gene.impact", "{subdir[0][0]}")
+def geneimpact(input_file, output_file, project_key):
+    executor.submit(
+        tasks.geneimpact,
+        input_file,
+        output_file,
+        scheduler=scheduler('geneimpact', project_key)
+    )
+
+
+# Calculate MutSigCV
+@active_if(exec_config["mutsig_enabled"])
+@check_if_uptodate(is_up_to_date)
+@transform([transcript_impacts, create_pool], formatter(), "{subpath[0][0]}/gene.mutsig", "{subdir[0][0]}")
+def mutsigcv(input_file, output_file, project_key):
+    executor.submit(
+        tasks.mutsigcv,
+        input_file,
+        output_file,
+        gene_filter_path=config.get_project_config(project_key, 'mutsig.genes_filter_file'),
+        scheduler=scheduler('mutsigcv', project_key)
+    )
+
+
+# Calculate OncodriveFM genes
+@check_if_uptodate(is_up_to_date)
+@transform(geneimpact, formatter(), "{subpath[0][0]}/gene.oncodrivefm", "{subdir[0][0]}")
+def oncodrivefm_genes(input_file, output_file, project_key):
+    executor.submit(
+
+        tasks.oncodrivefm,
+        input_file, output_file,
+        gene_threshold=config.get_project_config(project_key, 'oncodrivefm.samples_threshold'),
+        filter_path=config.get_project_config(project_key, 'oncodrivefm.genes_filter_file'),
+        save_analysis=True,
+        plots=options.plots,
+        num_samplings=options.oncodrivefm_samplings,
+
+        scheduler=scheduler('oncodrivefm_genes', project_key)
+    )
+
+
+# Calculate OncodriveFM pathways
+@active_if(options.skip_pathways is False)
+@check_if_uptodate(is_up_to_date)
+@transform(geneimpact, formatter(), "{subpath[0][0]}/pathway.oncodrivefm", "{subdir[0][0]}")
+def oncodrivefm_pathways(input_file, output_file, project_key):
+    executor.submit(
+        tasks.oncodrivefm,
+        input_file, output_file,
+        kegg_path=exec_config['kegg_path'],
+        pathways_only=True,
+        save_analysis=True,
+        filter_path=config.get_project_config(project_key, 'oncodrivefm.genes_filter_file'),
+        scheduler=scheduler('oncodrivefm_pathways', project_key)
+    )
+
+
+# Calculate OncodriveCLUST
+@check_if_uptodate(is_up_to_date)
+@transform([transcript_impacts, create_pool], formatter(), "{subpath[0][0]}/gene.oncodriveclust", "{subdir[0][0]}")
+def oncodriveclust(input_file, output_file, project_key):
+    executor.submit(
+        tasks.oncodriveclust,
+        input_file, output_file,
+        gene_transcripts_path=exec_config["gene_transcripts_path"],
+        samples_threshold=config.get_project_config(project_key, 'oncodriveclust.samples_threshold'),
+        gene_filter_path=config.get_project_config(project_key, 'oncodriveclust.genes_filter_file'),
+        scheduler=scheduler('oncodriveclust', project_key)
+    )
+
+# Calculate transcript recurrences
+@check_if_uptodate(is_up_to_date)
+@transform([transcript_impacts, create_pool], formatter(), "{subpath[0][0]}/transcript.recurrences", "{subdir[0][0]}")
+def recurrences_transcripts(input_file, output_file, project_key):
+    executor.submit(
+        tasks.recurrences,
+        input_file,
+        output_file,
+        group_by=[GENE, TRANSCRIPT, CHR, STRAND, START, REF, ALT, PROTEIN_POS, AA_CHANGE, MOST_SEVERE_CONSEQUENCE],
+        scheduler=scheduler('recurrences_transcripts', project_key)
+    )
+
+
+# Calculate gene recurrences
+@check_if_uptodate(is_up_to_date)
+@transform([transcript_impacts, create_pool], formatter(), "{subpath[0][0]}/gene.recurrences", "{subdir[0][0]}")
+def recurrences_genes(input_file, output_file, project_key):
+    executor.submit(
+        tasks.recurrences,
+        input_file,
+        output_file,
+        group_by=GENE,
+        scheduler=scheduler('recurrences_genes', project_key)
+    )
+
+
+# Calculate pathway recurrences
+@check_if_uptodate(is_up_to_date)
+@transform([transcript_impacts, create_pool], formatter(), "{subpath[0][0]}/pathway.recurrences", "{subdir[0][0]}")
+def recurrences_pathways(input_file, output_file, project_key):
+    executor.submit(
+        tasks.recurrences,
+        input_file,
+        output_file,
+        group_by=GENE,
+        kegg_path=exec_config['kegg_path'],
+        scheduler=('recurrences_pathways', project_key)
+    )
+
+# Aggregate gene results and perform driver calling for the pool-analysis
+pool_matcher = ".+" + pool_name + ".+"
+
+
+@active_if(exec_config["pool_analysis_enabled"])
+@check_if_uptodate(is_up_to_date)
+@collate([oncodriveclust, oncodrivefm_genes, mutsigcv, recurrences_genes], formatter(pool_matcher), "{subpath[0][0]}/gene.tsv",
+         "{subdir[0][0]}")
+def pool_gene_results(input_files, output_file, project_key):
+    executor.submit(
+        tasks.gene_results,
+        input_files,
+        output_file,
+        thresholds={
+            'oncodrivefm': config.get_project_config(project_key, 'oncodrivefm.significance_threshold'),
+            'oncodriveclust': config.get_project_config(project_key, 'oncodriveclust.significance_threshold'),
+            'mutsig': config.get_project_config(project_key, 'mutsig.significance_threshold')
+        },
+        scheduler=('pool_gene_results', project_key)
+    )
+
+
+@check_if_uptodate(is_up_to_date)
+@product([recurrences_genes], formatter(pool_projects_matcher), [pool_gene_results], formatter(), "{subpath[0][0][0]}/gene.pooldriven",
+         "{subdir[0][0][0]}")
+def pool_drivers(input_files, output_file, project_key):
+    executor.submit(
+        tasks.pool_drivers,
+        input_files[0],
+        output_file,
+        pool=input_files[1],
+        thresholds={
+            'oncodrivefm': config.get_project_config(project_key, 'oncodrivefm.samples_threshold'),
+            'oncodriveclust': config.get_project_config(project_key, 'oncodriveclust.samples_threshold'),
+        },
+        scheduler=('pool_drivers', project_key)
+    )
+
+
+anti_pool_matcher = "^((?!POOL).)*$"
+# Aggregate gene results and perform driver calling
+@check_if_uptodate(is_up_to_date)
+@collate([oncodriveclust, oncodrivefm_genes, mutsigcv, recurrences_genes, pool_drivers],
+         formatter(anti_pool_matcher), "{subpath[0][0]}/gene.tsv", "{subdir[0][0]}")
+def gene_results(input_files, output_file, project_key):
+    executor.submit(
+        tasks.gene_results,
+        input_files,
+        output_file,
+        thresholds={
+            'oncodrivefm': config.get_project_config(project_key, 'oncodrivefm.significance_threshold'),
+            'oncodriveclust': config.get_project_config(project_key, 'oncodriveclust.significance_threshold'),
+            'mutsig': config.get_project_config(project_key, 'mutsig.significance_threshold')
+        },
+        scheduler=('gene_results', project_key)
+    )
+
+
+@check_if_uptodate(is_up_to_date)
+@collate([gene_results, parse_variants],
+         regex(r"(.*" + PROJECTS_DIR + "/)([^/]+)/(variants/)?[^/]*$"), r"\1\2/summary.tsv", r"\2")
+def project_summary(input_files, output_file, project_key):
+    executor.submit(
+       tasks.project_summary,
+       input_files,
+       output_file,
+       project_key=project_key,
+       scheduler=('project_summary', project_key)
+    )
+
+# Combine gene results into aggregated results (-g or -A option)
+@follows(project_summary)
+@check_if_uptodate(is_up_to_date)
+@files(config.get_projects_combination_generator().generate_groups(options.group_by, "summary.tsv", ["summary.tsv"]))
+def combine_summaries(input_files, output_file, grouping_key, group):
+    executor.submit(
+        tasks.summary_combinations,
+        input_files,
+        output_file,
+        grouping_key=grouping_key,
+        group=group,
+        scheduler=scheduler('summary_combinations', group)
+    )
+
+
+# Combine gene results into aggregated results (-g or -A option)
+@follows(combine_summaries)
+@check_if_uptodate(is_up_to_date)
+@files(config.get_projects_combination_generator().generate_groups(options.group_by, "gene.tsv", ["gene_aggregation.tsv", "gene_concat.tsv"]))
+def combine_genes(input_files, output_file, grouping_key, group):
+    executor.submit(
+        tasks.gene_combinations,
+        input_files,
+        output_file,
+        grouping_key=grouping_key,
+        group=group,
+        scheduler=scheduler('gene_combinations', group)
+    )
+
+# Combine transcript recurrences (-g or -A option)
+@follows(combine_summaries)
+@check_if_uptodate(is_up_to_date)
+@files(config.get_projects_combination_generator().generate_groups(options.group_by, "transcript.recurrences", ["transcript.recurrences"]))
+def combine_transcripts(input_files, output_file, grouping_key, group):
+    executor.submit(
+        tasks.transcript_combinations,
+        input_files,
+        output_file,
+        grouping_key=grouping_key,
+        group=group,
+        scheduler=scheduler('transcript_combinations', group)
+    )
+
+# Run the pipeline
+executor.run()
