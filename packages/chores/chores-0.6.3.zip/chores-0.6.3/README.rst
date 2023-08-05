@@ -1,0 +1,160 @@
+
+| |version| |downloads| |supported-versions| |supported-implementations|
+
+.. |version| image:: http://img.shields.io/pypi/v/chores.svg?style=flat
+    :alt: PyPI Package latest release
+    :target: https://pypi.python.org/pypi/chores
+
+.. |downloads| image:: http://img.shields.io/pypi/dm/chores.svg?style=flat
+    :alt: PyPI Package monthly downloads
+    :target: https://pypi.python.org/pypi/chores
+
+.. |supported-versions| image:: https://img.shields.io/pypi/pyversions/chores.svg
+    :alt: Supported versions
+    :target: https://pypi.python.org/pypi/chores
+
+.. |supported-implementations| image:: https://img.shields.io/pypi/implementation/chores.svg
+    :alt: Supported implementations
+    :target: https://pypi.python.org/pypi/chores
+
+
+Just about all programs process "items" of one sort or another. That's what
+loops are for, right?
+
+But with the exception of the current loop value or index, programming
+languages don't help track how processing is going. How many items have been
+*successfully* processed? How many *errors* are there? How far along the
+total job are we right now? Which items had problems that need to be looked
+at later?
+
+Even though these bookkeeping tasks are essential to just about every
+program, they're "left to the reader." "Here are some basic loops. Have
+fun!" So developers "reinvent the wheel," tracking status with *ad hoc*
+containers, counters, and status flags for every new program. Not so
+high-level after all, huh?
+
+``chores`` fights needless this complexity, errors, and effort by providing
+a simple, repeatable pattern for processing items and tracking their status.
+
+The documentation can be found at `Read the Docs
+<http://chores.readthedocs.org/en/latest/>`_.
+
+Usage
+=====
+
+::
+
+    from chores import Chores
+
+    chores = Chores('Jones able baker charlie 8348 Smith Brown Davis'.split())
+
+    for c in chores:
+        status = 'name' if c.istitle() else 'other'
+        chores.mark(c, status)
+
+    print chores.count('name'), "names,", \
+          chores.count('^name'), "others"
+
+Yields::
+
+    4 names, 4 others
+
+Or if you decide you actually want more information, change just the output
+statements::
+
+    print todos.count('name'),  "names:", todos.marked('name')
+    print todos.count('^name'), "others:", todos.marked('^name')
+
+Now you get::
+
+    4 names: ['Jones', 'Smith', 'Brown', 'Davis']
+    4 others: ['able', 'baker', 'charlie', '8348']
+
+Discussion
+==========
+
+Many programs track the status of items being processed with various lists,
+dictionaries, sets, counters, and status flags. ``chores`` might not seem a
+great advance at first, since it has the same kind of initialization and
+looping.
+
+But it gets more interesting at the end of the processing loop, where the
+summary or report of what was processed, the disposition of each item worked
+on, what items yielded errors or other conditions, and what special cases
+were handled is produced.
+
+In the examples above, we never had to keep a counter of how many names were found,
+or how many non-names. When we decided we wanted to change the output from
+summary counts to a full listing, we didn't have go back and collect
+different information. We just differently displayed information already at
+at hand. Also note that the order of the results is nicely maintained.
+When we're reviewing reports about "what transpired," we don't have to work
+very hard to correlate the results with the inputs; unlike when using ``dict``
+and ``set`` structures, items are reported on in the same order they arrived.
+
+Typically a developer will start with only a little thought about various
+dispositions for each item being processed. Over time, she'll start to
+realize: "I need to count those cases, so I can report on them!" Or, "I kept
+an error counter, but I really should have been keeping a list of which
+items broke, because I now have to tell the user not just how many went
+wrong, but which ones in particular." Or "I need to keep track of which ones
+failed the main processing so that I can do more intensive processing on
+just those special cases." Then she'll go back and add counters, collection
+lists, and so on--adding a fair amount of *ad hoc* code that must be built,
+tested, and debugged.
+
+This is especially tricky for data that needs to move through multiple
+stages or phases of work. The developer then has to add structures to
+communicate from earlier processing steps to later ones.
+
+With ``chores``, there's no need for such custom work. It takes over
+tracking which items led to which outcomes. It's always ready to render
+quality information, either for reporting or for managing subsequent
+processing. Bookkeeping information is readily available in
+a tidy, logical format, with no additional development effort.
+
+``chores`` especially shows its virtues as processing code becomes
+more intricate and as program needs evolve over time.
+
+Additional information can be found at `Read the Docs
+<http://chores.readthedocs.org/en/latest/>`_.
+
+Notes
+=====
+
+ *  I've successfully used ``chores`` in my own projects, and it has a
+    real test suite. But realistically it should be considered
+    "early beta" code. It's explicitly part of experiment to up-level
+    development tasks, so its API and mode of use will evolve.
+
+ *  ``chores`` is an example of "cross-cutting"--dealing with several
+    apparently disconnected concerns in a concerted way because they are,
+    in fact, connected, and need to be handled systematically.
+
+ *  Automated multi-version testing managed with the wonderful `pytest
+    <http://pypi.python.org/pypi/pytest>`_ and `tox
+    <http://pypi.python.org/pypi/tox>`_. Successfully packaged for, and
+    tested against, all late-model versions of Python: 2.6, 2.7, 3.2, 3.3,
+    and 3.4, as well as PyPy 2.6.0 (based on 2.7.9) and PyPy3 2.4.0 (based
+    on 3.2.5). Should run fine on Python 3.5, though py.test is broken on
+    its pre-release iterations.
+
+ *  The author, `Jonathan Eunice <mailto:jonathan.eunice@gmail.com>`_ or
+    `@jeunice on Twitter <http://twitter.com/jeunice>`_
+    welcomes your comments and suggestions.
+
+Installation
+============
+
+To install or upgrade to the latest version::
+
+    pip install -U chores
+
+To ``easy_install`` under a specific Python version (3.3 in this example)::
+
+    python3.3 -m easy_install --upgrade chores
+
+(You may need to prefix these with ``sudo`` command to authorize
+installation. In environments without super-user privileges, you may want to
+use ``pip``'s ``--user`` option, to install only for a single user, rather
+than system-wide.)
