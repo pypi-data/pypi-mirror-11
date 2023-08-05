@@ -1,0 +1,84 @@
+#!/bin/bash
+
+eval "$(docopts -V - -h - : "$@" <<EOF
+ismerged
+
+Takes a github pull request (either url or number) and a list of branches.
+Checks to see if the pull is present in the branches.
+
+usage:
+  ismerged [options] --pull=<pull> [<branches>...]
+  ismerged [options] --rev=<rev>   [<branches>...]
+
+Options:
+  -h --help      Show this screen.
+  --version      Show version.
+  --depot=<path> Use this depot.
+----
+ismerged 0.1.0
+Copyright (C) 2015 Andrew Thomson
+License MIT
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+EOF
+)"
+
+if [ -z "$path" ]
+then
+  pushd "$path" >/dev/null
+  if [ $? -ne 0 ]
+  then
+    echo "Failed to find depot $path"
+    exit 1
+  fi
+fi
+
+if [ ! -z "$pull" ]
+then
+  number=$(echo "$pull" | perl -ne 'if(/^(https?:\/\/github.com\/[^\/]+\/[^\/]+\/pull\/)?(\d+)$/){print "$2\n";exit 0}else{exit 1}')
+  if [ $? -ne 0 ]
+  then
+    echo "Failed to parse $pull"
+    exit 2
+  fi
+  description="Merge pull request #${number} from "
+
+  for branch in "${branches[@]}"
+  do
+    git rev-parse --verify $branch > /dev/null 2>/dev/null
+    if [ $? -ne 0 ]
+    then
+      echo "Branch $branch doesn't exist"
+      exit 3
+    fi
+    git log --oneline $branch | grep -c "${description}" > /dev/null
+    if [ $? -eq 0 ]
+    then
+      echo "Merged  $branch"
+    else
+      echo "Missing $branch"
+    fi
+  done
+elif [ ! -z "$rev" ]
+then
+  for branch in "${branches[@]}"
+  do
+    git rev-parse --verify $branch > /dev/null 2>/dev/null
+    if [ $? -ne 0 ]
+    then
+      echo "Branch $branch doesn't exist"
+      exit 3
+    fi
+    git rev-list $branch | grep -c "${rev}" > /dev/null
+    if [ $? -eq 0 ]
+    then
+      echo "Merged  $branch"
+    else
+      echo "Missing $branch"
+    fi
+  done
+
+else
+  echo "Unknwon option"
+  exit 4
+fi
