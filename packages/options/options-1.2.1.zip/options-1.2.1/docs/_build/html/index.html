@@ -1,0 +1,782 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>options &mdash; options 1.1.2 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '',
+        VERSION:     '1.1.2',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="options 1.1.2 documentation" href="#" />
+    <link rel="next" title="Change Log" href="CHANGES.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="CHANGES.html" title="Change Log"
+             accesskey="N">next</a> |</li>
+        <li><a href="#">options 1.1.2 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="options">
+<h1>options<a class="headerlink" href="#options" title="Permalink to this headline">¶</a></h1>
+<p><tt class="docutils literal"><span class="pre">options</span></tt> helps encapsulate options and configuration data using a
+layered stacking model (a.k.a. nested contexts).</p>
+<p>For most functions and many classes, <tt class="docutils literal"><span class="pre">options</span></tt>
+is overkill.
+Python&#8217;s already-flexible function arguments, <tt class="docutils literal"><span class="pre">*args</span></tt>,
+<tt class="docutils literal"><span class="pre">**kwargs</span></tt>, and inheritance patterns are elegant and sufficient
+for 99.9% of all development situations.
+<tt class="docutils literal"><span class="pre">options</span></tt>
+is for the other 0.1%:</p>
+<blockquote>
+<div><ul class="simple">
+<li>highly functional classes,</li>
+<li>with many different features and options,</li>
+<li>which might be adjusted or overriden at any time,</li>
+<li>yet that need &#8220;reasonable&#8221; or &#8220;intelligent&#8221; defaults, and</li>
+<li>that yearn for a simple, unobtrusive API.</li>
+</ul>
+</div></blockquote>
+<p>In those cases, Python&#8217;s simpler built-in, inheritance-based model
+adds complexity as non-trivial options and argument-management
+code spreads through many individual methods. This is where
+<tt class="docutils literal"><span class="pre">options</span></tt>&#8216;s delegation-based approach begins to shine.</p>
+<img alt="http://d.pr/i/6JI4+" class="align-center" src="http://d.pr/i/6JI4+" />
+<p>For more backstory, see <a class="reference external" href="http://stackoverflow.com/questions/11702437/where-to-keep-options-values-paths-to-important-files-etc/11703813#11703813">this StackOverflow.com discussion of how to combat &#8220;configuration sprawl&#8221;</a>.
+For examples of <tt class="docutils literal"><span class="pre">options</span></tt>
+in use, see <a class="reference external" href="https://pypi.python.org/pypi/say">say</a> and <a class="reference external" href="https://pypi.python.org/pypi/show">show</a>. (If you&#8217;re using <tt class="docutils literal"><span class="pre">options</span></tt> in your own package,
+<a class="reference external" href="mailto:jonathan&#46;eunice&#37;&#52;&#48;gmail&#46;com">drop me a line</a>!)</p>
+</div>
+<div class="section" id="usage">
+<h1>Usage<a class="headerlink" href="#usage" title="Permalink to this headline">¶</a></h1>
+<p>In a typical use of <tt class="docutils literal"><span class="pre">options</span></tt>, your highly-functional
+class defines default option values. Subclasses
+can add, remove, or override options. Instances
+use class defaults, but they can be overridden when each instance
+is created. For any option an instance doesn&#8217;t override, the class
+default &#8220;shines through.&#8221;</p>
+<p>So far, this isn&#8217;t very different from a typical use of Python&#8217;s
+standard instance and
+class variables.  The next step is where <tt class="docutils literal"><span class="pre">options</span></tt> gets interesting.</p>
+<p>Individual method calls can similarly override instance and class defaults.
+The options stated in each method call obtain
+only for the duration of the method&#8217;s execution.
+If the call doesn&#8217;t set a value, the
+instance value applies. If the instance didn&#8217;t set a
+value, its class default applies (and so on, to its superclasses, if any).</p>
+<p>One step further, Python&#8217;s <tt class="docutils literal"><span class="pre">with</span></tt> statement can be used to
+set option values for just a specific duration. As soon as the
+<tt class="docutils literal"><span class="pre">with</span></tt> block exists, the option values automagically fall back to
+what they were before the with block. (In general, if any option is unset,
+its value falls back to what it was in the next higher layer.)</p>
+<p>To recap: Python handles class, subclass, and instance settings.
+<tt class="docutils literal"><span class="pre">options</span></tt> handles these as well, but also
+adds method and transient settings. By default when Python overrides a setting,
+it&#8217;s destructive; the value cannot be &#8220;unset&#8221; without additional code.
+When a program using <tt class="docutils literal"><span class="pre">options</span></tt> overrides a setting, it does so non-destructively,
+layering the new settings atop the previous ones. When attributes are unset,
+they immediately fall back to their prior value (at whatever higher level it
+was last set).</p>
+</div>
+<div class="section" id="an-example">
+<h1>An Example<a class="headerlink" href="#an-example" title="Permalink to this headline">¶</a></h1>
+<p>Unfortunately, because this is a capability designed for high-end, edge-case
+situations, it&#8217;s hard to demonstrate its virtues with
+simple code. But we&#8217;ll give it a shot.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">options</span> <span class="kn">import</span> <span class="n">Options</span><span class="p">,</span> <span class="n">attrs</span>
+
+<span class="k">class</span> <span class="nc">Shape</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+
+    <span class="n">options</span> <span class="o">=</span> <span class="n">Options</span><span class="p">(</span>
+        <span class="n">name</span>   <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+        <span class="n">color</span>  <span class="o">=</span> <span class="s">&#39;white&#39;</span><span class="p">,</span>
+        <span class="n">height</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+        <span class="n">width</span>  <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">options</span> <span class="o">=</span> <span class="n">Shape</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">draw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">opts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">print</span> <span class="n">attrs</span><span class="p">(</span><span class="n">opts</span><span class="p">)</span>
+
+<span class="n">one</span> <span class="o">=</span> <span class="n">Shape</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s">&#39;one&#39;</span><span class="p">)</span>
+<span class="n">one</span><span class="o">.</span><span class="n">draw</span><span class="p">()</span>
+<span class="n">one</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">color</span><span class="o">=</span><span class="s">&#39;red&#39;</span><span class="p">)</span>
+<span class="n">one</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">color</span><span class="o">=</span><span class="s">&#39;green&#39;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">22</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>yielding:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">color</span><span class="o">=</span><span class="s">&#39;white&#39;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;one&#39;</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">10</span>
+<span class="n">color</span><span class="o">=</span><span class="s">&#39;red&#39;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;one&#39;</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">10</span>
+<span class="n">color</span><span class="o">=</span><span class="s">&#39;green&#39;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">22</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;one&#39;</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">10</span>
+</pre></div>
+</div>
+<p>So far we could do this with instance variables and standard arguments. It
+might look a bit like this:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">class</span> <span class="nc">ClassicShape</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s">&#39;white&#39;</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span>   <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">color</span>  <span class="o">=</span> <span class="n">color</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">height</span> <span class="o">=</span> <span class="n">height</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">width</span>  <span class="o">=</span> <span class="n">width</span>
+</pre></div>
+</div>
+<p>but when we got to the <tt class="docutils literal"><span class="pre">draw</span></tt> method, things would be quite a bit messier.:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">draw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="n">name</span>   <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;name&#39;</span><span class="p">,</span>   <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+    <span class="n">color</span>  <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;color&#39;</span><span class="p">,</span>  <span class="bp">self</span><span class="o">.</span><span class="n">color</span><span class="p">)</span>
+    <span class="n">height</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;height&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">height</span><span class="p">)</span>
+    <span class="n">width</span>  <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;width&#39;</span><span class="p">,</span>  <span class="bp">self</span><span class="o">.</span><span class="n">width</span><span class="p">)</span>
+    <span class="k">print</span> <span class="s">&quot;color={0!r}, width={1}, name={2!r}, height={3}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">color</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">height</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>One problem here is that we broke apart the values provided to
+<tt class="docutils literal"><span class="pre">__init__()</span></tt> into separate instance variables, now we need to
+re-assemble them into something unified.  And we need to explicitly
+choose between the <tt class="docutils literal"><span class="pre">**kwargs</span></tt> and the instance variables.  It
+gets repetitive, and is not pretty. Another classic alternative,
+using native keyword arguments, is no better:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">draw2</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="n">name</span>   <span class="o">=</span> <span class="n">name</span>   <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span>
+    <span class="n">color</span>  <span class="o">=</span> <span class="n">color</span>  <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">color</span>
+    <span class="n">height</span> <span class="o">=</span> <span class="n">height</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">height</span>
+    <span class="n">width</span>  <span class="o">=</span> <span class="n">width</span>  <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">width</span>
+    <span class="k">print</span> <span class="s">&quot;color={0!r}, width={1}, name={2!r}, height={3}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">color</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">height</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>If we add just a few more instance variables, we have the <a class="reference external" href="http://en.wikipedia.org/wiki/Mr_Creosote">Mr. Creosote</a> of class design on our hands. For
+every instance variable that might be overridden in a method call, that method
+needs one line of code to decide whether the override is, in fact, in effect.
+Suddenly dealing with parameters starts to be a full-time job, as every possible
+setting has to be managed in every method. That&#8217;s neither elegant nor scalable.
+Pretty soon we&#8217;re in &#8220;just one more wafer-thin mint...&#8221; territory.</p>
+<p>But with <tt class="docutils literal"><span class="pre">options</span></tt>, it&#8217;s easy. No matter how many configuration variables there
+are to be managed, each method needs just one line of code to manage them:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">opts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Changing things works simply and logically:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">Shape</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">color</span><span class="o">=</span><span class="s">&#39;blue&#39;</span><span class="p">)</span>
+<span class="n">one</span><span class="o">.</span><span class="n">draw</span><span class="p">()</span>
+<span class="n">one</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">color</span><span class="o">=</span><span class="s">&#39;red&#39;</span><span class="p">)</span>
+<span class="n">one</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">height</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+<span class="n">one</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">height</span><span class="o">=</span><span class="mi">44</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s">&#39;yellow&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>yields:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">color</span><span class="o">=</span><span class="s">&#39;blue&#39;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;one&#39;</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">10</span>
+<span class="n">color</span><span class="o">=</span><span class="s">&#39;red&#39;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;one&#39;</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">100</span>
+<span class="n">color</span><span class="o">=</span><span class="s">&#39;yellow&#39;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;one&#39;</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">44</span>
+</pre></div>
+</div>
+<p>In one line, we reset the default color for all <tt class="docutils literal"><span class="pre">Shape</span></tt> objects. That&#8217;s
+visible in the next call to <tt class="docutils literal"><span class="pre">one.draw()</span></tt>. Then we set the instance color
+of <tt class="docutils literal"><span class="pre">one</span></tt> (all other <tt class="docutils literal"><span class="pre">Shape</span></tt> instances remain blue). Finally, We call
+one with a temprary override of the color.</p>
+<p>A common pattern makes this even easier:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">class</span> <span class="nc">Shape</span><span class="p">(</span><span class="n">OptionsClass</span><span class="p">):</span>
+    <span class="o">...</span>
+</pre></div>
+</div>
+<p>The <tt class="docutils literal"><span class="pre">OptionsClass</span></tt> base class will provide a <tt class="docutils literal"><span class="pre">set()</span></tt> method so that you
+don&#8217;t need <tt class="docutils literal"><span class="pre">Shape.options.set()</span></tt>. <tt class="docutils literal"><span class="pre">Shape.set()</span></tt> does the same thing,
+resulting in an even simpler API. The <tt class="docutils literal"><span class="pre">set()</span></tt> method is a &#8220;combomethod&#8221; that
+will take either a class or an instance and &#8220;do the right thing.&#8221;
+<tt class="docutils literal"><span class="pre">OptionsClass</span></tt> also provides a <tt class="docutils literal"><span class="pre">settings()</span></tt> method to easily handle
+transient <tt class="docutils literal"><span class="pre">with</span></tt> contexts (more on this in a minute), and a <tt class="docutils literal"><span class="pre">__repr__()</span></tt>
+method so that it prints nicely.</p>
+<p>The more options and settings a class has, the more unwieldy the
+class and instance variable approach becomes, and the more desirable
+the delegation alternative. Inheritance is a great software pattern
+for many kinds of data and program structures&#8211;but it&#8217;s not a
+particularly good pattern for complex option and configuration
+handling.</p>
+<p>For richly-featured classes, <tt class="docutils literal"><span class="pre">options</span></tt>&#8216;s delegation pattern is
+simpler. As the number of options grows, almost no additional code
+is required. More options impose no additional complexity and
+introduce no additional failure modes.  Consolidating options into
+one place, and providing neat attribute-style access, keeps everything
+tidy. We can add new options or methods with confidence:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">is_tall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="n">opts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">opts</span><span class="o">.</span><span class="n">height</span> <span class="o">&gt;</span> <span class="mi">100</span>
+</pre></div>
+</div>
+<p>Under the covers, <tt class="docutils literal"><span class="pre">options</span></tt> uses a variation on the <tt class="docutils literal"><span class="pre">ChainMap</span></tt> data
+structure (a multi-layer dictionary) to provide option stacking. Every
+option set is stacked on top of previously set option sets, with lower-level
+values shining through if they&#8217;re not set at higher levels. This stacking or
+overlay model resembles how local and global variables are managed in many
+programming languages.</p>
+<p>This makes advanced use cases, such as temporary value changes, easy:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">with</span> <span class="n">one</span><span class="o">.</span><span class="n">settings</span><span class="p">(</span><span class="n">height</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s">&#39;purple&#39;</span><span class="p">):</span>
+    <span class="n">one</span><span class="o">.</span><span class="n">draw</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">is_tall</span><span class="p">(</span><span class="n">one</span><span class="p">):</span>
+        <span class="o">...</span>         <span class="c"># it is, but only within the ``with`` context</span>
+
+<span class="k">if</span> <span class="n">is_tall</span><span class="p">(</span><span class="n">one</span><span class="p">):</span>    <span class="c"># nope, not here!</span>
+    <span class="o">...</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">You will still need to do some housekeeping in your class&#8217;s
+<tt class="docutils literal"><span class="pre">__init__()</span></tt> method, including creating a new options layer.
+If you don&#8217;t wish to inherit from <tt class="docutils literal"><span class="pre">OptionsClass</span></tt>, you can
+manually add <tt class="docutils literal"><span class="pre">set()</span></tt> and <tt class="docutils literal"><span class="pre">settings()</span></tt> methods to your own class.
+See the <tt class="docutils literal"><span class="pre">OptionsClass</span></tt> source code for details.</p>
+</div>
+<p>As one final feature, consider &#8220;magical&#8221; parameters. Add the following
+code to your class description:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">options</span><span class="o">.</span><span class="n">magic</span><span class="p">(</span>
+    <span class="n">height</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">v</span><span class="p">,</span> <span class="n">cur</span><span class="p">:</span> <span class="n">cur</span><span class="o">.</span><span class="n">height</span> <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="n">v</span><span class="p">,</span>
+    <span class="n">width</span>  <span class="o">=</span> <span class="k">lambda</span> <span class="n">v</span><span class="p">,</span> <span class="n">cur</span><span class="p">:</span> <span class="n">cur</span><span class="o">.</span><span class="n">width</span>  <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="n">v</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Now, in addition to absolute <tt class="docutils literal"><span class="pre">height</span></tt> and <tt class="docutils literal"><span class="pre">width</span></tt> parameters specified with
+<tt class="docutils literal"><span class="pre">int</span></tt> (integer/numeric) values, your module
+auto-magically supports relative parameters for <tt class="docutils literal"><span class="pre">height</span></tt> and <tt class="docutils literal"><span class="pre">width</span></tt> given
+as string parametrs.:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">one</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">width</span><span class="o">=</span><span class="s">&#39;+200&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>yields:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">color</span><span class="o">=</span><span class="s">&#39;blue&#39;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">210</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;one&#39;</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">10</span>
+</pre></div>
+</div>
+<p>Neat, huh?</p>
+<p>For more, see <a class="reference external" href="http://stackoverflow.com/questions/11702437/where-to-keep-options-values-paths-to-important-files-etc/11703813#11703813">this StackOverflow.com discussion of how to combat &#8220;configuration
+sprawl&#8221;</a>.
+For examples of <tt class="docutils literal"><span class="pre">options</span></tt> in use, see <a class="reference external" href="https://pypi.python.org/pypi/say">say</a> and <a class="reference external" href="https://pypi.python.org/pypi/show">show</a>.</p>
+</div>
+<div class="section" id="design-considerations">
+<h1>Design Considerations<a class="headerlink" href="#design-considerations" title="Permalink to this headline">¶</a></h1>
+<p><tt class="docutils literal"><span class="pre">options</span></tt> is not intened to replace every class&#8217;s or method&#8217;s
+parameter passing mechanisms&#8211;just the one or few most highly-optioned
+ones that multiplex a package&#8217;s functionality to a range of use
+cases.  These are generally the highest-level, most outward-facing
+classes/objects.  They will generally have at least five configuration
+variables (e.g. kwargs used to create, configure, and define each
+instance).</p>
+<p>In general, classes will define a set of methods that are &#8220;outwards
+facing&#8221;&#8211;methods called by external code when consuming the class&#8217;s
+functionality. Those methods should generally expose their options through
+<tt class="docutils literal"><span class="pre">**kwargs</span></tt>, creating a local variable (say <tt class="docutils literal"><span class="pre">opts</span></tt>) that represents the sum
+of all options in use&#8211;the full stack of call, instance, and class options,
+including any present magical interpretations.</p>
+<p>Internal class methods&#8211;the sort that are not generally called by external code,
+and that by Python convention are often prefixed by an underscore (<tt class="docutils literal"><span class="pre">_</span></tt>)&#8211;these
+generally do not need <tt class="docutils literal"><span class="pre">**kwargs</span></tt>. They should accept their options as a
+single variable (say <tt class="docutils literal"><span class="pre">opts</span></tt> again) that the externally-facing methods will
+provide.</p>
+<p>For example, if <tt class="docutils literal"><span class="pre">options</span></tt> didn&#8217;t provide the nice formatting
+function <tt class="docutils literal"><span class="pre">attrs</span></tt>, we might have designed our own:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">_attrs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">opts</span><span class="p">):</span>
+    <span class="n">nicekeys</span> <span class="o">=</span> <span class="p">[</span> <span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">opts</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;_&#39;</span><span class="p">)</span> <span class="p">]</span>
+    <span class="k">return</span> <span class="s">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span> <span class="s">&quot;{}={}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="nb">repr</span><span class="p">(</span><span class="n">opts</span><span class="p">[</span><span class="n">k</span><span class="p">]))</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">nicekeys</span> <span class="p">])</span>
+
+<span class="k">def</span> <span class="nf">draw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="n">opts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">print</span> <span class="bp">self</span><span class="o">.</span><span class="n">_attrs</span><span class="p">(</span><span class="n">opts</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><tt class="docutils literal"><span class="pre">draw()</span></tt>, being the outward-facing API, accepts general arguments and
+manages their stacking (by <tt class="docutils literal"><span class="pre">push``ing</span> <span class="pre">``kwargs</span></tt> onto the instance options).
+When the internal <tt class="docutils literal"><span class="pre">_attrs()</span></tt> method is called, it is handed a pre-digested
+<tt class="docutils literal"><span class="pre">opts</span></tt> package of options.</p>
+<p>A nice side-effect of making this distinction: Whenever you see a method with
+<tt class="docutils literal"><span class="pre">**kwargs</span></tt>, you know it&#8217;s outward-facing. When you see a method with just
+<tt class="docutils literal"><span class="pre">opts</span></tt>, you know it&#8217;s internal.</p>
+<p>Objects defined with <tt class="docutils literal"><span class="pre">options</span></tt> make excellent &#8220;callables.&#8221;
+Define the <tt class="docutils literal"><span class="pre">__call__</span></tt> method, and you have a very nice analog of
+function calls.</p>
+<p><tt class="docutils literal"><span class="pre">options</span></tt> has broad utility, but it&#8217;s not for every class or
+module. It best suits high-level front-end APIs that multiplex lots
+of potential functionality, and wish/need to do it in a clean/simple
+way. Classes for which the set of instance variables is small, or
+functions/methods for which the set of known/possible parameters
+is limited&#8211;these work just fine with classic Python calling
+conventions. For those, <tt class="docutils literal"><span class="pre">options</span></tt> is overkill. &#8220;Horses for courses.&#8221;</p>
+</div>
+<div class="section" id="setting-and-unsetting">
+<h1>Setting and Unsetting<a class="headerlink" href="#setting-and-unsetting" title="Permalink to this headline">¶</a></h1>
+<p>Using <tt class="docutils literal"><span class="pre">options</span></tt>, objects often become &#8220;entry points&#8221; that represent both
+a set of capabilities and a set of configurations for how that functionality
+will be used. As a result, you may want to be able to set the object&#8217;s
+values directly, without referencing their underlying <tt class="docutils literal"><span class="pre">options</span></tt>. It&#8217;s
+convenient to add a <tt class="docutils literal"><span class="pre">set()</span></tt> method, then use it, as follows:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<span class="n">one</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">width</span><span class="o">=</span><span class="s">&#39;*10&#39;</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s">&#39;orange&#39;</span><span class="p">)</span>
+<span class="n">one</span><span class="o">.</span><span class="n">draw</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>yields:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">color</span><span class="o">=</span><span class="s">&#39;orange&#39;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;one&#39;</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">10</span>
+</pre></div>
+</div>
+<p><tt class="docutils literal"><span class="pre">one.set()</span></tt> is now the equivalent of <tt class="docutils literal"><span class="pre">one.options.set()</span></tt>. Or continue using
+the <tt class="docutils literal"><span class="pre">options</span></tt> attribute explicitly, if you prefer that.</p>
+<p>Values can also be unset.:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">options</span> <span class="kn">import</span> <span class="n">Unset</span>
+
+<span class="n">one</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">color</span><span class="o">=</span><span class="n">Unset</span><span class="p">)</span>
+<span class="n">one</span><span class="o">.</span><span class="n">draw</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>yields:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">color</span><span class="o">=</span><span class="s">&#39;blue&#39;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;one&#39;</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">10</span>
+</pre></div>
+</div>
+<p>Because <tt class="docutils literal"><span class="pre">'blue'</span></tt> was the color to which <tt class="docutils literal"><span class="pre">Shape</span></tt> had be most recently set.
+With the color of the instance unset, the color of the class shines through.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">While options are ideally accessed with an attribute notion,
+the preferred of setting options is through method calls: <tt class="docutils literal"><span class="pre">set()</span></tt> if
+accessing directly, or <tt class="docutils literal"><span class="pre">push()</span></tt> if stacking values as part of a method call.
+These perform the interpretation and unsetting magic;
+straight assignment does not. In the future, <tt class="docutils literal"><span class="pre">options</span></tt> may provide an
+equivalent <tt class="docutils literal"><span class="pre">__setattr__()</span></tt> method to allow assignment&#8211;but not yet.</p>
+</div>
+</div>
+<div class="section" id="leftovers">
+<h1>Leftovers<a class="headerlink" href="#leftovers" title="Permalink to this headline">¶</a></h1>
+<p><tt class="docutils literal"><span class="pre">options</span></tt> expects you to define all feasible and legitimate options at the
+class level, and to give them reasonable defaults.</p>
+<p>None of the initial settings ever have magic applied. Much of the
+expected interpretation &#8220;magic&#8221; will be relative settings, and relative settings
+require a baseline value. The top level is expected and demanded to provide a
+reasonable baseline.</p>
+<p>Any options set &#8220;further down&#8221; such as when an instance is created or a method
+called should set keys that were already-defined at the class level.</p>
+<p>However, there are cases where &#8220;extra&#8221; <tt class="docutils literal"><span class="pre">**kwargs</span></tt> values may be
+provided and make sense. Your object might be a very high level
+entry point, for example, representing very large buckets of
+functionality, with many options. Some of those options are relevant
+to the current instance, while others are intended as pass-throughs
+for lower-level modules/objects. This may seem a doubly rarefied
+case&#8211;and it is, relatively speaking. But <a class="reference external" href="https://pypi.python.org/pypi/show">it does happen</a>&#8211;and when you need multi-level
+processing, it&#8217;s really, really super amazingly handy to have it.</p>
+<p><tt class="docutils literal"><span class="pre">options</span></tt> supports this in its core <tt class="docutils literal"><span class="pre">push()</span></tt> method by taking
+the values that are known to be part of the class&#8217;s options, and
+deleting those from <tt class="docutils literal"><span class="pre">kwargs</span></tt>. Any values left over in the <tt class="docutils literal"><span class="pre">kwargs</span></tt>
+<tt class="docutils literal"><span class="pre">dict</span></tt> are either errors, or intended for other recipients.</p>
+<p>As yet, there is no automatic check for leftovers.</p>
+</div>
+<div class="section" id="magic-parameters">
+<h1>Magic Parameters<a class="headerlink" href="#magic-parameters" title="Permalink to this headline">¶</a></h1>
+<p>Python&#8217;s <tt class="docutils literal"><span class="pre">*args</span></tt> variable-number of arguments and <tt class="docutils literal"><span class="pre">**kwargs</span></tt> keyword
+arguments are sometimes called &#8220;magic&#8221; arguments. <tt class="docutils literal"><span class="pre">options</span></tt> takes this up a
+notch, allowing setters much like Python&#8217;s <tt class="docutils literal"><span class="pre">property</span></tt> function or
+<tt class="docutils literal"><span class="pre">&#64;property</span></tt> decorator. This allows arguments to be interpreted on the fly.
+This is useful, for instance, to provide relative rather than just absolute
+values. As an example, say that we added this code after <tt class="docutils literal"><span class="pre">Shape.options</span></tt> was
+defined:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">options</span><span class="o">.</span><span class="n">magic</span><span class="p">(</span>
+    <span class="n">height</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">v</span><span class="p">,</span> <span class="n">cur</span><span class="p">:</span> <span class="n">cur</span><span class="o">.</span><span class="n">height</span> <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="n">v</span><span class="p">,</span>
+    <span class="n">width</span>  <span class="o">=</span> <span class="k">lambda</span> <span class="n">v</span><span class="p">,</span> <span class="n">cur</span><span class="p">:</span> <span class="n">cur</span><span class="o">.</span><span class="n">width</span>  <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="n">v</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Now, in addition to absolute <tt class="docutils literal"><span class="pre">height</span></tt> and <tt class="docutils literal"><span class="pre">width</span></tt> parameters which are
+provided by specifying <tt class="docutils literal"><span class="pre">int</span></tt> (integer/numeric) values, your module
+auto-magically supports relative parameters for <tt class="docutils literal"><span class="pre">height</span></tt> and <tt class="docutils literal"><span class="pre">width</span></tt>.:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">one</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">width</span><span class="o">=</span><span class="s">&#39;+200&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>yields:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">color</span><span class="o">=</span><span class="s">&#39;blue&#39;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">210</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;one&#39;</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">10</span>
+</pre></div>
+</div>
+<p>This can be as fancy as you like, defining an entire domain-specific expression language.
+But even small functions can give you a great bump in expressive power. For example,
+add this and you get full relative arithmetic capability (<tt class="docutils literal"><span class="pre">+</span></tt>, <tt class="docutils literal"><span class="pre">-</span></tt>, <tt class="docutils literal"><span class="pre">*</span></tt>, and <tt class="docutils literal"><span class="pre">/</span></tt>):</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">relmath</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">currently</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;*&#39;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">currently</span> <span class="o">*</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+        <span class="k">elif</span> <span class="n">value</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">currently</span> <span class="o">/</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">currently</span> <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">value</span>
+
+<span class="o">...</span>
+
+<span class="n">options</span><span class="o">.</span><span class="n">magic</span><span class="p">(</span>
+    <span class="n">height</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">v</span><span class="p">,</span> <span class="n">cur</span><span class="p">:</span> <span class="n">relmath</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">cur</span><span class="o">.</span><span class="n">height</span><span class="p">),</span>
+    <span class="n">width</span>  <span class="o">=</span> <span class="k">lambda</span> <span class="n">v</span><span class="p">,</span> <span class="n">cur</span><span class="p">:</span> <span class="n">relmath</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">cur</span><span class="o">.</span><span class="n">width</span><span class="p">)</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Then:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">one</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">width</span><span class="o">=</span><span class="s">&#39;*4&#39;</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="s">&#39;/2&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>yields:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">color</span><span class="o">=</span><span class="s">&#39;blue&#39;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">40</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&#39;one&#39;</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">5</span>
+</pre></div>
+</div>
+<p>Magically interpreted parameters are the sort of thing that one doesn&#8217;t need
+very often or for every parameter&#8211;but when they&#8217;re useful, they&#8217;re <em>enormously</em>
+useful and highly leveraged, leading to much simpler, much higher function APIs.</p>
+<p>We call them &#8216;magical&#8217; here because of the &#8220;auto-magical&#8221; interpretation, but
+they are really just analogs of Python object properties. The magic function is
+basically a &#8220;setter&#8221; for a dictionary element.</p>
+</div>
+<div class="section" id="the-magic-apis">
+<h1>The Magic APIs<a class="headerlink" href="#the-magic-apis" title="Permalink to this headline">¶</a></h1>
+<p>The callables (usually functions, lambda expressions, static methods, or methods) called
+to preform magical interpretation can be called with 1, 2, or 3 parameters.
+<tt class="docutils literal"><span class="pre">options</span></tt> inquires as to how many parameters the callable accepts. If it
+accepts only 1, it will be the value passed in. Cleanups like &#8220;convert to upper case&#8221;
+can be done, but no relative interpretation. If it accepts 2 arguments,
+it will be called with the value and the current option mapping, in that order.
+(NB this order reverses the way you may think logical. Caution advised.) If the
+callable requires 3 parameters, it will be <tt class="docutils literal"><span class="pre">None</span></tt>, value, current mapping. This
+supports method calls, though has the defect of not really
+passing in the current instance.</p>
+<p>A decorator form, <tt class="docutils literal"><span class="pre">magical()</span></tt> is also supported. It must be given the
+name of the key exactly:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="nd">@options.magical</span><span class="p">(</span><span class="s">&#39;name&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">capitalize_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">cur</span><span class="p">):</span>
+    <span class="k">return</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">capitalize</span><span class="p">()</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">v</span><span class="o">.</span><span class="n">split</span><span class="p">())</span>
+</pre></div>
+</div>
+<p>The net is that you can provide just about any kind of callable.
+But the meta-programming of the magic interpretation API could use a little work.</p>
+</div>
+<div class="section" id="subclassing">
+<h1>Subclassing<a class="headerlink" href="#subclassing" title="Permalink to this headline">¶</a></h1>
+<p>Subclass options may differ from superclass options. Usually they will share
+many options, but some may be added, and others removed. To modify the set of
+available options, the subclass defines its options with the <tt class="docutils literal"><span class="pre">add()</span></tt> method to
+the superclass options. This creates a layered
+effect, just like <tt class="docutils literal"><span class="pre">push()</span></tt> for an instance. The difference is, <tt class="docutils literal"><span class="pre">push()</span></tt> does
+not allow new options (keys) to be defined; <tt class="docutils literal"><span class="pre">add()</span></tt> does. It is also possible to
+assign the special null object <tt class="docutils literal"><span class="pre">Prohibited</span></tt>, which will disallow instances of the
+subclass from setting those values.:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">options</span> <span class="o">=</span> <span class="n">Superclass</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">add</span><span class="p">(</span>
+    <span class="n">func</span>   <span class="o">=</span> <span class="bp">None</span><span class="p">,</span>
+    <span class="n">prefix</span> <span class="o">=</span> <span class="n">Prohibited</span><span class="p">,</span>  <span class="c"># was available in superclass, but not here</span>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="n">Prohibited</span><span class="p">,</span>  <span class="c"># ditto</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Because some of the &#8220;additions&#8221; can be prohibitions (i.e. removing
+particular options from being set or used), this is &#8220;adding to&#8221; the superclass&#8217;s
+options in the sense of &#8220;adding a layer onto&#8221; rather than strict &#8220;adding
+options.&#8221;</p>
+<p>An alternative is to copy (or restate) the superclass&#8217;s options. That suits
+&#8220;unlinked&#8221; cases&#8211;where the subclass is highly independent, and where changes to
+the superclass&#8217;s options should not effect the subclass&#8217;s options. With
+<tt class="docutils literal"><span class="pre">add()</span></tt>, they remain linked in the same way as instances and classes are.</p>
+</div>
+<div class="section" id="transients-and-internal-options">
+<h1>Transients and Internal Options<a class="headerlink" href="#transients-and-internal-options" title="Permalink to this headline">¶</a></h1>
+<p>Some options do not make sense as permanent values&#8211;they are needed only as
+transient settings in the context of individual method calls. The special null value
+<tt class="docutils literal"><span class="pre">Transient</span></tt> can be assigned as an option value to signal this.</p>
+<p>Other options are useful, but only internal to your class. They are not meant to
+be exposed as part of the external API. In this case, they can be signified
+by prefixing with an underscore, such as <tt class="docutils literal"><span class="pre">_cached_value</span></tt>. This is consistent
+with Python naming practice.</p>
+</div>
+<div class="section" id="flat-arguments">
+<h1>Flat Arguments<a class="headerlink" href="#flat-arguments" title="Permalink to this headline">¶</a></h1>
+<p>Sometimes it&#8217;s more elegant to provide some arguments as flat, sequential values
+rather than by keyword. In this case, use the <tt class="docutils literal"><span class="pre">addflat()</span></tt> method:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">options</span> <span class="o">=</span> <span class="n">Quoter</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">addflat</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="p">[</span><span class="s">&#39;prefix&#39;</span><span class="p">,</span> <span class="s">&#39;suffix&#39;</span><span class="p">])</span>
+</pre></div>
+</div>
+<p>to consume optional <tt class="docutils literal"><span class="pre">prefix</span></tt> and <tt class="docutils literal"><span class="pre">suffix</span></tt> flat arguments. This makes the following
+equivalent:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">q1</span> <span class="o">=</span> <span class="n">Quoter</span><span class="p">(</span><span class="s">&#39;[&#39;</span><span class="p">,</span> <span class="s">&#39;]&#39;</span><span class="p">)</span>
+<span class="n">q2</span> <span class="o">=</span> <span class="n">Quoter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s">&#39;[&#39;</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s">&#39;]&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>An explicit <tt class="docutils literal"><span class="pre">addflat()</span></tt> method is provided not as much for Zen of Python
+reasons (&#8220;Explicit is better than implicit.&#8221;), but because flat arguments are
+commonly combined with abbreviation/shorthand conventions, which may require
+some logic to implement. For example, if only a <tt class="docutils literal"><span class="pre">prefix</span></tt> is given as a flat
+argument, you may want to use the same value to implicitly set the <tt class="docutils literal"><span class="pre">suffix</span></tt>.
+To this end, addflat returns the set of keys that it consumed:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">if</span> <span class="n">args</span><span class="p">:</span>
+    <span class="n">used</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">addflat</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="p">[</span><span class="s">&#39;prefix&#39;</span><span class="p">,</span> <span class="s">&#39;suffix&#39;</span><span class="p">])</span>
+    <span class="k">if</span> <span class="s">&#39;suffix&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">used</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">suffix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">prefix</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="choosing-option-names">
+<h1>Choosing Option Names<a class="headerlink" href="#choosing-option-names" title="Permalink to this headline">¶</a></h1>
+<p>You can choose pretty much any option name that is a legitimate
+Python keyword argument. The exceptions: Names that are already
+defined by methods of <tt class="docutils literal"><span class="pre">Options</span></tt> or <tt class="docutils literal"><span class="pre">OptionsChain</span></tt>. To wit:
+<tt class="docutils literal"><span class="pre">add</span></tt>, <tt class="docutils literal"><span class="pre">addflat</span></tt>, <tt class="docutils literal"><span class="pre">clear</span></tt>, <tt class="docutils literal"><span class="pre">copy</span></tt>, <tt class="docutils literal"><span class="pre">fromkeys</span></tt>, <tt class="docutils literal"><span class="pre">get</span></tt>,
+<tt class="docutils literal"><span class="pre">items</span></tt>, <tt class="docutils literal"><span class="pre">iteritems</span></tt>, <tt class="docutils literal"><span class="pre">iterkeys</span></tt>, <tt class="docutils literal"><span class="pre">itervalues</span></tt>, <tt class="docutils literal"><span class="pre">keys</span></tt>,
+<tt class="docutils literal"><span class="pre">magic</span></tt>, <tt class="docutils literal"><span class="pre">magical</span></tt>, <tt class="docutils literal"><span class="pre">new_child</span></tt>, <tt class="docutils literal"><span class="pre">parents</span></tt>, <tt class="docutils literal"><span class="pre">pop</span></tt>,
+<tt class="docutils literal"><span class="pre">popitem</span></tt>, <tt class="docutils literal"><span class="pre">push</span></tt>, <tt class="docutils literal"><span class="pre">read</span></tt>, <tt class="docutils literal"><span class="pre">set</span></tt>, <tt class="docutils literal"><span class="pre">setdefault</span></tt>, <tt class="docutils literal"><span class="pre">update</span></tt>,
+<tt class="docutils literal"><span class="pre">values</span></tt>, and <tt class="docutils literal"><span class="pre">write</span></tt> are off-limits.</p>
+<p>If you try to define options with verboten names, a <tt class="docutils literal"><span class="pre">BadOptionName</span></tt>
+exception will be raised. This will save you grief down the road;
+getting back a wrong thing at runtime is vastly harder to debug
+than fielding an early exception.</p>
+</div>
+<div class="section" id="nulltype">
+<h1>NullType<a class="headerlink" href="#nulltype" title="Permalink to this headline">¶</a></h1>
+<p><tt class="docutils literal"><span class="pre">NullType</span></tt> (defined in <tt class="docutils literal"><span class="pre">options.nulltype</span></tt>) is a class for <a class="reference external" href="http://en.wikipedia.org/wiki/Sentinel_value">sentinel
+values</a>&#8211;special
+values designed as markers. Pre-defined
+sentinals include:</p>
+<dl class="docutils">
+<dt><tt class="docutils literal"><span class="pre">Prohibited</span></tt></dt>
+<dd>This option cannot be used (set or accessed). Useful primarily in
+subclasses, to &#8220;turn off&#8221; options that apply in the superclass, but
+not the subclass.</dd>
+<dt><tt class="docutils literal"><span class="pre">Transient</span></tt></dt>
+<dd>Option is not set initally or on a per-instance basis, but this
+option may be used on a call-by-call basis.</dd>
+<dt><tt class="docutils literal"><span class="pre">Reserved</span></tt></dt>
+<dd>Not used, but explicitly marked as reserved for future use.</dd>
+<dt><tt class="docutils literal"><span class="pre">Unset</span></tt></dt>
+<dd>Special value. If an option is set to <tt class="docutils literal"><span class="pre">Unset</span></tt>, the current value
+is removed, letting values from higher up the option chain shine through.</dd>
+</dl>
+</div>
+<div class="section" id="related-work">
+<h1>Related Work<a class="headerlink" href="#related-work" title="Permalink to this headline">¶</a></h1>
+<p>A huge amount of work, both in Python and beyond, has gone into
+the effective management of configuration information.</p>
+<blockquote>
+<div><ul class="simple">
+<li>Program defaults. Values pre-established by developers, often
+as <tt class="docutils literal"><span class="pre">ALL_UPPERCASE_IDENTIFIERS</span></tt> or as keyword default to
+functions.</li>
+<li>Configuration file format parsers/formatters.
+Huge amounts of the INI, JSON, XML, and YAML specifications and
+toolchains, for example, are configuration-related.
+There are many. <a class="reference external" href="https://pypi.python.org/pypi/anyconfig">anyconfig</a>
+is perhaps of interest for its flexibility.
+You could
+probably lump into this group binary data marshaling schemes
+such as <tt class="docutils literal"><span class="pre">pickle</span></tt>.</li>
+<li>Command-line argument parsers. These are all about taking configuration
+information from the command line.
+<a class="reference external" href="https://pypi.python.org/pypi/argh">argh</a> is one I particularly
+like for its simple, declarative nature.
+(<a class="reference external" href="https://pypi.python.org/pypi/aaargh">aaargh</a> is similar.)</li>
+<li>System and environment introspection. The best known of these
+would be <tt class="docutils literal"><span class="pre">sys.argv</span></tt> and
+<tt class="docutils literal"><span class="pre">s.environ</span></tt> to get command line arguments and the values
+of operating system environment variables (especially when running
+on Unixy platforms). But any code that asks &#8220;Where am I running?&#8221;
+or &#8220;What is my IP address?&#8221; or otherwise inspects its current
+execution environment and configures itself accordingly
+is doing a form of configuration discovery.</li>
+<li>Attribute-accessible dictionary objects. It is incredibly easy to
+create simple versions of this idea in Python&#8211;and rather tricky
+to create robust, full-featured versions. Caveat emptor.  <a class="reference external" href="https://pypi.python.org/pypi/stuf">stuf</a> and <a class="reference external" href="https://pypi.python.org/pypi/treedict">treedict</a> are cream-of-the-crop
+implementations of this idea. I have not tried <a class="reference external" href="https://pypi.python.org/pypi/confetti">confetti</a> or
+<a class="reference external" href="https://pypi.python.org/pypi/Yaco">Yaco</a>, but they look like
+interesting
+variations on the same theme.</li>
+<li>The portion of Web frameworks concerned with getting and setting
+cookies, URL query and hash attributes, form variables, and/or
+HTML5 local storage. Not that
+these are particularly secure, scalable, or robust sources...but they&#8217;re
+important configuration information nonetheless.</li>
+<li>While slightly afield, database interface modules are often used for
+querying configuration information from SQL or NoSQL databases.</li>
+<li>Some object metaprogramming systems. That&#8217;s a mouthful, right?
+Well some modules implement metaclasses that change the basic
+behavior of objects. <a class="reference external" href="https://pypi.python.org/pypi/value">value</a>
+for example provides very common-sense treatment of object
+instantiation with out all the Javaesque
+<tt class="docutils literal"><span class="pre">self.x</span> <span class="pre">=</span> <span class="pre">x;</span> <span class="pre">self.y</span> <span class="pre">=</span> <span class="pre">y;</span> <span class="pre">self.z</span> <span class="pre">=</span> <span class="pre">z</span></tt> repetition.
+<tt class="docutils literal"><span class="pre">options</span></tt> similarly redesigns how parameters should be passed
+and object values stored.</li>
+<li>Combomatics. Many configuration-related modules combine two
+or more of these approaches. E.g.
+<a class="reference external" href="https://pypi.python.org/pypi/yconf">yconf</a>
+combines YAML config file parsing with <tt class="docutils literal"><span class="pre">argparse</span></tt> command
+line parsing. In the future, <tt class="docutils literal"><span class="pre">options</span></tt> will also follow
+this path. There&#8217;s no need to take programmer time and
+attention for several different low-level
+configuration-related tasks.</li>
+<li>Dependency injection frameworks are all about providing configuration
+information from outside code modules. They tend to be rather
+abstract and have a high &#8220;activation energy,&#8221; but the more complex
+and composed-of-many-different-components your system is, the
+more valuable the &#8220;DI pattern&#8221; becomes.</li>
+<li>Other things.
+<a class="reference external" href="https://pypi.python.org/pypi/conflib">conflib</a>, uses dictionary
+updates to stack
+default, global, and
+local settings; it also provides a measure of validation.</li>
+</ul>
+</div></blockquote>
+<p>This diversity, while occasionally frustrating, makes some sense.
+Configuration data, after all, is just &#8220;state,&#8221; and &#8220;managing state&#8221;
+is pretty much what all computing is about.
+Pretty much every program has to do it. That so many use so
+many different, home-grown ways is why there&#8217;s such a good opportunity.</p>
+<p><a class="reference external" href="http://flask.pocoo.org/docs/config/#configuring-from-files">Flask&#8217;s documentation</a> is
+a real-world example of how &#8220;spread everywhere&#8221; this can be,
+with some data coming from the program, some from files, some from
+environment variables, some from Web-JSON, etc.</p>
+</div>
+<div class="section" id="notes">
+<h1>Notes<a class="headerlink" href="#notes" title="Permalink to this headline">¶</a></h1>
+<blockquote>
+<div><ul class="simple">
+<li>This is a work in progress. The underlying techniques have been successfully
+used in multiple projects, but it remains in active development.
+The API may change over time. Swim at your own risk.</li>
+<li><tt class="docutils literal"><span class="pre">options</span></tt> undergoes frequent automated multi-version testing with
+<a class="reference external" href="http://pypi.python.org/pypi/pytest">pytest</a>
+and <a class="reference external" href="http://pypi.python.org/pypi/tox">tox</a>. It is
+successfully packaged for, and tested against, Python 2.6, 2.7, 3.2, and 3.3.
+It additionally runs under, and is tested against, PyPy 2.1 (based on 2.7.3)
+though it has to work around a few bugs in the underlying <tt class="docutils literal"><span class="pre">stuf</span></tt> module
+to do so.</li>
+<li>The author, <a class="reference external" href="mailto:jonathan&#46;eunice&#37;&#52;&#48;gmail&#46;com">Jonathan Eunice</a> or
+<a class="reference external" href="http://twitter.com/jeunice">&#64;jeunice on Twitter</a>
+welcomes your comments and suggestions.</li>
+</ul>
+</div></blockquote>
+</div>
+<div class="section" id="installation">
+<h1>Installation<a class="headerlink" href="#installation" title="Permalink to this headline">¶</a></h1>
+<div class="highlight-python"><pre>pip install -U options</pre>
+</div>
+<p>To <tt class="docutils literal"><span class="pre">easy_install</span></tt> under a specific Python version (3.3 in this example):</p>
+<div class="highlight-python"><pre>python3.3 -m easy_install --upgrade options</pre>
+</div>
+<p>(You may need to prefix these with &#8220;sudo &#8221; to authorize installation.)</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="CHANGES.html">Change Log</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="CHANGES.html#october-29-2103">1.1 (October 29, 2103)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CHANGES.html#october-25-2103">1.0.7 (October 25, 2103)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CHANGES.html#october-24-2013">1.0.4 - 1.0.6 (October 24, 2013)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CHANGES.html#september-23-2013">1.0.3 (September 23, 2013)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CHANGES.html#september-19-2013">1.0.2 (September 19, 2013)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CHANGES.html#september-2013">1.0.1 (September 2013)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CHANGES.html#septemer-2013">1.0 (Septemer 2013)</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="#">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">options</a></li>
+<li><a class="reference internal" href="#usage">Usage</a></li>
+<li><a class="reference internal" href="#an-example">An Example</a></li>
+<li><a class="reference internal" href="#design-considerations">Design Considerations</a></li>
+<li><a class="reference internal" href="#setting-and-unsetting">Setting and Unsetting</a></li>
+<li><a class="reference internal" href="#leftovers">Leftovers</a></li>
+<li><a class="reference internal" href="#magic-parameters">Magic Parameters</a></li>
+<li><a class="reference internal" href="#the-magic-apis">The Magic APIs</a></li>
+<li><a class="reference internal" href="#subclassing">Subclassing</a></li>
+<li><a class="reference internal" href="#transients-and-internal-options">Transients and Internal Options</a></li>
+<li><a class="reference internal" href="#flat-arguments">Flat Arguments</a></li>
+<li><a class="reference internal" href="#choosing-option-names">Choosing Option Names</a></li>
+<li><a class="reference internal" href="#nulltype">NullType</a></li>
+<li><a class="reference internal" href="#related-work">Related Work</a></li>
+<li><a class="reference internal" href="#notes">Notes</a></li>
+<li><a class="reference internal" href="#installation">Installation</a><ul>
+</ul>
+</li>
+</ul>
+
+  <h4>Next topic</h4>
+  <p class="topless"><a href="CHANGES.html"
+                        title="next chapter">Change Log</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/index.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="CHANGES.html" title="Change Log"
+             >next</a> |</li>
+        <li><a href="#">options 1.1.2 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2013, Jonathan Eunice.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.3.
+    </div>
+  </body>
+</html>
