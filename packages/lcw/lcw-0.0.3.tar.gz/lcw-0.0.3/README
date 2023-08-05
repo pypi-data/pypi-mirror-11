@@ -1,0 +1,90 @@
+lcw: Estimate the number of lines in a file.
+==============================================
+lcw is like ``wc -l`` but faster, less precise, and equally accurate. ::
+
+    usage: lcw [-h] [--sample-size N] [--page-size PAGE_SIZE] [--pattern PATTERN]
+               [--regex]
+               file [file ...]
+
+    Estimate how many lines are in a file.
+
+    positional arguments:
+      file
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      --sample-size N, -n N
+                            How many pages to count (default: 1000)
+      --page-size PAGE_SIZE, -p PAGE_SIZE
+                            Size of an observation (default: 16384)
+      --pattern PATTERN, -e PATTERN
+                            The pattern to match (default: b'\n')
+      --regex, -r           Use regular expressions (statistically unsound)
+                            (default: False)
+
+Speed
+--------
+It's faster than ``wc -l`` on big files. ::
+
+    $ wc -c big-file.csv
+     1071895374 big-file.csv
+
+    $ time lcw big-file.csv
+    2386238 ± 22903 lines (99% confidence)
+
+    real    0m0.172s
+    user    0m0.140s
+    sys     0m0.027s
+
+    $ time wc -l big-file.csv
+     2388430 big-file.csv
+
+    real    0m1.379s
+    user    0m1.170s
+    sys     0m0.197s
+
+Math
+------
+lcw uses elementary statistics to perform unbiased estimates of the
+number of lines in a file. It takes a random sample of "pages" within
+the file and counts how many newlines are in each page.
+
+It multiplies the average count by the number of pages in the file
+in order to get its best guess at the number of lines in the file
+(the maximum likelihood estimate) and then computes a 99% normal
+confidence interval, applying a finite population correction for the
+estimate the standard deviation of sample totals.
+
+Tuning
+--------
+It is best to use the page size that your storage medium uses;
+modern storage media read entire pages at once, so using a page size
+that is too small will be bad for performance.
+
+The sample size is set with ``-n``, and typical rules of thumb say
+that this should be at least 20 for the confidence level to be valid.
+The page size is set with ``-p`` and should be something like
+2048, 4096, 8192, or 16384.
+
+Matching things other than newline
+-----------------------------------
+You can count occurrences of a string other than newline; specify
+the string with ``-e``. It will be interpreted as a regular expression
+if you pass ``-r``. The statistical estimates do not account for the
+variable length of regular expression matches, so you are better off
+using plain strings if you care about accuracy.
+
+Future work
+--------------
+I have been thinking about how to quickly sample from lots of files.
+Things like lcw can help us with samples within files, but it can be
+could be part of a broader survey plan, with cluster sampling or
+stratification on directories or filenames and with multistage sampling,
+using pilot tests to estimate the costs of the sampling of different
+files.
+
+lcw presently uses a simple random sample. Because data in text files
+often vary with their position within the file, (Later lines often
+correspond to later dates.) systematic sampling would be appropriate.
+
+Or, does this already exist so I don't have to write it?
