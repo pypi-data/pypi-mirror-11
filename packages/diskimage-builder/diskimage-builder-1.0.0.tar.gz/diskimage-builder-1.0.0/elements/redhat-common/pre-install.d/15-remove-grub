@@ -1,0 +1,21 @@
+#!/bin/bash
+if [ "${DIB_DEBUG_TRACE:-0}" -gt 0 ]; then
+    set -x
+fi
+set -eu
+set -o pipefail
+
+# grub2 isn't available on rhel6/centos6; they are setup to use
+# extlinux.  skip this
+# you would think we could match on $DISTRO or something else; but
+# we can't because the rhel/centos elements are a bit mixed up;
+# centos-minimal for example sets distro to "centos".  so the best
+# check is just for the original "grub-install" script
+if [ -f /sbin/grub-install ]; then
+    exit 0
+fi
+
+# download the latest grub2 package and setup the install script which
+# will be called later by vm/finalise.d/51-bootloader
+install-packages -d /tmp/grub grub2
+echo "rpm -i /tmp/grub/*.rpm" > /tmp/grub/install
