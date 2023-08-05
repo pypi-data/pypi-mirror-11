@@ -1,0 +1,55 @@
+#!/usr/bin/env python
+
+
+import argparse
+import ca_tracker
+from multiprocessing import Process
+
+
+
+
+def compute_times_and_seg(exp_filename, conf_data):
+    
+
+
+    print 'starting merge_tracking_data for %s' % exp_filename
+    ca_tracker.merge_tracking_data(exp_filename, conf_data)
+    print 'starting compute features for %s' % exp_filename
+    ca_tracker.compute_features(exp_filename, conf_data)
+    print 'starting classify cells for %s' % exp_filename
+    ca_tracker.classify_cells(exp_filename, conf_data)
+    print 'starting intensity extraction for %s' % exp_filename
+    ca_tracker.extract_intensity(exp_filename, conf_data)
+    print 'starting plot profiles for %s' % exp_filename
+    ca_tracker.plot_profiles(exp_filename, conf_data)
+    print 'starting export overlays with labels %s' % exp_filename
+    ca_tracker.exportOverlaysWithLabels(exp_filename, conf_data)    
+
+
+
+
+if __name__ == '__main__':
+
+
+    parser = argparse.ArgumentParser(description='Classify cells after tracking and get ca data.')
+    #parser.add_argument('-config', action="store_true", default=False)
+    parser.add_argument('--config', dest='config_filename', help='path to config json file')
+    args = parser.parse_args()
+    config_filename = args.config_filename
+    
+    if config_filename is None:
+        conf_data = ca_tracker.h.readConfig()
+    else:
+        conf_data = ca_tracker.h.readConfig(config_filename)
+    
+    exp_names = ca_tracker.h.getExpNames(conf_data)
+
+    if exp_names is not None:
+        print 'located following datasets:'
+        print(exp_names)
+        print 'start computing classification and ca extraction'
+    for exp_name in exp_names:
+        p = Process(target=compute_times_and_seg, args=(exp_name, conf_data))
+        p.start()    
+
+
