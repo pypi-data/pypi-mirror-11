@@ -1,0 +1,477 @@
+Metadata-Version: 2.0
+Name: zhihu-py3
+Version: 0.1.3
+Summary: Zhihu UNOFFICIAL API library in python3, with help of bs4, lxml, requests and html2text.
+Home-page: https://github.com/7sDream/zhihu-py3
+Author: 7sDream
+Author-email: didislover@gmail.com
+License: MIT
+Download-URL: https://github.com/7sDream/zhihu-py3/releases
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: Environment :: Web Environment
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Topic :: Internet :: WWW/HTTP
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Dist: beautifulsoup4
+Requires-Dist: requests
+Requires-Dist: html2text
+Provides-Extra: lxml
+Requires-Dist: lxml; extra == 'lxml'
+
+zhihu-py3 : 知乎非官方API库 with Python3
+========================================
+
+|Documentation Status|
+
+最近一次更新内容：
+
+发布到Pypi。
+
+具体请看\ `ChangeLog <https://github.com/7sDream/zhihu-py3/blob/master/ChangeLog.rst>`__\ 。
+
+**有问题请开Issue，几个小时后无回应可加最后面的QQ群询问。**
+
+功能
+----
+
+由于知乎没有公开API，加上受到\ `zhihu-python <https://github.com/egrcc/zhihu-python>`__\ 项目的启发，在Python3下重新写了一个知乎的数据解析模块。
+
+提供的功能一句话概括为，用户提供知乎的网址构用于建对应类的对象，可以获取到某些需要的数据。
+
+简单例子：
+
+..  code:: python
+
+    from zhihu import ZhihuClient
+
+    Cookies_File = 'cookies.json'
+
+    client = ZhihuClient(Cookies_File)
+
+    url = 'http://www.zhihu.com/question/24825703'
+    question = client.question(url)
+
+    print(question.title)
+    print(question.answer_num)
+    print(question.follower_num)
+    print(question.topics)
+
+    for answer in question.answers:
+        print(answer.author.name, answer.upvote_num)
+
+这段代码的输出为：
+
+::
+
+    关系亲密的人之间要说「谢谢」吗？
+    627
+    4322
+    ['心理学', '恋爱', '社会', '礼仪', '亲密关系']
+    龙晓航 50
+    小不点儿 198
+    芝士就是力量 89
+    欧阳忆希 425
+    ...
+
+另外还有\ ``Author（用户）``\ 、\ ``Answer（答案）``\ 、\ ``Collection（收藏夹）``\ 、\ ``Column（专栏）``\ 、\ ``Post（文章）``\ 、\ ``Topic（话题）``\ 等类可以使用，\ ``Answer``,\ ``Post``\ 类提供了\ ``save``\ 方法能将答案或文章保存为HTML或Markdown格式，具体请看文档，或者\ ``zhihu-test.py``\ 。
+
+安装
+----
+
+..  class:: bold
+
+   本项目依赖于\ `requests <https://pypi.python.org/pypi/requests/2.7.0>`__\ 、\ `BeautifulSoup4 <http://www.crummy.com/software/BeautifulSoup>`__\ 、\ `html2text <https://github.com/aaronsw/html2text>`__
+
+已将项目发布到pypi，请使用下列命令安装
+
+..  code:: bash
+
+    (sudo) pip3 install zhihu-py3
+
+希望开启lxml的话请使用：
+
+..  code:: bash
+
+    (sudo) pip3 install zhihu-py3[lxml]
+
+因为lxml解析html效率高而且容错率强，在知乎使用\ ``<br>``\ 时，自带的html.parser会将其转换成\ ``<br>...</br>``\ ，而lxml则转换为\ ``<br/>``\ ，更为标准且美观，所以推荐使用第二个命令。
+
+不安装lxml也能使用本模块，此时会自动使用html.parser作为解析器。
+
+PS 若在安装lxml时出错，请安装libxml和libxslt后重试：
+
+..  code:: bash
+
+    sudo apt-get install libxml2 libxml2-dev libxslt1.1 libxslt1-dev
+
+准备工作
+--------
+
+第一次使用推荐运行以下代码生成 cookies 文件：
+
+..  code:: python
+
+    from zhihu import ZhihuClient
+
+    ZhihuClient().create_cookies('cookies.json')
+
+运行结果
+
+::
+
+    ====== zhihu login =====
+    email: <your-email>
+    password: <your-password>
+    please check captcha.gif for captcha
+    captcha: <captcha-code>
+    ====== logging.... =====
+    login successfully
+    cookies file created.
+
+运行成功后会在目录下生成\ ``cookies.json``\ 文件。
+
+以下示例皆以登录成功为前提。
+
+建议在正式使用之前运行\ ``zhihu-test.py``\ 测试一下。
+
+用法实例
+--------
+
+以下示例均显示了使用cookies文件（上文生成）的登录方式，其他登录方式见后。
+
+获取某用户的基本信息
+~~~~~~~~~~~~~~~~~~~~
+
+..  code:: python
+
+    from zhihu import ZhihuClient
+
+    Cookies_File = 'cookies.json'
+
+    client = ZhihuClient(Cookies_File)
+
+    url = 'http://www.zhihu.com/people/zord-vczh'
+    author = client.author(url)
+
+    print('用户名 %s' % author.name)
+    print('用户简介 %s' % author.motto)
+    print('用户关注人数 %d' % author.followee_num)
+    print('取用户粉丝数 %d' % author.follower_num)
+    print('用户得到赞同数 %d' % author.upvote_num)
+    print('用户得到感谢数 %d' % author.thank_num)
+    print('用户提问数 %d' % author.question_num)
+    print('用户答题数 %d' % author.answer_num)
+
+    print('用户专栏文章数 %d，名称分别为：' % author.post_num)
+    for column in author.columns:
+        print(column.name)
+    print('用户收藏夹数 %d，名称分别为：' % author.collection_num)
+    for collection in author.collections:
+        print(collection.name)
+
+结果：
+
+::
+
+    用户名 vczh
+    用户简介 专业造轮子 https://github.com/vczh-libraries
+    用户关注人数 1339
+    取用户粉丝数 128100
+    用户得到赞同数 320326
+    用户得到感谢数 43045
+    用户提问数 238
+    用户答题数 8392
+    用户专栏文章数 25，名称分别为：
+    vczh的日常
+    深井冰 IT 评论
+    编程语言与高级语言虚拟机杂谈（仮）
+    蓝色小药丸
+    用户收藏夹数 1，名称分别为：
+    李老师牛逼的答案
+
+为节省篇幅，后文例子构建\ ``client``\ 的代码省略，因为都一样。
+
+备份某问题所有答案
+~~~~~~~~~~~~~~~~~~
+
+..  code:: python
+
+    question = client.question('http://www.zhihu.com/question/28092572')
+    for answer in question.answers:
+        answer.save()
+
+会在当前目录下新建以问题标题命名的文件夹，并将所有html文件保存到该文件夹。
+
+``save``\ 函数默认目录为当前目录下以问题标题命名的目录，默认文件名为问题标题加上答题者昵称，有相同昵称的情况下自动加上序号。
+
+..  code:: python
+
+    answer.save(mode="md")
+
+将会导出为 markdown 格式，下同。
+
+备份某用户所有答案
+~~~~~~~~~~~~~~~~~~
+
+..  code:: python
+
+    author = client.author('http://www.zhihu.com/people/7sdream')
+    for answer in author.answers:
+        answer.save(filepath=author.name)
+
+备份某收藏夹所有答案，备份专栏文章同理，不再举例。
+
+获取某用户点赞的动态
+~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
+
+    author = zhihu.author('http://www.zhihu.com/people/zord-vczh')
+    for act in author.activities:
+        if act.type == zhihu.ActType.UPVOTE_ANSWER:
+            print('%s 在 %s 赞同了问题 %s 中 %s(motto: %s) 的回答, '
+                  '此回答赞同数 %d' %
+                  (author.name, act.time, act.answer.question.title,
+                   act.answer.author.name, act.answer.author.motto,
+                   act.answer.upvote_num))
+
+结果
+
+::
+
+    vczh 在 2015-07-24 08:35:06 赞同了问题 女生夏天穿超短裙是一种什么样的体验？ 中 Light(motto: 我城故事多。) 的回答, 此回答赞同数 43
+    vczh 在 2015-07-24 08:34:30 赞同了问题 女生夏天穿超短裙是一种什么样的体验？ 中 Ms狐狸(motto: 随便写来玩玩) 的回答, 此回答赞同数 57
+    ……
+
+用户activities属性的完整用法可查看\ ``zhihu-test.py``\ 中\ ``test_author``\ 函数
+
+获取用户关注的人和关注此用户的人
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
+
+    author = client.author('http://www.zhihu.com/people/7sdream')
+
+    print('--- Followers ---')
+    for follower in author.followers:
+        print(follower.name)
+
+    print('--- Followees ---')
+    for followee in author.followees:
+        print(followee.name)
+
+结果：
+
+::
+
+    --- Followers ---
+    yuwei
+    falling
+    周非
+    ...
+    --- Followees ---
+    yuwei
+    falling
+    伍声
+    ...
+
+计算某答案点赞中三零用户比例
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
+
+    url = 'http://www.zhihu.com/question/30404450/answer/47939822'
+    answer = client.answer(url)
+
+    three_zero_user_num = 0
+
+    for upvoter in answer.upvoters:
+        print(upvoter.name, upvoter.upvote_num, upvoter.thank_num,
+              upvoter.question_num, upvoter.answer_num)
+        if upvoter.is_zero_user():
+            three_zero_user_num += 1
+
+    print('\n三零用户比例 %.3f%%' % (three_zero_user_num / answer.upvote_num * 100))
+
+结果：
+
+::
+
+    ...
+    宋飞 0 0 0 0
+    唐吃藕 10 0 0 5
+
+    三零用户比例 26.852%
+
+爬取某用户关注的人的头像
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
+
+    import requests
+    import os
+    import imghdr
+
+    author = client.author('http://www.zhihu.com/people/zord-vczh')
+
+    os.mkdir('vczh')
+    for followee in author.followees:
+        try:
+            filename = followee.name + ' - ' + followee.id + '.jpeg'
+            print(filename)
+            with open('vczh/' + filename, 'wb') as f:
+                f.write(requests.get(followee.photo_url).content)
+        except KeyboardInterrupt:
+            break
+
+    for root, dirs, files in os.walk('vczh'):
+        for filename in files:
+            filename = os.path.join(root, filename)
+            img_type = imghdr.what(filename)
+            if img_type != 'jpeg' and img_type is not None:
+                print(filename, '--->', img_type)
+                os.rename(filename, filename[:-4] + img_type)
+
+结果：
+
+`点这里 <http://www.zhihu.com/question/28661987/answer/42591825>`__
+
+登录相关方法（均为\ ``ZhihuClient``\ 的方法）
+---------------------------------------------
+
+create\_cookies
+~~~~~~~~~~~~~~~
+
+用于生成 cookies，用法见前面的介绍。
+
+login\_with\_cookies
+~~~~~~~~~~~~~~~~~~~~
+
+用cookies字符串或文件名登录，\ ``ZhihuClient``\ 的构造函数就是使用这个方法。
+
+get\_captcha
+~~~~~~~~~~~~
+
+获取验证码数据（bytes二进制数据），当用于其他项目时方便手动获取验证码图片数据进行处理，比如显示在控件内。
+
+login
+~~~~~
+
+手动登陆方法，用于其他项目中方便手动无需 cookies 登陆，参数为：
+
+-  email
+-  password
+-  captcha
+
+返回值有三个
+
+-  code：成功为0，失败为1
+-  msg：错误消息，字符串格式，成功为空
+-  cookies：cookies数据，字符串格式，失败为空
+
+login\_in\_terminal
+~~~~~~~~~~~~~~~~~~~
+
+跟着提示在终端里登录知乎，返回cookies字符串，create\_cookies就是帮你做了将这个函数的返回值保存下来的工作而已。
+
+综上
+~~~~
+
+如果你只是写个小脚本测试玩玩，可以使用：
+
+..  code:: python
+
+    from zhihu import ZhihuClient
+    client = ZhiuhClien()
+    client.login_in_terminal()
+
+    # do thing you want with client
+
+如果你的脚本不是大项目，又要多次运行，可以先按照上文方法create\_cookies，再使用：
+
+..  code:: python
+
+    from zhihu import ZhihuClient
+    Cookies_File = 'cookies.json'
+    client = ZhihuClient(Cookies_File)
+
+如果项目比较大（以GUI项目为例），可以在判断出是首次使用（没有cookies文件）时，弹出登录对话框，使用get\_captcha获取验证码数据，再调用login函数手动登录并在登录成功后保存cookies文件：
+
+..  code:: python
+
+    import os
+    from zhihu import ZhihuClient
+
+    Cookies_File = 'config/cookies.json'
+
+    client = ZhihuClient()
+
+    def on_window_show()
+        login_btn.disable()
+        if os.path.isfile(Cookies_File) is False:
+            captcha_imgbox.setData(client.get_capthca())
+            login_btn.enable()
+        else:
+            with open(Cookies_File) as f
+                client.login_with_cookies(f.read())
+            # turn to main window
+
+    def on_login_button_clicked():
+        login_btn.disable()
+        email = email_edit.get_text()
+        password = password_edit.get_text()
+        captcha = captcha_edit.get_text()
+        code, msg, cookies = clien.login(email, password, captcha)
+        if code == 0:
+            with open(Cookies_File, 'w') as f
+                f.write(cookies)
+            # turn to main window
+        else:
+            msgbox(msg)
+            login_btn.enable()
+
+注：以上和GUI有关的代码皆为我乱想出来的，仅作示例之用。
+
+文档
+----
+
+终于搞定了文档这个磨人的小妖精，可惜 Sphinx 还是不会用 T^T
+先随意弄成这样吧：
+
+Read The Docs：
+`点击这里查看文档 <http://zhihu-py3.readthedocs.org/zh_CN/latest>`__
+
+TODO List
+---------
+
+-  [x] 增加获取用户关注者，用户追随者
+-  [x] 增加获取答案点赞用户功能
+-  [x] 获取用户头像地址
+-  [x] 打包为标准Python模块
+-  [x] 重构代码，增加\ ``ZhihuClient``\ 类，使类可以自定义cookies文件
+-  [ ] 收藏夹关注者，问题关注者等等
+-  [ ] ``ZhihuClient``\ 增加各种用户操作（比如给某答案点赞）
+
+联系我
+------
+
+Github：\ `@7sDream <https://github.com/7sDream>`__
+
+知乎：\ `@7sDream <http://www.zhihu.com/people/7sdream>`__
+
+新浪微博：\ `@Dilover <http://weibo.com/didilover>`__
+
+邮箱：\ `给我发邮件 <mailto:xixihaha.xiha@qq.com>`__
+
+编程交流群：478786205
+
+.. |Documentation Status| image:: https://readthedocs.org/projects/zhihu-py3/badge/?version=latest
+   :target: https://readthedocs.org/projects/zhihu-py3/?badge=latest
+
+
+(<_io.BufferedReader name='ChangeLog.rst'>, '更新日志\n========\n\n2015.07.30\n----------\n\n发布到Pypi.\n\n2015.07.29\n----------\n\n-  重构项目结构\n-  增加zhihu.Client类，改善原先模块需要使用当前目录下cookies的弊端，现在的使用方法请看Readme中的示例。\n-  去掉了\\ ``_text2int``\\ 方法，因为发现知乎以K结尾的赞同数也有办法获取到准确点赞数。\n\n2015.07.26\n----------\n\n重构项目结构，转变为标准Python模块结构。\n\n2015.07.26\n----------\n\n添加\\ ``Author.photo_url``\\ 借口，用于获取用户头像。\n\n本属性的实现较为分散，在不同的地方使用了不同的方法：\n\n-  ``Author.follower(e)s``\\ 、\\ ``Answer.upvoters``\\ 等属性返回的\\ ``Author``\\ 自带\\ ``photo_url``\n\n-  用户自定义的\\ ``Author``\\ 在访问过主页的情况下通过解析主页得到\n\n-  用户自定义的\\ ``Author``\\ 在未访问主页的情况下为了性能使用了知乎的CardProfile\n   API\n\n因为实现混乱所以容易有Bug，欢迎反馈。\n\n2015.07.25\n----------\n\n增加了获取用户关注者和粉丝的功能\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n``Author.followers``\\ 、\\ ``Author.folowees``\\ ，返回Author迭代器，自带url,\nname ,motto question\\_num, answer\\_num, upvote\\_num, follower\\_num属性。\n\nhtml解析器优选\n~~~~~~~~~~~~~~\n\n在安装了lxml的情况下默认使用lxml作为解析器，否则使用html.parser。\n\n增加答案获取点赞用户功能\n~~~~~~~~~~~~~~~~~~~~~~~~\n\n``Author.upvoters``\\ ，返回Author迭代器，自带url, name ,motto\nquestion\\_num, answer\\_num, upvote\\_num, thank\\_num属性\n\n增加简易判断是否为「三零用户」功能\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n``Author.is_zero_user()``\\ ，判断标准为，赞同，感谢，提问数，回答数均为0。\n\n2015.07.23\n----------\n\n各个类url属性更改为公开\n~~~~~~~~~~~~~~~~~~~~~~~\n\n暂时这样吧，有点懒了，因为这样会让使用者有机会非法修改url，可能导致Bug，以后勤快的话会改成read-only。\n\n类名变更\n~~~~~~~~\n\n专栏类从\\ ``Book``\\ 更名为\\ ``Cloumn``\n\n文章类从\\ ``Article``\\ 更名为\\ ``Post``\n\n以上两个更名同时影响了其他类的属性名，如\\ ``Author.books``\\ 变更为\\ ``Author.columns``\\ ，其他类同理。\n\n接口名变更\n~~~~~~~~~~\n\n1. 统一了一下复数的使用。比如\\ ``Author.answers_num``\\ 变为\\ ``Author.answer_num``,\n   ``Author.collections_num``\\ 变为\\ ``Author.collection_num``\\ 。也就是说某某数量的接口名为\\ ``Class.foo_num``\\ ，foo使用单数形式。\n\n2. 知乎的赞同使用单词upvote，以前叫\\ ``agree``\\ 的地方现在都叫\\ ``upvote``\\ 。比如\\ ``Author.agree_num``\\ 变为\\ ``Author.upvote_num``,\n   ``Post.agree_num``\\ 变为\\ ``Post.upvote_num``\\ 。\n\n3. ``Answer``\\ 类的\\ ``upvote``\\ 属性更名为\\ ``upvote_num``\\ 。\n\n提供\\ ``Topic``\\ 类\n~~~~~~~~~~~~~~~~~~~\n\n目前只有获取话题名的功能。\n\n提供\\ ``Author.activities``\n~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n属性获取用户动态，返回\\ ``Activity``\\ 类生成器。\n\n``Activity``\\ 类提供\\ ``type``\\ 属性用于判断动态类型，\\ ``type``\\ 为\\ ``ActType``\\ 类定义的常量，根据\\ ``type``\\ 的不同提供不同的属性，如下表：\n\n+----------------+--------------------+--------------+\n| 类型           | 常量               | 提供的成员   |\n+================+====================+==============+\n| 关注了问题     | FOLLOW\\_QUESTION   | question     |\n+----------------+--------------------+--------------+\n| 赞同了回答     | UPVOTE\\_ANSWER     | answer       |\n+----------------+--------------------+--------------+\n| 关注了专栏     | FOLLOW\\_COLUMN     | column       |\n+----------------+--------------------+--------------+\n| 回答了问题     | ANSWER\\_QUESTION   | answer       |\n+----------------+--------------------+--------------+\n| 赞同了文章     | UPVOTE\\_POST       | post         |\n+----------------+--------------------+--------------+\n| 发布了文章     | PUBLISH\\_POST      | post         |\n+----------------+--------------------+--------------+\n| 关注了话题     | FOLLOW\\_TOPIC      | topic        |\n+----------------+--------------------+--------------+\n| 提了一个问题   | ASK\\_QUESTION      | question     |\n+----------------+--------------------+--------------+\n\n由于每种类型都只提供了一种属性，所以所有Activity对象都有\\ ``content``\\ 属性，用于直接获取唯一的属性。\n\n示例代码见[zhihu-test.py][zhihu-test-py-url]的\\ ``test_author``\\ 函数最后。\n\n``activities``\\ 属性可以在未登录（未生成cookies）的情况下使用，但是根据知乎的隐私保护政策，开启了隐私保护的用户的回答和文章，此时作者信息会是匿名用户，所以还是建议登录后使用。\n\n2015.07.22\n----------\n\n尝试修复了最新版bs4导致的问题，虽然我没明白问题在哪QuQ，求测试。\n\n-   Windows 已测试 (`@7sDream <https://github.com/7sDream>`__\\ )\n-   Linux\n\n    -   Ubuntu 已测试(\\ `@7sDream <https://github.com/7sDream>`__\\ )\n\n-   Mac 已测试(\\ `@SimplyY <https://github.com/SimplyY>`__\\ )\n\n2015.07.16\n----------\n\n重构 Answer 和 Article 的 url 属性为 public.\n\n2015.07.11:\n-----------\n\nHotfix， 知乎更换了登录网址，做了简单的跟进，过了Test，等待Bug汇报中。\n\n2015.06.04：\n------------\n\n由\\ `Gracker <https://github.com/Gracker>`__\\ 补充了在 Ubuntu 14.04\n下的测试结果，并添加了补充说明。\n\n2015.05.29：\n------------\n\n修复了当问题关注人数为0时、问题答案数为0时的崩溃问题。（感谢：\\ `段晓晨 <http://www.zhihu.com/people/loveQt>`__\\ ）\n')
+
