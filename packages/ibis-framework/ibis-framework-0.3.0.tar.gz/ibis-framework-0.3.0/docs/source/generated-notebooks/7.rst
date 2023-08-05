@@ -1,0 +1,281 @@
+
+.. code:: python
+
+    import ibis
+    import os
+    hdfs_port = os.environ.get('IBIS_WEBHDFS_PORT', 50070)
+    
+    ic = ibis.impala_connect(host='quickstart.cloudera', database='ibis_testing')
+    hdfs = ibis.hdfs_connect(host='quickstart.cloudera', port=hdfs_port)
+    con = ibis.make_client(ic, hdfs_client=hdfs)
+    
+    ibis.options.interactive = True
+
+Frequency tables
+================
+
+Ibis provides the ``value_counts`` API, just like pandas, for computing
+a frequency table for a table column or array expression. You might have
+seen it used already earlier in the tutorial.
+
+.. code:: python
+
+    lineitem = con.table('tpch_lineitem')
+    orders = con.table('tpch_orders')
+    
+    items = (orders.join(lineitem, orders.o_orderkey == lineitem.l_orderkey)
+             [lineitem, orders])
+    
+    items.o_orderpriority.value_counts()
+
+
+
+
+.. parsed-literal::
+
+       o_orderpriority    count
+    0         3-MEDIUM  1194959
+    1  4-NOT SPECIFIED  1199524
+    2            5-LOW  1202661
+    3         1-URGENT  1201581
+    4           2-HIGH  1202490
+
+
+
+This can be customized, of course:
+
+.. code:: python
+
+    freq = (items.group_by(items.o_orderpriority)
+            .aggregate([items.count().name('nrows'),
+                        items.l_extendedprice.sum().name('total $')]))
+    freq
+
+
+
+
+.. parsed-literal::
+
+       o_orderpriority    nrows         total $
+    0         3-MEDIUM  1194959  45698023582.03
+    1  4-NOT SPECIFIED  1199524  45820992304.35
+    2            5-LOW  1202661  46055868770.97
+    3         1-URGENT  1201581  45969422546.87
+    4           2-HIGH  1202490  46033003696.98
+
+
+
+Binning and histograms
+======================
+
+Numeric array expressions (columns with numeric type and other array
+expressions) have ``bucket`` and ``histogram`` methods which produce
+different kinds of binning. These produce category values (the computed
+bins) that can be used in grouping and other analytics.
+
+Let's have a look at a few examples
+
+I'll use the ``summary`` function to see the general distribution of
+lineitem prices in the order data joined above:
+
+.. code:: python
+
+    items.l_extendedprice.summary()
+
+
+
+
+.. parsed-literal::
+
+         count  nulls     min        max              sum      mean  \
+    0  6001215      0  901.00  104949.50  229577310901.20  38255.13   
+    
+       approx_nunique  
+    0         1011732  
+
+
+
+Alright then, now suppose we want to split the item prices up into some
+buckets of our choosing:
+
+.. code:: python
+
+    buckets = [0, 5000, 10000, 50000, 100000]
+
+The ``bucket`` function creates a bucketed category from the prices:
+
+.. code:: python
+
+    bucketed = items.l_extendedprice.bucket(buckets).name('bucket')
+
+Let's have a look at the value counts:
+
+.. code:: python
+
+    bucketed.value_counts()
+
+
+
+
+.. parsed-literal::
+
+      bucket    count
+    0      3  1893650
+    1      1   420695
+    2      2  3329905
+    3   None     4122
+    4      0   352843
+
+
+
+The buckets we wrote down define 4 buckets numbered 0 through 3. The
+``NaN`` is a pandas ``NULL`` value (since that's how pandas represents
+nulls in numeric arrays), so don't worry too much about that. Since the
+bucketing ends at 100000, we see there are 4122 values that are over
+100000. These can be included in the bucketing with ``include_over``:
+
+.. code:: python
+
+    bucketed = (items.l_extendedprice
+                .bucket(buckets, include_over=True)
+                .name('bucket'))
+    bucketed.value_counts()
+
+
+
+
+.. parsed-literal::
+
+       bucket    count
+    0       3  1893650
+    1       1   420695
+    2       2  3329905
+    3       0   352843
+    4       4     4122
+
+
+
+The ``bucketed`` object here is a special ***category*** type
+
+.. code:: python
+
+    bucketed.type()
+
+
+
+
+.. parsed-literal::
+
+    category(K=5)
+
+
+
+Category values can either have a known or unknown ***cardinality***. In
+this case, there's either 4 or 5 buckets based on how we used the
+``bucket`` function.
+
+Labels can be assigned to the buckets at any time using the ``label``
+function:
+
+.. code:: python
+
+    bucket_counts = bucketed.value_counts()
+    
+    labeled_bucket = (bucket_counts.bucket
+                      .label(['0 to 5000', '5000 to 10000', '10000 to 50000',
+                              '50000 to 100000', 'Over 100000'])
+                      .name('bucket_name'))
+    
+    expr = (bucket_counts[labeled_bucket, bucket_counts]
+            .sort_by('bucket'))
+    expr
+
+
+
+
+.. parsed-literal::
+
+           bucket_name  bucket    count
+    0        0 to 5000       0   352843
+    1    5000 to 10000       1   420695
+    2   10000 to 50000       2  3329905
+    3  50000 to 100000       3  1893650
+    4      Over 100000       4     4122
+
+
+
+Nice, huh?
+
+``histogram`` is a linear (fixed size bin) equivalent:
+
+.. code:: python
+
+    t = con.table('functional_alltypes')
+    
+    d = t.double_col
+    
+    tier = d.histogram(10).name('hist_bin')
+    expr = (t.group_by(tier)
+            .aggregate([d.min(), d.max(), t.count()])
+            .sort_by('hist_bin'))
+    expr
+
+
+
+
+.. parsed-literal::
+
+       hist_bin   min   max  count
+    0         0   0.0   0.0    730
+    1         1  10.1  10.1    730
+    2         2  20.2  20.2    730
+    3         3  30.3  30.3    730
+    4         4  40.4  40.4    730
+    5         5  50.5  50.5    730
+    6         6  60.6  60.6    730
+    7         7  70.7  70.7    730
+    8         8  80.8  80.8    730
+    9         9  90.9  90.9    730
+
+
+
+Filtering in aggregations
+=========================
+
+Suppose that you want to compute an aggregation with a subset of the
+data for *only one* of the metrics / aggregates in question, and the
+complete data set with the other aggregates. Most aggregation functions
+are thus equipped with a ``where`` argument. Let me show it to you in
+action:
+
+.. code:: python
+
+    t = con.table('functional_alltypes')
+    
+    d = t.double_col
+    s = t.string_col
+    
+    cond = s.isin(['3', '5', '7'])
+    
+    metrics = [t.count().name('# rows total'), 
+               cond.sum().name('# selected'),
+               d.sum().name('total'),
+               d.sum(where=cond).name('selected total')]
+    
+    color = (t.float_col
+             .between(3, 7)
+             .ifelse('red', 'blue')
+             .name('color'))
+    
+    t.group_by(color).aggregate(metrics)
+
+
+
+
+.. parsed-literal::
+
+      color  # rows total  # selected   total  selected total
+    0   red          2920        1460  132714           58984
+    1  blue          4380         730  199071           51611
+
+

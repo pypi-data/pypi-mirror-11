@@ -1,0 +1,673 @@
+
+Basics: Aggregation, filtering, limits
+======================================
+
+Now that you have ibis installed and connecting to your Impala, let's
+get our feet wet.
+
+.. code:: python
+
+    import ibis
+    import os
+    hdfs_port = os.environ.get('IBIS_WEBHDFS_PORT', 50070)
+    
+    ic = ibis.impala_connect(host='quickstart.cloudera', database='ibis_testing')
+    hdfs = ibis.hdfs_connect(host='quickstart.cloudera', port=hdfs_port)
+    con = ibis.make_client(ic, hdfs_client=hdfs)
+
+Accessing an Impala table
+=========================
+
+The optional ``database`` paramter allows to fully qualify the table.
+
+.. code:: python
+
+    table = con.table('functional_alltypes')
+    table = con.table('functional_alltypes', database='ibis_testing')
+
+Column selection and basic expressions
+======================================
+
+Selecting columns from a table works just like pandas
+
+.. code:: python
+
+    col = table.double_col
+    
+    # alternately
+    col2 = table['bigint_col']
+
+Table columns are equipped with a variety of math operations and other
+methods to assist in writing your analytics. For example:
+
+.. code:: python
+
+    expr = col.log2() - 1
+
+Some operations transform arrays to arrays, while others aggregate, like
+``sum`` and ``mean``:
+
+.. code:: python
+
+    expr2 = expr.sum()
+
+The methods that are available on columns depend on the time of the
+column. For example, you won't see the ``substr`` or ``upper`` methods
+for strings on numeric columns:
+
+.. code:: python
+
+    substr_expr = table.string_col.upper().substr(0, 2)
+
+Notice that printing the expressions to the console does not actually do
+anything, and shows a graphical representation of the expression you've
+built.
+
+**Note: don't worry too much about the details of the expression tree
+that's outputted, it's very likely to change over time**
+
+.. code:: python
+
+    expr2
+
+
+
+
+.. parsed-literal::
+
+    ref_0
+    DatabaseTable[table]
+      name: ibis_testing.`functional_alltypes`
+      schema:
+        id : int32
+        bool_col : boolean
+        tinyint_col : int8
+        smallint_col : int16
+        int_col : int32
+        bigint_col : int64
+        float_col : float
+        double_col : double
+        date_string_col : string
+        string_col : string
+        timestamp_col : timestamp
+        year : int32
+        month : int32
+    
+    sum = Sum[double]
+      Subtract[array(double)]
+        Log2[array(double)]
+          double_col = Column[double] 'double_col' from table ref_0
+        Literal[int8]
+          1
+      None
+
+
+
+We can also execute an expression by calling ``execute`` on the Impala
+connection object
+
+.. code:: python
+
+    con.execute(col.sum())
+
+
+
+
+.. parsed-literal::
+
+    331785.0
+
+
+
+There's a shortcut to make this a little more convenient in interactive
+use
+
+Interactive mode
+================
+
+Many Ibis expressions can be immediately executed against the database,
+and it may improve your productivity to have the executed for you
+whenever you try to print the expression in the console / IPython
+notebook.
+
+To do this, we have an *interactive* mode available, which can be turned
+on/off like so:
+
+.. code:: python
+
+    ibis.options.interactive = True
+
+Now, any expressions you write will be executed right away
+
+.. code:: python
+
+    table.limit(10)
+
+
+
+
+.. parsed-literal::
+
+         id bool_col  tinyint_col  smallint_col  int_col  bigint_col  float_col  \
+    0  5460     True            0             0        0           0        0.0   
+    1  5461    False            1             1        1          10        1.1   
+    2  5462     True            2             2        2          20        2.2   
+    3  5463    False            3             3        3          30        3.3   
+    4  5464     True            4             4        4          40        4.4   
+    5  5465    False            5             5        5          50        5.5   
+    6  5466     True            6             6        6          60        6.6   
+    7  5467    False            7             7        7          70        7.7   
+    8  5468     True            8             8        8          80        8.8   
+    9  5469    False            9             9        9          90        9.9   
+    
+       double_col date_string_col string_col           timestamp_col  year  month  
+    0         0.0        07/01/10          0 2010-07-01 00:00:00.000  2010      7  
+    1        10.1        07/01/10          1 2010-07-01 00:01:00.000  2010      7  
+    2        20.2        07/01/10          2 2010-07-01 00:02:00.100  2010      7  
+    3        30.3        07/01/10          3 2010-07-01 00:03:00.300  2010      7  
+    4        40.4        07/01/10          4 2010-07-01 00:04:00.600  2010      7  
+    5        50.5        07/01/10          5 2010-07-01 00:05:00.100  2010      7  
+    6        60.6        07/01/10          6 2010-07-01 00:06:00.150  2010      7  
+    7        70.7        07/01/10          7 2010-07-01 00:07:00.210  2010      7  
+    8        80.8        07/01/10          8 2010-07-01 00:08:00.280  2010      7  
+    9        90.9        07/01/10          9 2010-07-01 00:09:00.360  2010      7  
+
+
+
+You can select a row range with slicing syntax:
+
+.. code:: python
+
+    table.double_col.sum()
+
+
+
+
+.. parsed-literal::
+
+    331785.0
+
+
+
+Don't worry about the syntax here, but expressions resulting in tabular
+output will come back as a pandas DataFrame by default:
+
+.. code:: python
+
+    metrics = [table.double_col.sum().name('total')]
+    expr = table.group_by('string_col').aggregate(metrics)
+    expr
+
+
+
+
+.. parsed-literal::
+
+      string_col  total
+    0          6  44238
+    1          1   7373
+    2          4  29492
+    3          8  58984
+    4          9  66357
+    5          2  14746
+    6          7  51611
+    7          3  22119
+    8          5  36865
+    9          0      0
+
+
+
+Verbose mode and logging
+========================
+
+You may want to see or log all the Impala queries that Ibis executes
+under the hood. To do that, use the ``options.verbose`` option:
+
+.. code:: python
+
+    ibis.options.verbose = True
+    
+    metrics = [table.double_col.sum().name('total')]
+    expr = table.group_by('string_col').aggregate(metrics)
+    expr
+
+
+.. parsed-literal::
+
+    SELECT string_col, sum(double_col) AS `total`
+    FROM ibis_testing.`functional_alltypes`
+    GROUP BY 1
+    LIMIT 10000
+
+
+
+
+.. parsed-literal::
+
+      string_col  total
+    0          6  44238
+    1          4  29492
+    2          7  51611
+    3          1   7373
+    4          8  58984
+    5          2  14746
+    6          5  36865
+    7          0      0
+    8          9  66357
+    9          3  22119
+
+
+
+.. code:: python
+
+    queries = []
+    def logger(x):
+        queries.append(x)
+        
+    ibis.options.verbose_log = logger
+    
+    expr.execute()
+    expr.execute()
+    
+    queries
+
+
+
+
+.. parsed-literal::
+
+    ['SELECT string_col, sum(double_col) AS `total`\nFROM ibis_testing.`functional_alltypes`\nGROUP BY 1\nLIMIT 10000',
+     'SELECT string_col, sum(double_col) AS `total`\nFROM ibis_testing.`functional_alltypes`\nGROUP BY 1\nLIMIT 10000']
+
+
+
+.. code:: python
+
+    from __future__ import print_function
+    ibis.options.verbose_log = lambda x: print(x)
+    ibis.options.verbose = False
+
+Aggregation basics
+==================
+
+One of the essential table API functions is ``aggregate``. Aggregation
+involves the following
+
+-  One or more *named* aggregate expressions, or *reductions*
+-  Zero or more grouping expressions or column names
+
+This ends up working very similarly to pandas's **groupby** mechanism.
+
+Let's start with a simple reduction:
+
+.. code:: python
+
+    metric = table.double_col.sum()
+
+As you saw above, you can execute this immediately and obtain a value:
+
+.. code:: python
+
+    metric
+
+
+
+
+.. parsed-literal::
+
+    331785.0
+
+
+
+The reduced column can be more complex; for example, you could count the
+number of null values in a column like so:
+
+.. code:: python
+
+    table.double_col.isnull().sum()
+
+
+
+
+.. parsed-literal::
+
+    0
+
+
+
+To aggregate a table, potentially with grouping keys, we have to give
+the reduction a name and call ``aggregate``
+
+.. code:: python
+
+    metric = metric.name('double_total')
+    expr = table.aggregate([metric])
+    result = con.execute(expr)
+    result
+
+
+
+
+.. raw:: html
+
+    <div>
+    <table border="1" class="dataframe">
+      <thead>
+        <tr style="text-align: right;">
+          <th></th>
+          <th>double_total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>0</th>
+          <td>331785</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+
+
+The result here is actually a pandas DataFrame with 1 row and just the
+one column. We can add another metric and add a grouping key
+
+.. code:: python
+
+    metric2 = (table.bigint_col + 1).log10().max().name('some_metric')
+    
+    expr = table.aggregate([metric, metric2], by=['string_col'])
+    expr
+
+
+
+
+.. parsed-literal::
+
+      string_col  double_total  some_metric
+    0          6         44238     1.785330
+    1          4         29492     1.612784
+    2          1          7373     1.041393
+    3          8         58984     1.908485
+    4          2         14746     1.322219
+    5          5         36865     1.707570
+    6          0             0     0.000000
+    7          9         66357     1.959041
+    8          7         51611     1.851258
+    9          3         22119     1.491362
+
+
+
+We provide a convenience ``group_by``, a la pandas, to make this a
+little more composable:
+
+.. code:: python
+
+    expr = (table.group_by('string_col')
+            .aggregate([metric, metric2]))
+    expr
+
+
+
+
+.. parsed-literal::
+
+      string_col  double_total  some_metric
+    0          6         44238     1.785330
+    1          4         29492     1.612784
+    2          1          7373     1.041393
+    3          7         51611     1.851258
+    4          8         58984     1.908485
+    5          2         14746     1.322219
+    6          5         36865     1.707570
+    7          9         66357     1.959041
+    8          0             0     0.000000
+    9          3         22119     1.491362
+
+
+
+You can also group by named column expressions
+
+.. code:: python
+
+    keys = [table.timestamp_col.hour().name('hour'), 'string_col']
+    
+    expr = table.group_by(keys).aggregate([metric])
+    
+    # Top 10 by double_total, more on this later
+    expr.sort_by([('double_total', False)]).limit(10)
+
+
+
+
+.. parsed-literal::
+
+       hour string_col  double_total
+    0     1          9       13544.1
+    1     2          9       13180.5
+    2     0          9       13089.6
+    3     3          9       13089.6
+    4     4          9       12271.5
+    5     1          8       12039.2
+    6     2          8       11716.0
+    7     0          8       11635.2
+    8     3          8       11635.2
+    9     4          8       10908.0
+
+
+
+In most cases, an aggregation by itself can be evaluated:
+
+.. code:: python
+
+    table.double_col.mean()
+
+
+
+
+.. parsed-literal::
+
+    45.450000000000003
+
+
+
+This can also be done in simple cases along with ``group_by``:
+
+.. code:: python
+
+    table.group_by('string_col').double_col.mean()
+
+
+
+
+.. parsed-literal::
+
+      string_col  mean(double_col)
+    0          6              60.6
+    1          4              40.4
+    2          1              10.1
+    3          7              70.7
+    4          8              80.8
+    5          2              20.2
+    6          9              90.9
+    7          5              50.5
+    8          3              30.3
+    9          0               0.0
+
+
+
+Many reduction functions have a default expression name, unlike many
+other Ibis expressions (for now!), to make some common analyses easier:
+
+.. code:: python
+
+    d = table.double_col
+    
+    (table.group_by('string_col')
+     .aggregate([d.sum(), d.mean(), d.min(), d.max()]))
+
+
+
+
+.. parsed-literal::
+
+      string_col    sum  mean   min   max
+    0          6  44238  60.6  60.6  60.6
+    1          4  29492  40.4  40.4  40.4
+    2          7  51611  70.7  70.7  70.7
+    3          1   7373  10.1  10.1  10.1
+    4          8  58984  80.8  80.8  80.8
+    5          2  14746  20.2  20.2  20.2
+    6          9  66357  90.9  90.9  90.9
+    7          5  36865  50.5  50.5  50.5
+    8          0      0   0.0   0.0   0.0
+    9          3  22119  30.3  30.3  30.3
+
+
+
+Of course, for this *particular* case you can always use ``summary``
+
+.. code:: python
+
+    table.group_by('string_col').double_col.summary()
+
+
+
+
+.. parsed-literal::
+
+      string_col  count  nulls   min   max    sum  mean  approx_nunique
+    0          1    730      0  10.1  10.1   7373  10.1               1
+    1          6    730      0  60.6  60.6  44238  60.6               1
+    2          8    730      0  80.8  80.8  58984  80.8               1
+    3          4    730      0  40.4  40.4  29492  40.4               1
+    4          2    730      0  20.2  20.2  14746  20.2               1
+    5          5    730      0  50.5  50.5  36865  50.5               1
+    6          7    730      0  70.7  70.7  51611  70.7               1
+    7          9    730      0  90.9  90.9  66357  90.9               1
+    8          0    730      0   0.0   0.0      0   0.0               1
+    9          3    730      0  30.3  30.3  22119  30.3               1
+
+
+
+Filtering
+=========
+
+Filtering tables works similarly to pandas
+
+.. code:: python
+
+    table.aggregate([table.bigint_col.max().name('bigint_max'),
+                     table.bigint_col.min().name('bigint_min'),
+                     table.int_col.max().name('int_max'),
+                     table.int_col.min().name('int_min')])
+
+
+
+
+.. parsed-literal::
+
+       bigint_max  bigint_min  int_max  int_min
+    0          90           0        9        0
+
+
+
+.. code:: python
+
+    table.count()
+
+
+
+
+.. parsed-literal::
+
+    7300
+
+
+
+.. code:: python
+
+    table[table.bigint_col > 50].count()
+
+
+
+
+.. parsed-literal::
+
+    2920
+
+
+
+Filters can be composed using & (and), \| (or), and other logical array
+operators
+
+.. code:: python
+
+    cond1 = table.bigint_col > 50
+    cond2 = table.int_col.between(2, 7)
+    table[cond1 | cond2].count()
+
+
+
+
+.. parsed-literal::
+
+    5840
+
+
+
+There's a ``filter`` function that allows you to pass a list of
+conditions (that are all required to hold):
+
+.. code:: python
+
+    table.filter([cond1, cond2]).count()
+
+
+
+
+.. parsed-literal::
+
+    1460
+
+
+
+Note this is the same as &-ing the boolean conditions yourself:
+
+.. code:: python
+
+    table[cond1 & cond2].count()
+
+
+
+
+.. parsed-literal::
+
+    1460
+
+
+
+Limits
+======
+
+Like in SQL, the ``limit`` function selects the indicated numbers of
+rows from the beginning of a table's result set
+
+.. code:: python
+
+    table.limit(2)
+
+
+
+
+.. parsed-literal::
+
+         id bool_col  tinyint_col  smallint_col  int_col  bigint_col  float_col  \
+    0  5460     True            0             0        0           0        0.0   
+    1  5461    False            1             1        1          10        1.1   
+    
+       double_col date_string_col string_col       timestamp_col  year  month  
+    0         0.0        07/01/10          0 2010-07-01 00:00:00  2010      7  
+    1        10.1        07/01/10          1 2010-07-01 00:01:00  2010      7  
+
+

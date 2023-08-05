@@ -1,0 +1,590 @@
+
+.. code:: python
+
+    import ibis
+    import os
+    hdfs_port = os.environ.get('IBIS_WEBHDFS_PORT', 50070)
+    
+    ic = ibis.impala_connect(host='quickstart.cloudera', database='ibis_testing')
+    hdfs = ibis.hdfs_connect(host='quickstart.cloudera', port=hdfs_port)
+    con = ibis.make_client(ic, hdfs_client=hdfs)
+    
+    ibis.options.interactive = True
+
+"Top-K" Filtering
+=================
+
+A common analytical pattern involves subsetting based on some method of
+ranking. For example, "the 5 most frequently occurring widgets in a
+dataset". By choosing the right metric, you can obtain the most
+important or least important items from some dimension, for some
+definition of important.
+
+To carry out the pattern by hand involves the following
+
+-  Choose a ranking metric
+-  Aggregate, computing the ranking metric, by the target dimension
+-  Order by the ranking metric and take the highest K values
+-  Use those values as a set filter (either with ``semi_join`` or
+   ``isin``) in your next query
+
+For example, let's look at the TPC-H tables and find the 5 or 10
+customers who placed the most orders over their lifetime:
+
+.. code:: python
+
+    orders = con.table('tpch_orders')
+    
+    top_orders = (orders
+                  .group_by('o_custkey')
+                  .size()
+                  .sort_by(('count', False))
+                  .limit(5))
+    top_orders
+
+
+
+
+.. parsed-literal::
+
+       o_custkey  count
+    0       3451     41
+    1     102004     41
+    2     102022     41
+    3      79300     40
+    4     122623     40
+
+
+
+Now, we could use these customer keys as a filter in some other
+analysis:
+
+.. code:: python
+
+    # Among the top 5 most frequent customers, what's the histogram of their order statuses?
+    analysis = (orders[orders.o_custkey.isin(top_orders.o_custkey)]
+                .group_by('o_orderstatus')
+                .size())
+    analysis
+
+
+
+
+.. parsed-literal::
+
+      o_orderstatus  count
+    0             O    107
+    1             P      8
+    2             F     88
+
+
+
+This is such a common pattern that Ibis supports a high level primitive
+``topk`` operation, which can be used immediately as a filter:
+
+.. code:: python
+
+    top_orders = orders.o_custkey.topk(5)
+    orders[top_orders].group_by('o_orderstatus').size()
+
+
+
+
+.. parsed-literal::
+
+      o_orderstatus  count
+    0             O    107
+    1             P      8
+    2             F     88
+
+
+
+This goes a little further. Suppose now we want to rank customers by
+their total spending instead of the number of orders, perhaps a more
+meaningful metric:
+
+.. code:: python
+
+    total_spend = orders.o_totalprice.sum().name('total')
+    top_spenders = (orders
+                    .group_by('o_custkey')
+                    .aggregate(total_spend)
+                    .sort_by(('total', False))
+                    .limit(5))
+    top_spenders
+
+
+
+
+.. parsed-literal::
+
+       o_custkey       total
+    0     143500  7012696.48
+    1      95257  6563511.23
+    2      87115  6457526.26
+    3     131113  6311428.86
+    4     103834  6306524.23
+
+
+
+To use another metric, just pass it to the ``by`` argument in ``topk``:
+
+.. code:: python
+
+    top_spenders = orders.o_custkey.topk(5, by=total_spend)
+    orders[top_spenders].group_by('o_orderstatus').size()
+
+
+
+
+.. parsed-literal::
+
+      o_orderstatus  count
+    0             O     98
+    1             P      1
+    2             F     78
+
+
+
+Self joins
+==========
+
+If you're a relational data guru, you may have wondered how it's
+possible to join tables with themselves, because joins clauses involve
+column references back to the original table.
+
+Consider the SQL
+
+::
+
+    SELECT t1.key, sum(t1.value - t2.value) AS metric
+    FROM my_table t1
+      JOIN my_table t2
+        ON t1.key = t2.subkey
+    GROUP BY 1
+
+Here, we have an unambiguous way to refer to each of the tables through
+aliasing.
+
+Let's consider the TPC-H database, and support we want to compute
+year-over-year change in total order amounts by region using joins.
+
+.. code:: python
+
+    region = con.table('tpch_region')
+    nation = con.table('tpch_nation')
+    customer = con.table('tpch_customer')
+    orders = con.table('tpch_orders')
+    
+    orders.limit(5)
+
+
+
+
+.. parsed-literal::
+
+       o_orderkey  o_custkey o_orderstatus o_totalprice o_orderdate  \
+    0     4726016     133885             F    160843.35  1992-06-22   
+    1     4726017      36934             O     78307.91  1996-04-19   
+    2     4726018      41483             F    103237.90  1994-10-12   
+    3     4726019     148102             O    201463.59  1997-09-12   
+    4     4726020      19864             O    166098.86  1995-09-12   
+    
+      o_orderpriority          o_clerk  o_shippriority  \
+    0        1-URGENT  Clerk#000000420               0   
+    1          2-HIGH  Clerk#000000560               0   
+    2           5-LOW  Clerk#000000517               0   
+    3           5-LOW  Clerk#000000954               0   
+    4          2-HIGH  Clerk#000000973               0   
+    
+                                               o_comment  
+    0  ing to the unusual, ironic theodolites. furiou...  
+    1        s among the blithely sly requests boost car  
+    2                     s sleep above the packages. fu  
+    3     tegrate stealthily after the final, silent ide  
+    4                             le quickly blithely ev  
+
+
+
+First, let's join all the things and select the fields we care about:
+
+.. code:: python
+
+    fields_of_interest = [region.r_name.name('region'), 
+                          nation.n_name.name('nation'),
+                          orders.o_totalprice.name('amount'),
+                          orders.o_orderdate.cast('timestamp').name('odate') # these are strings
+                          ]
+    
+    joined_all = (region.join(nation, region.r_regionkey == nation.n_regionkey)
+                  .join(customer, customer.c_nationkey == nation.n_nationkey)
+                  .join(orders, orders.o_custkey == customer.c_custkey)
+                  [fields_of_interest])
+
+Okay, great, let's have a look:
+
+.. code:: python
+
+    joined_all.limit(5)
+
+
+
+
+.. parsed-literal::
+
+       region      nation     amount      odate
+    0  AFRICA  MOZAMBIQUE  275266.73 1996-05-17
+    1  AFRICA  MOZAMBIQUE  137016.47 1997-07-04
+    2  AFRICA  MOZAMBIQUE  267222.99 1997-10-05
+    3  AFRICA  MOZAMBIQUE  222958.49 1994-12-01
+    4  AFRICA  MOZAMBIQUE   85184.71 1992-11-25
+
+
+
+Sweet, now let's aggregate by year and region:
+
+.. code:: python
+
+    year = joined_all.odate.year().name('year')
+    
+    total = joined_all.amount.sum().cast('double').name('total')
+    
+    annual_amounts = (joined_all
+                      .group_by(['region', year])
+                      .aggregate(total))
+    annual_amounts
+
+
+
+
+.. parsed-literal::
+
+             region  year         total
+    0   MIDDLE EAST  1997  6.814699e+09
+    1   MIDDLE EAST  1992  6.761499e+09
+    2       AMERICA  1996  6.883057e+09
+    3   MIDDLE EAST  1998  4.025011e+09
+    4        AFRICA  1995  6.908429e+09
+    5          ASIA  1995  6.931738e+09
+    6        EUROPE  1994  6.979473e+09
+    7          ASIA  1996  6.955679e+09
+    8        AFRICA  1993  6.859733e+09
+    9   MIDDLE EAST  1995  6.830827e+09
+    10       EUROPE  1992  6.926705e+09
+    11      AMERICA  1993  6.906800e+09
+    12         ASIA  1993  6.864540e+09
+    13         ASIA  1998  4.058824e+09
+    14      AMERICA  1998  3.991377e+09
+    15       AFRICA  1998  4.024061e+09
+    16      AMERICA  1995  6.905139e+09
+    17       AFRICA  1996  6.878112e+09
+    18       EUROPE  1997  6.876824e+09
+    19  MIDDLE EAST  1993  6.797943e+09
+    20      AMERICA  1992  6.834349e+09
+    21  MIDDLE EAST  1996  6.877095e+09
+    22       EUROPE  1996  7.015421e+09
+    23  MIDDLE EAST  1994  6.778384e+09
+    24       AFRICA  1997  6.848983e+09
+    25         ASIA  1994  6.957170e+09
+    26         ASIA  1997  6.910663e+09
+    27       EUROPE  1998  4.113448e+09
+    28      AMERICA  1997  6.922465e+09
+    29         ASIA  1992  6.934801e+09
+    30      AMERICA  1994  6.863756e+09
+    31       EUROPE  1993  6.911395e+09
+    32       AFRICA  1992  6.873319e+09
+    33       EUROPE  1995  6.970001e+09
+    34       AFRICA  1994  6.837587e+09
+
+
+
+Looking good so far. Now, we need to join this table on itself, by
+subtracting 1 from one of the year columns.
+
+We do this by creating a "joinable" view of a table that is considered a
+distinct object within Ibis. To do this, use the ``view`` function:
+
+.. code:: python
+
+    current = annual_amounts
+    prior = annual_amounts.view()
+    
+    yoy_change = (current.total - prior.total).name('yoy_change')
+    
+    results = (current.join(prior, ((current.region == prior.region) & 
+                                    (current.year == (prior.year - 1))))
+               [current.region, current.year, yoy_change])
+    df = results.execute()
+
+.. code:: python
+
+    df['yoy_pretty'] = df.yoy_change.map(lambda x: '$%.2fmm' % (x / 1000000.))
+    df
+
+
+
+
+.. raw:: html
+
+    <div>
+    <table border="1" class="dataframe">
+      <thead>
+        <tr style="text-align: right;">
+          <th></th>
+          <th>region</th>
+          <th>year</th>
+          <th>yoy_change</th>
+          <th>yoy_pretty</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>0</th>
+          <td>AMERICA</td>
+          <td>1992</td>
+          <td>-7.245078e+07</td>
+          <td>$-72.45mm</td>
+        </tr>
+        <tr>
+          <th>1</th>
+          <td>AFRICA</td>
+          <td>1996</td>
+          <td>2.912979e+07</td>
+          <td>$29.13mm</td>
+        </tr>
+        <tr>
+          <th>2</th>
+          <td>EUROPE</td>
+          <td>1997</td>
+          <td>2.763376e+09</td>
+          <td>$2763.38mm</td>
+        </tr>
+        <tr>
+          <th>3</th>
+          <td>AMERICA</td>
+          <td>1997</td>
+          <td>2.931088e+09</td>
+          <td>$2931.09mm</td>
+        </tr>
+        <tr>
+          <th>4</th>
+          <td>ASIA</td>
+          <td>1995</td>
+          <td>-2.394126e+07</td>
+          <td>$-23.94mm</td>
+        </tr>
+        <tr>
+          <th>5</th>
+          <td>ASIA</td>
+          <td>1996</td>
+          <td>4.501570e+07</td>
+          <td>$45.02mm</td>
+        </tr>
+        <tr>
+          <th>6</th>
+          <td>ASIA</td>
+          <td>1993</td>
+          <td>-9.262979e+07</td>
+          <td>$-92.63mm</td>
+        </tr>
+        <tr>
+          <th>7</th>
+          <td>AFRICA</td>
+          <td>1993</td>
+          <td>2.214559e+07</td>
+          <td>$22.15mm</td>
+        </tr>
+        <tr>
+          <th>8</th>
+          <td>AMERICA</td>
+          <td>1994</td>
+          <td>-4.138320e+07</td>
+          <td>$-41.38mm</td>
+        </tr>
+        <tr>
+          <th>9</th>
+          <td>EUROPE</td>
+          <td>1992</td>
+          <td>1.531005e+07</td>
+          <td>$15.31mm</td>
+        </tr>
+        <tr>
+          <th>10</th>
+          <td>MIDDLE EAST</td>
+          <td>1996</td>
+          <td>6.239623e+07</td>
+          <td>$62.40mm</td>
+        </tr>
+        <tr>
+          <th>11</th>
+          <td>AFRICA</td>
+          <td>1995</td>
+          <td>3.031631e+07</td>
+          <td>$30.32mm</td>
+        </tr>
+        <tr>
+          <th>12</th>
+          <td>MIDDLE EAST</td>
+          <td>1993</td>
+          <td>1.955937e+07</td>
+          <td>$19.56mm</td>
+        </tr>
+        <tr>
+          <th>13</th>
+          <td>EUROPE</td>
+          <td>1994</td>
+          <td>9.471985e+06</td>
+          <td>$9.47mm</td>
+        </tr>
+        <tr>
+          <th>14</th>
+          <td>MIDDLE EAST</td>
+          <td>1994</td>
+          <td>-5.244317e+07</td>
+          <td>$-52.44mm</td>
+        </tr>
+        <tr>
+          <th>15</th>
+          <td>EUROPE</td>
+          <td>1995</td>
+          <td>-4.542062e+07</td>
+          <td>$-45.42mm</td>
+        </tr>
+        <tr>
+          <th>16</th>
+          <td>AFRICA</td>
+          <td>1994</td>
+          <td>-7.084172e+07</td>
+          <td>$-70.84mm</td>
+        </tr>
+        <tr>
+          <th>17</th>
+          <td>AMERICA</td>
+          <td>1996</td>
+          <td>-3.940791e+07</td>
+          <td>$-39.41mm</td>
+        </tr>
+        <tr>
+          <th>18</th>
+          <td>EUROPE</td>
+          <td>1993</td>
+          <td>-6.807773e+07</td>
+          <td>$-68.08mm</td>
+        </tr>
+        <tr>
+          <th>19</th>
+          <td>AFRICA</td>
+          <td>1992</td>
+          <td>1.358699e+07</td>
+          <td>$13.59mm</td>
+        </tr>
+        <tr>
+          <th>20</th>
+          <td>AMERICA</td>
+          <td>1993</td>
+          <td>4.304359e+07</td>
+          <td>$43.04mm</td>
+        </tr>
+        <tr>
+          <th>21</th>
+          <td>ASIA</td>
+          <td>1994</td>
+          <td>2.543198e+07</td>
+          <td>$25.43mm</td>
+        </tr>
+        <tr>
+          <th>22</th>
+          <td>ASIA</td>
+          <td>1997</td>
+          <td>2.851839e+09</td>
+          <td>$2851.84mm</td>
+        </tr>
+        <tr>
+          <th>23</th>
+          <td>MIDDLE EAST</td>
+          <td>1992</td>
+          <td>-3.644384e+07</td>
+          <td>$-36.44mm</td>
+        </tr>
+        <tr>
+          <th>24</th>
+          <td>ASIA</td>
+          <td>1992</td>
+          <td>7.026156e+07</td>
+          <td>$70.26mm</td>
+        </tr>
+        <tr>
+          <th>25</th>
+          <td>EUROPE</td>
+          <td>1996</td>
+          <td>1.385975e+08</td>
+          <td>$138.60mm</td>
+        </tr>
+        <tr>
+          <th>26</th>
+          <td>MIDDLE EAST</td>
+          <td>1997</td>
+          <td>2.789688e+09</td>
+          <td>$2789.69mm</td>
+        </tr>
+        <tr>
+          <th>27</th>
+          <td>AFRICA</td>
+          <td>1997</td>
+          <td>2.824921e+09</td>
+          <td>$2824.92mm</td>
+        </tr>
+        <tr>
+          <th>28</th>
+          <td>AMERICA</td>
+          <td>1995</td>
+          <td>2.208216e+07</td>
+          <td>$22.08mm</td>
+        </tr>
+        <tr>
+          <th>29</th>
+          <td>MIDDLE EAST</td>
+          <td>1995</td>
+          <td>-4.626817e+07</td>
+          <td>$-46.27mm</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+
+
+If you're being fastidious and want to consider the first year occurring
+in the dataset for each region to have 0 for the prior year, you will
+instead need to do an outer join and treat nulls in the prior side of
+the join as zero:
+
+.. code:: python
+
+    yoy_change = (current.total - prior.total.zeroifnull()).name('yoy_change')
+    results = (current.outer_join(prior, ((current.region == prior.region) & 
+                                          (current.year == (prior.year - 1))))
+               [current.region, current.year, current.total,
+                prior.total.zeroifnull().name('prior_total'), 
+                yoy_change])
+    
+    results.limit(10)
+
+
+
+
+.. parsed-literal::
+
+        region  year         total   prior_total    yoy_change
+    0   AFRICA  1995  6.908429e+09  6.878112e+09  3.031631e+07
+    1   EUROPE  1994  6.979473e+09  6.970001e+09  9.471985e+06
+    2   AFRICA  1993  6.859733e+09  6.837587e+09  2.214559e+07
+    3   EUROPE  1992  6.926705e+09  6.911395e+09  1.531005e+07
+    4  AMERICA  1994  6.863756e+09  6.905139e+09 -4.138320e+07
+    5     ASIA  1996  6.955679e+09  6.910663e+09  4.501570e+07
+    6     ASIA  1995  6.931738e+09  6.955679e+09 -2.394126e+07
+    7     ASIA  1998  4.058824e+09  0.000000e+00  4.058824e+09
+    8   AFRICA  1998  4.024061e+09  0.000000e+00  4.024061e+09
+    9  AMERICA  1997  6.922465e+09  3.991377e+09  2.931088e+09
+
+

@@ -1,0 +1,732 @@
+
+.. code:: python
+
+    import ibis
+    import os
+    hdfs_port = os.environ.get('IBIS_WEBHDFS_PORT', 50070)
+    
+    ic = ibis.impala_connect(host='quickstart.cloudera', database='ibis_testing')
+    hdfs = ibis.hdfs_connect(port=hdfs_port)
+    con = ibis.make_client(ic, hdfs_client=hdfs)
+    
+    ibis.options.interactive = True
+
+Type casting
+============
+
+The Ibis type system is pretty basic and will get better (and more
+documented over time). It maps directly onto the current Impala type
+system
+
+-  ``int8``
+-  ``int16``
+-  ``int32``
+-  ``int64``
+-  ``boolean``
+-  ``float``
+-  ``double``
+-  ``string``
+-  ``timestamp``
+-  ``decimal($precision, $scale)``
+
+These type names can be used to cast from one type to another
+
+.. code:: python
+
+    table = con.table('functional_alltypes')
+    table.string_col.cast('double').sum()
+
+
+
+
+.. parsed-literal::
+
+    32850.0
+
+
+
+.. code:: python
+
+    table.string_col.cast('decimal(12,2)').sum()
+
+
+
+
+.. parsed-literal::
+
+    Decimal('32850.00')
+
+
+
+Case / if-then-else expressions
+===============================
+
+We support a number of variants of the SQL-equivalent ``CASE``
+expression, and will add more API functions over time to meet different
+use cases and enhance the expressiveness of any branching-based value
+logic.
+
+.. code:: python
+
+    expr = (table.string_col
+            .case()
+            .when('4', 'fee')
+            .when('7', 'fi')
+            .when('1', 'fo')
+            .when('0', 'fum')
+            .else_(table.string_col)
+            .end()
+            .name('new_strings'))
+    
+    expr.value_counts()
+
+
+
+
+.. parsed-literal::
+
+      new_strings  count
+    0          fi    730
+    1           6    730
+    2         fee    730
+    3          fo    730
+    4           8    730
+    5           2    730
+    6           5    730
+    7           9    730
+    8         fum    730
+    9           3    730
+
+
+
+If the ``else_`` default condition is not provided, any values not
+matching one of the conditions will be ``NULL``.
+
+.. code:: python
+
+    expr = (table.string_col
+            .case()
+            .when('4', 'fee')
+            .when('7', 'fi')
+            .end()
+            .name('with_nulls'))
+    
+    expr.value_counts()
+
+
+
+
+.. parsed-literal::
+
+      with_nulls  count
+    0       None   5840
+    1         fi    730
+    2        fee    730
+
+
+
+To test for an arbitrary series of boolean conditions, use the ``case``
+API method and pass any boolean expressions potentially involving
+columns of the table:
+
+.. code:: python
+
+    expr = (ibis.case()
+            .when(table.int_col > 5, table.bigint_col * 2)
+            .when(table.int_col > 2, table.bigint_col)
+            .else_(table.int_col)
+            .end())
+    
+    table['id', 'int_col', 'bigint_col', expr.name('case_result')].limit(20)
+
+
+
+
+.. parsed-literal::
+
+         id  int_col  bigint_col  case_result
+    0   310        0           0            0
+    1   311        1          10            1
+    2   312        2          20            2
+    3   313        3          30           30
+    4   314        4          40           40
+    5   315        5          50           50
+    6   316        6          60          120
+    7   317        7          70          140
+    8   318        8          80          160
+    9   319        9          90          180
+    10  320        0           0            0
+    11  321        1          10            1
+    12  322        2          20            2
+    13  323        3          30           30
+    14  324        4          40           40
+    15  325        5          50           50
+    16  326        6          60          120
+    17  327        7          70          140
+    18  328        8          80          160
+    19  329        9          90          180
+
+
+
+Simple ternary-cases (like the Python ``X if COND else Y``) can be
+written using the ``ifelse`` function:
+
+.. code:: python
+
+    expr = ((table.int_col > 5)
+            .ifelse(table.bigint_col / 2, table.bigint_col * 2)
+            .name('ifelse_result'))
+    
+    table['int_col', 'bigint_col', expr].limit(10)
+
+
+
+
+.. parsed-literal::
+
+       int_col  bigint_col  ifelse_result
+    0        0           0              0
+    1        1          10             20
+    2        2          20             40
+    3        3          30             60
+    4        4          40             80
+    5        5          50            100
+    6        6          60             30
+    7        7          70             35
+    8        8          80             40
+    9        9          90             45
+
+
+
+Set membership
+==============
+
+The ``isin`` and ``notin`` functions are like their pandas counterparts.
+These can take:
+
+-  A list of value expressions, either literal values or other column
+   expressions
+-  An array/column expression of some kind
+
+.. code:: python
+
+    bool_clause = table.string_col.notin(['1', '4', '7'])
+    table[bool_clause].string_col.value_counts()
+
+
+
+
+.. parsed-literal::
+
+      string_col  count
+    0          6    730
+    1          8    730
+    2          2    730
+    3          5    730
+    4          0    730
+    5          9    730
+    6          3    730
+
+
+
+You can also check for membership in an array. Here is an example of
+filtering based on the top 3 (ignoring ties) most frequently-occurring
+values in the ``string_col`` column of alltypes:
+
+.. code:: python
+
+    top_strings = table.string_col.value_counts().limit(3).string_col
+    top_filter = table.string_col.isin(top_strings)
+    expr = table[top_filter]
+    
+    expr.count()
+
+
+
+
+.. parsed-literal::
+
+    2190
+
+
+
+This is a common enough operation that we provide a special analytical
+filter function ``topk``:
+
+.. code:: python
+
+    table[table.string_col.topk(3)].count()
+
+
+
+
+.. parsed-literal::
+
+    2190
+
+
+
+Cool, huh? More on ``topk`` later.
+
+Null-ness
+=========
+
+Like their pandas equivalents, the ``isnull`` and ``notnull`` functions
+return TRue values if the values are null, or non-null, respectively.
+For example:
+
+.. code:: python
+
+    expr = (table.string_col
+            .case()
+            .when('4', 'fee')
+            .when('7', 'fi')
+            .when('1', 'fo')
+            .end()
+            .name('new_strings'))
+    
+    expr.isnull().value_counts()
+
+
+
+
+.. parsed-literal::
+
+      unnamed  count
+    0   False   2190
+    1    True   5110
+
+
+
+Functions like ``isnull`` can be combined with ``case`` expressions or
+functions like ``ifelse`` to replace null values with some other value.
+``ifelse`` here will use the first value supplied for any ``True`` value
+and the second value for any ``False`` value. Either value can be a
+scalar or array.
+
+.. code:: python
+
+    expr2 = expr.isnull().ifelse('was null', expr).name('strings')
+    expr2.value_counts()
+
+
+
+
+.. parsed-literal::
+
+        strings  count
+    0  was null   5110
+    1        fo    730
+    2        fi    730
+    3       fee    730
+
+
+
+Distinct-based operations
+=========================
+
+Ibis supports using ``distinct`` to remove duplicate rows or values on
+tables or arrays. For example:
+
+.. code:: python
+
+    table['int_col', 'bigint_col'].distinct()
+
+
+
+
+.. parsed-literal::
+
+       int_col  bigint_col
+    0        6          60
+    1        0           0
+    2        8          80
+    3        3          30
+    4        9          90
+    5        7          70
+    6        2          20
+    7        1          10
+    8        4          40
+    9        5          50
+
+
+
+.. code:: python
+
+    table.string_col.distinct()
+
+
+
+
+.. parsed-literal::
+
+    0    6
+    1    4
+    2    7
+    3    1
+    4    8
+    5    2
+    6    9
+    7    5
+    8    3
+    9    0
+    Name: string_col, dtype: object
+
+
+
+This can be combined with ``count`` to form a reduction metric:
+
+.. code:: python
+
+    metric = (table.bigint_col
+              .distinct().count()
+              .name('unique_bigints'))
+
+This is common enough to have a shortcut ``nunique``:
+
+.. code:: python
+
+    table.string_col.nunique()
+
+
+
+
+.. parsed-literal::
+
+    10
+
+
+
+String operations
+=================
+
+What's supported is pretty basic right now. We intend to support the
+full gamut of regular expression munging with a nice API, though in some
+cases some work will be required on Impala's backend to support
+everything.
+
+.. code:: python
+
+    nation = con.table('tpch_nation')
+    nation.limit(5)
+
+
+
+
+.. parsed-literal::
+
+       n_nationkey     n_name  n_regionkey  \
+    0            0    ALGERIA            0   
+    1            1  ARGENTINA            1   
+    2            2     BRAZIL            1   
+    3            3     CANADA            1   
+    4            4      EGYPT            4   
+    
+                                               n_comment  
+    0   haggle. carefully final deposits detect slyly...  
+    1  al foxes promise slyly according to the regula...  
+    2  y alongside of the pending deposits. carefully...  
+    3  eas hang ironic, silent packages. slyly regula...  
+    4  y above the carefully unusual theodolites. fin...  
+
+
+
+At the moment, basic substring operations (``substr``, with conveniences
+``left`` and ``right``) and Python-like APIs such as ``lower`` and
+``upper`` (for case normalization) are supported. So you could count
+first letter occurrences in a string column like so:
+
+.. code:: python
+
+    expr = nation.n_name.lower().left(1).name('first_letter')
+    expr.value_counts().sort_by(('count', False))
+
+
+
+
+.. parsed-literal::
+
+       first_letter  count
+    0             i      4
+    1             a      2
+    2             c      2
+    3             j      2
+    4             u      2
+    5             m      2
+    6             r      2
+    7             e      2
+    8             f      1
+    9             v      1
+    10            p      1
+    11            b      1
+    12            k      1
+    13            s      1
+    14            g      1
+
+
+
+For fuzzy and regex filtering/searching, you can use one of the
+following
+
+-  ``like``, works as the SQL ``LIKE`` keyword
+-  ``rlike``, like ``re.search`` or SQL ``RLIKE``
+-  ``contains``, like ``x in str_value`` in Python
+
+.. code:: python
+
+    nation[nation.n_name.like('%GE%')]
+
+
+
+
+.. parsed-literal::
+
+       n_nationkey     n_name  n_regionkey  \
+    0            0    ALGERIA            0   
+    1            1  ARGENTINA            1   
+    2            7    GERMANY            3   
+    
+                                               n_comment  
+    0   haggle. carefully final deposits detect slyly...  
+    1  al foxes promise slyly according to the regula...  
+    2  l platelets. regular accounts x-ray: unusual, ...  
+
+
+
+.. code:: python
+
+    nation[nation.n_name.lower().rlike('.*ge.*')]
+
+
+
+
+.. parsed-literal::
+
+       n_nationkey     n_name  n_regionkey  \
+    0            0    ALGERIA            0   
+    1            1  ARGENTINA            1   
+    2            7    GERMANY            3   
+    
+                                               n_comment  
+    0   haggle. carefully final deposits detect slyly...  
+    1  al foxes promise slyly according to the regula...  
+    2  l platelets. regular accounts x-ray: unusual, ...  
+
+
+
+.. code:: python
+
+    nation[nation.n_name.lower().contains('ge')]
+
+
+
+
+.. parsed-literal::
+
+       n_nationkey     n_name  n_regionkey  \
+    0            0    ALGERIA            0   
+    1            1  ARGENTINA            1   
+    2            7    GERMANY            3   
+    
+                                               n_comment  
+    0   haggle. carefully final deposits detect slyly...  
+    1  al foxes promise slyly according to the regula...  
+    2  l platelets. regular accounts x-ray: unusual, ...  
+
+
+
+Timestamp operations
+====================
+
+Date and time functionality is relatively limited at present compared
+with pandas, but we'll get there. The main things we have right now are
+
+-  Field access (year, month, day, ...)
+-  Timedeltas
+-  Comparisons with fixed timestamps
+
+.. code:: python
+
+    table = con.table('functional_alltypes')
+    
+    table[table.timestamp_col, table.timestamp_col.minute().name('minute')].limit(10)
+
+
+
+
+.. parsed-literal::
+
+                timestamp_col  minute
+    0 2009-05-01 00:00:00.000       0
+    1 2009-05-01 00:01:00.000       1
+    2 2009-05-01 00:02:00.100       2
+    3 2009-05-01 00:03:00.300       3
+    4 2009-05-01 00:04:00.600       4
+    5 2009-05-01 00:05:00.100       5
+    6 2009-05-01 00:06:00.150       6
+    7 2009-05-01 00:07:00.210       7
+    8 2009-05-01 00:08:00.280       8
+    9 2009-05-01 00:09:00.360       9
+
+
+
+Somewhat more comprehensively
+
+.. code:: python
+
+    def get_field(f):
+        return getattr(table.timestamp_col, f)().name(f)
+    
+    fields = ['year', 'month', 'day', 'hour', 'minute', 'second', 'millisecond']
+    projection = [table.timestamp_col] + [get_field(x) for x in fields]
+    table[projection].limit(10)
+
+
+
+
+.. parsed-literal::
+
+                timestamp_col  year  month  day  hour  minute  second  millisecond
+    0 2009-02-01 00:00:00.000  2009      2    1     0       0       0            0
+    1 2009-02-01 00:01:00.000  2009      2    1     0       1       0            0
+    2 2009-02-01 00:02:00.100  2009      2    1     0       2       0          100
+    3 2009-02-01 00:03:00.300  2009      2    1     0       3       0          300
+    4 2009-02-01 00:04:00.600  2009      2    1     0       4       0          600
+    5 2009-02-01 00:05:00.100  2009      2    1     0       5       0          100
+    6 2009-02-01 00:06:00.150  2009      2    1     0       6       0          150
+    7 2009-02-01 00:07:00.210  2009      2    1     0       7       0          210
+    8 2009-02-01 00:08:00.280  2009      2    1     0       8       0          280
+    9 2009-02-01 00:09:00.360  2009      2    1     0       9       0          360
+
+
+
+For timestamp arithmetic and comparisons, check out functions in the top
+level ``ibis`` namespace. This include things like ``day`` and
+``second``, but also the ``ibis.timestamp`` function:
+
+.. code:: python
+
+    table[table.timestamp_col.min(), table.timestamp_col.max(), table.count().name('nrows')]
+
+
+
+
+.. parsed-literal::
+
+                min                     max  nrows
+    0    2009-01-01 2010-12-31 05:09:13.860   7300
+    1    2009-01-01 2010-12-31 05:09:13.860   7300
+    2    2009-01-01 2010-12-31 05:09:13.860   7300
+    3    2009-01-01 2010-12-31 05:09:13.860   7300
+    4    2009-01-01 2010-12-31 05:09:13.860   7300
+    5    2009-01-01 2010-12-31 05:09:13.860   7300
+    6    2009-01-01 2010-12-31 05:09:13.860   7300
+    7    2009-01-01 2010-12-31 05:09:13.860   7300
+    8    2009-01-01 2010-12-31 05:09:13.860   7300
+    9    2009-01-01 2010-12-31 05:09:13.860   7300
+    10   2009-01-01 2010-12-31 05:09:13.860   7300
+    11   2009-01-01 2010-12-31 05:09:13.860   7300
+    12   2009-01-01 2010-12-31 05:09:13.860   7300
+    13   2009-01-01 2010-12-31 05:09:13.860   7300
+    14   2009-01-01 2010-12-31 05:09:13.860   7300
+    15   2009-01-01 2010-12-31 05:09:13.860   7300
+    16   2009-01-01 2010-12-31 05:09:13.860   7300
+    17   2009-01-01 2010-12-31 05:09:13.860   7300
+    18   2009-01-01 2010-12-31 05:09:13.860   7300
+    19   2009-01-01 2010-12-31 05:09:13.860   7300
+    20   2009-01-01 2010-12-31 05:09:13.860   7300
+    21   2009-01-01 2010-12-31 05:09:13.860   7300
+    22   2009-01-01 2010-12-31 05:09:13.860   7300
+    23   2009-01-01 2010-12-31 05:09:13.860   7300
+    24   2009-01-01 2010-12-31 05:09:13.860   7300
+    25   2009-01-01 2010-12-31 05:09:13.860   7300
+    26   2009-01-01 2010-12-31 05:09:13.860   7300
+    27   2009-01-01 2010-12-31 05:09:13.860   7300
+    28   2009-01-01 2010-12-31 05:09:13.860   7300
+    29   2009-01-01 2010-12-31 05:09:13.860   7300
+    ...         ...                     ...    ...
+    7270 2009-01-01 2010-12-31 05:09:13.860   7300
+    7271 2009-01-01 2010-12-31 05:09:13.860   7300
+    7272 2009-01-01 2010-12-31 05:09:13.860   7300
+    7273 2009-01-01 2010-12-31 05:09:13.860   7300
+    7274 2009-01-01 2010-12-31 05:09:13.860   7300
+    7275 2009-01-01 2010-12-31 05:09:13.860   7300
+    7276 2009-01-01 2010-12-31 05:09:13.860   7300
+    7277 2009-01-01 2010-12-31 05:09:13.860   7300
+    7278 2009-01-01 2010-12-31 05:09:13.860   7300
+    7279 2009-01-01 2010-12-31 05:09:13.860   7300
+    7280 2009-01-01 2010-12-31 05:09:13.860   7300
+    7281 2009-01-01 2010-12-31 05:09:13.860   7300
+    7282 2009-01-01 2010-12-31 05:09:13.860   7300
+    7283 2009-01-01 2010-12-31 05:09:13.860   7300
+    7284 2009-01-01 2010-12-31 05:09:13.860   7300
+    7285 2009-01-01 2010-12-31 05:09:13.860   7300
+    7286 2009-01-01 2010-12-31 05:09:13.860   7300
+    7287 2009-01-01 2010-12-31 05:09:13.860   7300
+    7288 2009-01-01 2010-12-31 05:09:13.860   7300
+    7289 2009-01-01 2010-12-31 05:09:13.860   7300
+    7290 2009-01-01 2010-12-31 05:09:13.860   7300
+    7291 2009-01-01 2010-12-31 05:09:13.860   7300
+    7292 2009-01-01 2010-12-31 05:09:13.860   7300
+    7293 2009-01-01 2010-12-31 05:09:13.860   7300
+    7294 2009-01-01 2010-12-31 05:09:13.860   7300
+    7295 2009-01-01 2010-12-31 05:09:13.860   7300
+    7296 2009-01-01 2010-12-31 05:09:13.860   7300
+    7297 2009-01-01 2010-12-31 05:09:13.860   7300
+    7298 2009-01-01 2010-12-31 05:09:13.860   7300
+    7299 2009-01-01 2010-12-31 05:09:13.860   7300
+    
+    [7300 rows x 3 columns]
+
+
+
+.. code:: python
+
+    table[table.timestamp_col < '2010-01-01'].count()
+
+
+
+
+.. parsed-literal::
+
+    3650
+
+
+
+.. code:: python
+
+    table[table.timestamp_col < 
+          (ibis.timestamp('2010-01-01') + ibis.month(3))].count()
+
+
+
+
+.. parsed-literal::
+
+    4550
+
+
+
+.. code:: python
+
+    expr = (table.timestamp_col + ibis.day(1) + ibis.hour(4)).name('offset')
+    table[table.timestamp_col, expr, ibis.now().name('current_time')].limit(10)
+
+
+
+
+.. parsed-literal::
+
+                timestamp_col                  offset               current_time
+    0 2009-02-01 00:00:00.000 2009-02-02 04:00:00.000 2015-07-20 01:04:21.884864
+    1 2009-02-01 00:01:00.000 2009-02-02 04:01:00.000 2015-07-20 01:04:21.884864
+    2 2009-02-01 00:02:00.100 2009-02-02 04:02:00.100 2015-07-20 01:04:21.884864
+    3 2009-02-01 00:03:00.300 2009-02-02 04:03:00.300 2015-07-20 01:04:21.884864
+    4 2009-02-01 00:04:00.600 2009-02-02 04:04:00.600 2015-07-20 01:04:21.884864
+    5 2009-02-01 00:05:00.100 2009-02-02 04:05:00.100 2015-07-20 01:04:21.884864
+    6 2009-02-01 00:06:00.150 2009-02-02 04:06:00.150 2015-07-20 01:04:21.884864
+    7 2009-02-01 00:07:00.210 2009-02-02 04:07:00.210 2015-07-20 01:04:21.884864
+    8 2009-02-01 00:08:00.280 2009-02-02 04:08:00.280 2015-07-20 01:04:21.884864
+    9 2009-02-01 00:09:00.360 2009-02-02 04:09:00.360 2015-07-20 01:04:21.884864
+
+

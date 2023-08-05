@@ -1,0 +1,596 @@
+
+.. code:: python
+
+    import ibis
+    import os
+    hdfs_port = os.environ.get('IBIS_WEBHDFS_PORT', 50070)
+    
+    ic = ibis.impala_connect(host='quickstart.cloudera', database='ibis_testing')
+    hdfs = ibis.hdfs_connect(host='quickstart.cloudera', port=hdfs_port)
+    con = ibis.make_client(ic, hdfs_client=hdfs)
+    
+    ibis.options.interactive = True
+
+Projections: adding/selecting columns
+=====================================
+
+Projections are the general way for adding new columns to tables, or
+selecting or removing existing ones.
+
+.. code:: python
+
+    table = con.table('functional_alltypes')
+    table.limit(5)
+
+
+
+
+.. parsed-literal::
+
+         id bool_col  tinyint_col  smallint_col  int_col  bigint_col  float_col  \
+    0  5460     True            0             0        0           0        0.0   
+    1  5461    False            1             1        1          10        1.1   
+    2  5462     True            2             2        2          20        2.2   
+    3  5463    False            3             3        3          30        3.3   
+    4  5464     True            4             4        4          40        4.4   
+    
+       double_col date_string_col string_col           timestamp_col  year  month  
+    0         0.0        07/01/10          0 2010-07-01 00:00:00.000  2010      7  
+    1        10.1        07/01/10          1 2010-07-01 00:01:00.000  2010      7  
+    2        20.2        07/01/10          2 2010-07-01 00:02:00.100  2010      7  
+    3        30.3        07/01/10          3 2010-07-01 00:03:00.300  2010      7  
+    4        40.4        07/01/10          4 2010-07-01 00:04:00.600  2010      7  
+
+
+
+First, the basics: selecting columns:
+
+.. code:: python
+
+    proj = table['bool_col', 'int_col', 'double_col']
+    
+    proj.limit(5)
+
+
+
+
+.. parsed-literal::
+
+      bool_col  int_col  double_col
+    0     True        0         0.0
+    1    False        1        10.1
+    2     True        2        20.2
+    3    False        3        30.3
+    4     True        4        40.4
+
+
+
+You can make a list of columns you want, too, and pass that:
+
+.. code:: python
+
+    to_select = ['bool_col', 'int_col']
+    table[to_select].limit(5)
+
+
+
+
+.. parsed-literal::
+
+      bool_col  int_col
+    0     True        0
+    1    False        1
+    2     True        2
+    3    False        3
+    4     True        4
+
+
+
+You can also use the explicit ``projection`` or ``select`` functions
+
+.. code:: python
+
+    table.select(['int_col', 'double_col']).limit(5)
+
+
+
+
+.. parsed-literal::
+
+       int_col  double_col
+    0        0         0.0
+    1        1        10.1
+    2        2        20.2
+    3        3        30.3
+    4        4        40.4
+
+
+
+We can add new columns by using named column expressions
+
+.. code:: python
+
+    bigger_expr = (table.int_col * 2).name('bigger_ints')
+    proj2 = table['int_col', bigger_expr]
+    proj2.limit(5)
+
+
+
+
+.. parsed-literal::
+
+       int_col  bigger_ints
+    0        0            0
+    1        1            2
+    2        2            4
+    3        3            6
+    4        4            8
+
+
+
+Adding columns is a shortcut for projection. In Ibis, adding columns
+always produces a new table reference
+
+.. code:: python
+
+    table2 = table.add_column(bigger_expr)
+    table2.limit(5)
+
+
+
+
+.. parsed-literal::
+
+        id bool_col  tinyint_col  smallint_col  int_col  bigint_col  float_col  \
+    0  310     True            0             0        0           0        0.0   
+    1  311    False            1             1        1          10        1.1   
+    2  312     True            2             2        2          20        2.2   
+    3  313    False            3             3        3          30        3.3   
+    4  314     True            4             4        4          40        4.4   
+    
+       double_col date_string_col string_col           timestamp_col  year  month  \
+    0         0.0        02/01/09          0 2009-02-01 00:00:00.000  2009      2   
+    1        10.1        02/01/09          1 2009-02-01 00:01:00.000  2009      2   
+    2        20.2        02/01/09          2 2009-02-01 00:02:00.100  2009      2   
+    3        30.3        02/01/09          3 2009-02-01 00:03:00.300  2009      2   
+    4        40.4        02/01/09          4 2009-02-01 00:04:00.600  2009      2   
+    
+       bigger_ints  
+    0            0  
+    1            2  
+    2            4  
+    3            6  
+    4            8  
+
+
+
+In more complicated projections involving joins, we may need to refer to
+all of the columns in a same at once. This is how ``add_column`` works.
+We just pass the whole table in the projection:
+
+.. code:: python
+
+    table.select([table, bigger_expr]).limit(5)
+
+
+
+
+.. parsed-literal::
+
+         id bool_col  tinyint_col  smallint_col  int_col  bigint_col  float_col  \
+    0  1200     True            0             0        0           0        0.0   
+    1  1201    False            1             1        1          10        1.1   
+    2  1202     True            2             2        2          20        2.2   
+    3  1203    False            3             3        3          30        3.3   
+    4  1204     True            4             4        4          40        4.4   
+    
+       double_col date_string_col string_col           timestamp_col  year  month  \
+    0         0.0        05/01/09          0 2009-05-01 00:00:00.000  2009      5   
+    1        10.1        05/01/09          1 2009-05-01 00:01:00.000  2009      5   
+    2        20.2        05/01/09          2 2009-05-01 00:02:00.100  2009      5   
+    3        30.3        05/01/09          3 2009-05-01 00:03:00.300  2009      5   
+    4        40.4        05/01/09          4 2009-05-01 00:04:00.600  2009      5   
+    
+       bigger_ints  
+    0            0  
+    1            2  
+    2            4  
+    3            6  
+    4            8  
+
+
+
+To use constants in projections, we have to use a special
+``ibis.literal`` function
+
+.. code:: python
+
+    foo_constant = ibis.literal(5).name('foo')
+    table.select([table.bigint_col, foo_constant]).limit(5)
+
+
+
+
+.. parsed-literal::
+
+       bigint_col  foo
+    0           0    5
+    1          10    5
+    2          20    5
+    3          30    5
+    4          40    5
+
+
+
+Joins
+=====
+
+Ibis attempts to provide good support for all the standard relational
+joins supported by Impala, Hive, and other relational databases.
+
+-  inner, outer, left, right joins
+-  semi and anti-joins
+
+To illustrate the joins we'll use the TPC-H tables for now
+
+.. code:: python
+
+    region = con.table('tpch_region')
+    nation = con.table('tpch_nation')
+    customer = con.table('tpch_customer')
+    lineitem = con.table('tpch_lineitem')
+
+``region`` and ``nation`` are connected by their respective
+``regionkey`` columns
+
+.. code:: python
+
+    join_expr = region.r_regionkey == nation.n_regionkey
+    joined = region.inner_join(nation, join_expr)
+
+If you have multiple join conditions, either compose them yourself (like
+filters) or pass a list to the join function
+
+::
+
+    join_exprs = [cond1, cond2, cond3]
+    joined = table1.inner_join(table2, join_exprs)
+
+Once you've joined tables, you don't necessarily have anything yet. I'll
+put it in big letters
+
+Joins are declarations of intent
+================================
+
+After calling the join function (which validates the join condition, of
+course), you may perform any number of other operations:
+
+-  Aggregation
+-  Projection
+-  Filtering
+
+and so forth. Most importantly, depending on your schemas, the joined
+tables may include overlapping column names that could create a conflict
+if not addressed directly. Some other systems, like pandas, handle this
+by applying suffixes to the overlapping column names and computing the
+fully joined tables immediately. We don't do this.
+
+So, with the above data, suppose we just want the region name and all
+the nation table data. We can then make a projection on the joined
+reference:
+
+.. code:: python
+
+    table_ref = joined[nation, region.r_name.name('region')]
+    table_ref.columns
+
+
+
+
+.. parsed-literal::
+
+    ['n_nationkey', 'n_name', 'n_regionkey', 'n_comment', 'region']
+
+
+
+.. code:: python
+
+    table_ref.limit(5)
+
+
+
+
+.. parsed-literal::
+
+       n_nationkey      n_name  n_regionkey  \
+    0           16  MOZAMBIQUE            0   
+    1           15     MOROCCO            0   
+    2           14       KENYA            0   
+    3            5    ETHIOPIA            0   
+    4            0     ALGERIA            0   
+    
+                                               n_comment  region  
+    0      s. ironic, unusual asymptotes wake blithely r  AFRICA  
+    1  rns. blithely bold courts among the closely re...  AFRICA  
+    2   pending excuses haggle furiously deposits. pe...  AFRICA  
+    3                    ven packages wake quickly. regu  AFRICA  
+    4   haggle. carefully final deposits detect slyly...  AFRICA  
+
+
+
+.. code:: python
+
+    agged = table_ref.aggregate([table_ref.n_name.count().name('nrows')], by=['region'])
+    agged
+
+
+
+
+.. parsed-literal::
+
+            region  nrows
+    0       EUROPE      5
+    1      AMERICA      5
+    2  MIDDLE EAST      5
+    3         ASIA      5
+    4       AFRICA      5
+
+
+
+Things like ``group_by`` work with unmaterialized joins, too, as you
+would hope.
+
+.. code:: python
+
+    joined.group_by(region.r_name).size()
+
+
+
+
+.. parsed-literal::
+
+            r_name  count
+    0       EUROPE      5
+    1      AMERICA      5
+    2  MIDDLE EAST      5
+    3         ASIA      5
+    4       AFRICA      5
+
+
+
+Explicit join materialization
+=============================
+
+If you're lucky enough to have two table schemas with no overlapping
+column names (lucky you!), the join can be *materialized* without having
+to perform some other relational algebra operation:
+
+::
+
+    joined = a.inner_join(b, join_expr).materialize()
+
+Note that this is equivalent to doing
+
+::
+
+    joined = a.join(b)[a, b]
+
+i.e., joining and then selecting all columns from both joined tables. If
+there is a name overlap, just like with the equivalent projection, there
+will be an immediate error.
+
+Writing down join keys
+======================
+
+In addition to having explicit comparison expressions as join keys, you
+can also write down column names, or use expressions referencing the
+joined tables, e.g.:
+
+::
+
+    joined = a.join(b, [('a_key1', 'b_key2')])
+
+    joined2 = a.join(b, [(left_expr, right_expr)])
+
+    joined3 = a.join(b, ['common_key'])
+
+These will be compared for equality when performing the join; if you
+want non-equality conditions in the join, you will have to form those
+yourself.
+
+Join referential nuances
+========================
+
+There's nothing to stop you from doing many joins in succession, and, in
+fact, with complex schemas it will be to your advantage to build the
+joined table references for your analysis first, then reuse the objects
+as you go:
+
+::
+
+    joined_ref = (a.join(b, a.key1 == b.key2)
+                   .join(c, [a.key3 == c.key4, b.key5 == c.key6]))
+
+Note that, at least right now, you need to provide explicit comparison
+expressions (or tuples of column references) referencing the joined
+tables.
+
+Aggregating joined table with metrics involving more than one base reference
+============================================================================
+
+Let's consider the case similar to the SQL query
+
+::
+
+    SELECT a.key, sum(a.foo - b.bar) AS metric
+    FROM a
+      JOIN b
+        ON a.key = b.key
+    GROUP BY 1
+
+I'll use a somewhat contrived example using the data we already have to
+show you what this looks like. Take the ``functional.alltypes`` table,
+and suppose we want to compute the **mean absolute deviation (MAD) from
+the hourly mean of the double\_col**. Silly, I know, but bear with me.
+
+First, the hourly mean:
+
+.. code:: python
+
+    table = con.table('functional_alltypes')
+    
+    hour_dim = table.timestamp_col.hour().name('hour')
+    
+    hourly_mean = (table.group_by(hour_dim)
+                   .aggregate([table.double_col.mean().name('avg_double')]))
+    hourly_mean
+
+
+
+
+.. parsed-literal::
+
+       hour  avg_double
+    0     4       45.45
+    1     2       45.45
+    2     0       45.45
+    3     1       45.45
+    4     5       45.45
+    5     3       45.45
+
+
+
+Okay, great, now how about the MAD? The only trick here is that we can
+form an aggregate metric from the two tables, and we then have to join
+it later. Ibis **will not** figure out how to join the tables
+automatically for us.
+
+.. code:: python
+
+    mad = (table.double_col - hourly_mean.avg_double).abs().mean().name('MAD')
+
+This metric is only valid if used in the context of ``table`` joined
+with ``hourly_mean``, so let's do that. Writing down the join condition
+is seriously a matter of writing:
+
+.. code:: python
+
+    join_expr = hour_dim == hourly_mean.hour
+
+Now let's compute the MAD grouped by ``string_col``
+
+.. code:: python
+
+    result = (table.inner_join(hourly_mean, join_expr)
+              .group_by(table.string_col)
+              .aggregate([mad]))
+    result
+
+
+
+
+.. parsed-literal::
+
+      string_col    mad
+    0          7  25.25
+    1          6  15.15
+    2          2  25.25
+    3          4   5.05
+    4          8  35.35
+    5          0  45.45
+    6          5   5.05
+    7          3  15.15
+    8          9  45.45
+    9          1  35.35
+
+
+
+Sorting
+=======
+
+Sorting tables works similarly to the SQL ``ORDER BY`` clause. We use
+the ``sort_by`` function and pass one of the following:
+
+-  Column names
+-  Column expressions
+-  One of these, with a False (descending order) or True (ascending
+   order) qualifier
+
+So, to sort by ``total`` in ascending order we write:
+
+::
+
+    table.sort_by('total')
+
+or by ``key`` then by ``total`` in descending order
+
+::
+
+    table.sort_by(['key', ('total', False)])
+
+For descending sort order, there is a convenience function ``desc``
+which can wrap sort keys
+
+::
+
+    from ibis import desc
+    table.sort_by(['key', desc(table.total)])
+
+Here's a concrete example involving filters, custom grouping dimension,
+and sorting
+
+.. code:: python
+
+    table = con.table('functional_alltypes')
+    
+    keys = ['string_col', (table.bigint_col > 40).ifelse('high', 'low').name('bigint_tier')]
+    metrics = [table.double_col.sum().name('total')]
+    
+    agged = (table
+             .filter(table.int_col < 8)
+             .group_by(keys)
+             .aggregate(metrics))
+    
+    sorted_agged = agged.sort_by(['bigint_tier', ('total', False)])
+    sorted_agged
+
+
+
+
+.. parsed-literal::
+
+      string_col bigint_tier  total
+    0          7        high  51611
+    1          6        high  44238
+    2          5        high  36865
+    3          4         low  29492
+    4          3         low  22119
+    5          2         low  14746
+    6          1         low   7373
+    7          0         low      0
+
+
+
+For sorting in descending order, you can use the special ``ibis.desc``
+function:
+
+.. code:: python
+
+    agged.sort_by(ibis.desc('total'))
+
+
+
+
+.. parsed-literal::
+
+      string_col bigint_tier  total
+    0          7        high  51611
+    1          6        high  44238
+    2          5        high  36865
+    3          4         low  29492
+    4          3         low  22119
+    5          2         low  14746
+    6          1         low   7373
+    7          0         low      0
+
+

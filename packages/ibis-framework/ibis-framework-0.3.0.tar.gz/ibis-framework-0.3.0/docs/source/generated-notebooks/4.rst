@@ -1,0 +1,1707 @@
+
+.. code:: python
+
+    import ibis
+    import os
+    hdfs_port = os.environ.get('IBIS_WEBHDFS_PORT', 50070)
+    
+    ic = ibis.impala_connect(host='quickstart.cloudera', database='ibis_testing')
+    hdfs = ibis.hdfs_connect(host='quickstart.cloudera', port=hdfs_port)
+    con = ibis.make_client(ic, hdfs_client=hdfs)
+    
+    ibis.options.interactive = True
+
+Creating new Impala tables from Ibis expressions
+================================================
+
+Suppose you have an Ibis expression that produces a table:
+
+.. code:: python
+
+    table = con.table('functional_alltypes')
+    
+    t2 = table[table, (table.bigint_col - table.int_col).name('foo')]
+    
+    expr = (t2
+            [t2.bigint_col > 30]
+            .group_by('string_col')
+            .aggregate([t2.foo.min().name('min_foo'),
+                        t2.foo.max().name('max_foo'),
+                        t2.foo.sum().name('sum_foo')]))
+    expr
+
+
+
+
+.. parsed-literal::
+
+      string_col  min_foo  max_foo  sum_foo
+    0          6       54       54    39420
+    1          8       72       72    52560
+    2          5       45       45    32850
+    3          9       81       81    59130
+    4          4       36       36    26280
+    5          7       63       63    45990
+
+
+
+To create a table in the database from the results of this expression,
+use the connection's ``create_table`` method:
+
+.. code:: python
+
+    con.create_table('testing_table', expr, database='ibis_testing')
+
+By default, this creates a table stored as **Parquet format** in HDFS.
+Support for views, external tables, configurable file formats, and so
+forth, will come in the future. Feedback on what kind of interface would
+be useful for that would help.
+
+.. code:: python
+
+    con.table('testing_table')
+
+
+
+
+.. parsed-literal::
+
+      string_col  min_foo  max_foo  sum_foo
+    0          9       81       81    59130
+    1          6       54       54    39420
+    2          4       36       36    26280
+    3          7       63       63    45990
+    4          8       72       72    52560
+    5          5       45       45    32850
+
+
+
+Tables can be similarly dropped with ``drop_table``
+
+.. code:: python
+
+    con.drop_table('testing_table', database='ibis_testing')
+
+Inserting data into existing Impala tables
+==========================================
+
+The client's ``insert`` method can append new data to an existing table
+or overwrite the data that is in there.
+
+.. code:: python
+
+    con.create_table('testing_table', expr)
+    con.table('testing_table')
+
+
+
+
+.. parsed-literal::
+
+      string_col  min_foo  max_foo  sum_foo
+    0          6       54       54    39420
+    1          4       36       36    26280
+    2          7       63       63    45990
+    3          9       81       81    59130
+    4          8       72       72    52560
+    5          5       45       45    32850
+
+
+
+.. code:: python
+
+    con.insert('testing_table', expr)
+    con.table('testing_table')
+
+
+
+
+.. parsed-literal::
+
+       string_col  min_foo  max_foo  sum_foo
+    0           6       54       54    39420
+    1           4       36       36    26280
+    2           7       63       63    45990
+    3           6       54       54    39420
+    4           4       36       36    26280
+    5           7       63       63    45990
+    6           9       81       81    59130
+    7           8       72       72    52560
+    8           5       45       45    32850
+    9           9       81       81    59130
+    10          8       72       72    52560
+    11          5       45       45    32850
+
+
+
+.. code:: python
+
+    con.drop_table('testing_table')
+
+Uploading / downloading data from HDFS
+======================================
+
+If you've set up an HDFS connection, you can use the Ibis HDFS interface
+to look through your data and read and write files to and from HDFS:
+
+.. code:: python
+
+    hdfs = con.hdfs
+    hdfs.ls('/__ibis/ibis-testing-data')
+
+
+::
+
+
+    ---------------------------------------------------------------------------
+
+    ConnectionError                           Traceback (most recent call last)
+
+    <ipython-input-9-b75be482a19d> in <module>()
+          1 hdfs = con.hdfs
+    ----> 2 hdfs.ls('/__ibis/ibis-testing-data')
+    
+
+    /home/wesm/code/cloudera/ibis/ibis/filesystems.pyc in ls(self, hdfs_path, status)
+        251     @implements(HDFS.ls)
+        252     def ls(self, hdfs_path, status=False):
+    --> 253         contents = self.client.list(hdfs_path)
+        254         if not status:
+        255             return [path for path, detail in contents]
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in list(self, hdfs_path)
+        582     self._logger.info('Listing %s.', hdfs_path)
+        583     hdfs_path = self.resolve(hdfs_path)
+    --> 584     statuses = self._list_status(hdfs_path).json()['FileStatuses']['FileStatus']
+        585     if len(statuses) == 1 and not statuses[0]['pathSuffix']:
+        586       # This is a normal file.
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in api_handler(client, path, data, **params)
+         87         params=params,
+         88         timeout=client.timeout,
+    ---> 89         **self.kwargs
+         90       )
+         91       if not response: # non 2XX status code
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in get(url, params, **kwargs)
+         67 
+         68     kwargs.setdefault('allow_redirects', True)
+    ---> 69     return request('get', url, params=params, **kwargs)
+         70 
+         71 
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in request(method, url, **kwargs)
+         48 
+         49     session = sessions.Session()
+    ---> 50     response = session.request(method=method, url=url, **kwargs)
+         51     # By explicitly closing the session, we avoid leaving sockets open which
+         52     # can trigger a ResourceWarning in some cases, and look like a memory leak
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in request(self, method, url, params, data, headers, cookies, files, auth, timeout, allow_redirects, proxies, hooks, stream, verify, cert, json)
+        463         }
+        464         send_kwargs.update(settings)
+    --> 465         resp = self.send(prep, **send_kwargs)
+        466 
+        467         return resp
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in send(self, request, **kwargs)
+        571 
+        572         # Send the request
+    --> 573         r = adapter.send(request, **kwargs)
+        574 
+        575         # Total elapsed time of the request (approximately)
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/adapters.pyc in send(self, request, stream, timeout, verify, cert, proxies)
+        413 
+        414         except (ProtocolError, socket.error) as err:
+    --> 415             raise ConnectionError(err, request=request)
+        416 
+        417         except MaxRetryError as e:
+
+
+    ConnectionError: ('Connection aborted.', error(111, 'Connection refused'))
+
+
+.. code:: python
+
+    hdfs.ls('/__ibis/ibis-testing-data/parquet')
+
+
+::
+
+
+    ---------------------------------------------------------------------------
+
+    ConnectionError                           Traceback (most recent call last)
+
+    <ipython-input-10-10c7c48af068> in <module>()
+    ----> 1 hdfs.ls('/__ibis/ibis-testing-data/parquet')
+    
+
+    /home/wesm/code/cloudera/ibis/ibis/filesystems.pyc in ls(self, hdfs_path, status)
+        251     @implements(HDFS.ls)
+        252     def ls(self, hdfs_path, status=False):
+    --> 253         contents = self.client.list(hdfs_path)
+        254         if not status:
+        255             return [path for path, detail in contents]
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in list(self, hdfs_path)
+        582     self._logger.info('Listing %s.', hdfs_path)
+        583     hdfs_path = self.resolve(hdfs_path)
+    --> 584     statuses = self._list_status(hdfs_path).json()['FileStatuses']['FileStatus']
+        585     if len(statuses) == 1 and not statuses[0]['pathSuffix']:
+        586       # This is a normal file.
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in api_handler(client, path, data, **params)
+         87         params=params,
+         88         timeout=client.timeout,
+    ---> 89         **self.kwargs
+         90       )
+         91       if not response: # non 2XX status code
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in get(url, params, **kwargs)
+         67 
+         68     kwargs.setdefault('allow_redirects', True)
+    ---> 69     return request('get', url, params=params, **kwargs)
+         70 
+         71 
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in request(method, url, **kwargs)
+         48 
+         49     session = sessions.Session()
+    ---> 50     response = session.request(method=method, url=url, **kwargs)
+         51     # By explicitly closing the session, we avoid leaving sockets open which
+         52     # can trigger a ResourceWarning in some cases, and look like a memory leak
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in request(self, method, url, params, data, headers, cookies, files, auth, timeout, allow_redirects, proxies, hooks, stream, verify, cert, json)
+        463         }
+        464         send_kwargs.update(settings)
+    --> 465         resp = self.send(prep, **send_kwargs)
+        466 
+        467         return resp
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in send(self, request, **kwargs)
+        571 
+        572         # Send the request
+    --> 573         r = adapter.send(request, **kwargs)
+        574 
+        575         # Total elapsed time of the request (approximately)
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/adapters.pyc in send(self, request, stream, timeout, verify, cert, proxies)
+        413 
+        414         except (ProtocolError, socket.error) as err:
+    --> 415             raise ConnectionError(err, request=request)
+        416 
+        417         except MaxRetryError as e:
+
+
+    ConnectionError: ('Connection aborted.', error(111, 'Connection refused'))
+
+
+Suppose we wanted to download
+``/__ibis/ibis-testing-data/parquet/functional_alltypes``, which is a
+directory. We need only do:
+
+.. code:: python
+
+    hdfs.get('/__ibis/ibis-testing-data/parquet/functional_alltypes', 'parquet_dir')
+
+
+::
+
+
+    ---------------------------------------------------------------------------
+
+    ConnectionError                           Traceback (most recent call last)
+
+    <ipython-input-11-83ed3fd47ce9> in <module>()
+    ----> 1 hdfs.get('/__ibis/ibis-testing-data/parquet/functional_alltypes', 'parquet_dir')
+    
+
+    /home/wesm/code/cloudera/ibis/ibis/filesystems.pyc in get(self, hdfs_path, local_path, overwrite, verbose)
+        370                     _scrape_dir(hpath, dst)
+        371 
+    --> 372         status = self.status(hdfs_path)
+        373         if status['type'] == 'FILE':
+        374             if not overwrite and osp.exists(local_path):
+
+
+    /home/wesm/code/cloudera/ibis/ibis/filesystems.pyc in status(self, path)
+        239         Retrieve HDFS metadata for path
+        240         """
+    --> 241         return self.client.status(path)
+        242 
+        243     @implements(HDFS.exists)
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in status(self, hdfs_path)
+        259     """
+        260     self._logger.info('Fetching status for %s.', hdfs_path)
+    --> 261     return self._get_file_status(hdfs_path).json()['FileStatus']
+        262 
+        263   def parts(self, hdfs_path, parts=None):
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in api_handler(client, path, data, **params)
+         87         params=params,
+         88         timeout=client.timeout,
+    ---> 89         **self.kwargs
+         90       )
+         91       if not response: # non 2XX status code
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in get(url, params, **kwargs)
+         67 
+         68     kwargs.setdefault('allow_redirects', True)
+    ---> 69     return request('get', url, params=params, **kwargs)
+         70 
+         71 
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in request(method, url, **kwargs)
+         48 
+         49     session = sessions.Session()
+    ---> 50     response = session.request(method=method, url=url, **kwargs)
+         51     # By explicitly closing the session, we avoid leaving sockets open which
+         52     # can trigger a ResourceWarning in some cases, and look like a memory leak
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in request(self, method, url, params, data, headers, cookies, files, auth, timeout, allow_redirects, proxies, hooks, stream, verify, cert, json)
+        463         }
+        464         send_kwargs.update(settings)
+    --> 465         resp = self.send(prep, **send_kwargs)
+        466 
+        467         return resp
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in send(self, request, **kwargs)
+        571 
+        572         # Send the request
+    --> 573         r = adapter.send(request, **kwargs)
+        574 
+        575         # Total elapsed time of the request (approximately)
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/adapters.pyc in send(self, request, stream, timeout, verify, cert, proxies)
+        413 
+        414         except (ProtocolError, socket.error) as err:
+    --> 415             raise ConnectionError(err, request=request)
+        416 
+        417         except MaxRetryError as e:
+
+
+    ConnectionError: ('Connection aborted.', error(111, 'Connection refused'))
+
+
+Now we have that directory locally:
+
+.. code:: python
+
+    !ls 
+
+
+.. parsed-literal::
+
+    1-Intro-and-Setup.ipynb		       5-IO-Create-Insert-External-Data.ipynb
+    2-Basics-Aggregate-Filter-Limit.ipynb  6-Advanced-Topics-TopK-SelfJoins.ipynb
+    3-Projection-Join-Sort.ipynb	       7-Advanced-Topics-ComplexFiltering.ipynb
+    4-More-Value-Expressions.ipynb	       8-More-Analytics-Helpers.ipynb
+
+
+Files and directories can be written to HDFS just as easily using
+``put``:
+
+.. code:: python
+
+    hdfs.put('/__ibis/dir-write-example', 'parquet_dir')
+
+
+::
+
+
+    ---------------------------------------------------------------------------
+
+    HdfsError                                 Traceback (most recent call last)
+
+    <ipython-input-13-ca52b68a8a48> in <module>()
+    ----> 1 hdfs.put('/__ibis/dir-write-example', 'parquet_dir')
+    
+
+    /home/wesm/code/cloudera/ibis/ibis/filesystems.pyc in put(self, hdfs_path, resource, overwrite, verbose, **kwargs)
+        324                                                                     hdfs_path))
+        325                 self.client.upload(hdfs_path, resource,
+    --> 326                                    overwrite=overwrite, **kwargs)
+        327             else:
+        328                 if verbose:
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in upload(self, hdfs_path, local_path, overwrite, **kwargs)
+        378     self._logger.info('Uploading %s to %s.', local_path, hdfs_path)
+        379     if not osp.exists(local_path):
+    --> 380       raise HdfsError('No file found at %r.', local_path)
+        381     elif osp.isdir(local_path):
+        382       raise HdfsError('%r is a directory, cannot upload.', local_path)
+
+
+    HdfsError: No file found at 'parquet_dir'.
+
+
+.. code:: python
+
+    hdfs.ls('/__ibis')
+
+
+::
+
+
+    ---------------------------------------------------------------------------
+
+    ConnectionError                           Traceback (most recent call last)
+
+    <ipython-input-14-5cbd1301ab22> in <module>()
+    ----> 1 hdfs.ls('/__ibis')
+    
+
+    /home/wesm/code/cloudera/ibis/ibis/filesystems.pyc in ls(self, hdfs_path, status)
+        251     @implements(HDFS.ls)
+        252     def ls(self, hdfs_path, status=False):
+    --> 253         contents = self.client.list(hdfs_path)
+        254         if not status:
+        255             return [path for path, detail in contents]
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in list(self, hdfs_path)
+        582     self._logger.info('Listing %s.', hdfs_path)
+        583     hdfs_path = self.resolve(hdfs_path)
+    --> 584     statuses = self._list_status(hdfs_path).json()['FileStatuses']['FileStatus']
+        585     if len(statuses) == 1 and not statuses[0]['pathSuffix']:
+        586       # This is a normal file.
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in api_handler(client, path, data, **params)
+         87         params=params,
+         88         timeout=client.timeout,
+    ---> 89         **self.kwargs
+         90       )
+         91       if not response: # non 2XX status code
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in get(url, params, **kwargs)
+         67 
+         68     kwargs.setdefault('allow_redirects', True)
+    ---> 69     return request('get', url, params=params, **kwargs)
+         70 
+         71 
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in request(method, url, **kwargs)
+         48 
+         49     session = sessions.Session()
+    ---> 50     response = session.request(method=method, url=url, **kwargs)
+         51     # By explicitly closing the session, we avoid leaving sockets open which
+         52     # can trigger a ResourceWarning in some cases, and look like a memory leak
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in request(self, method, url, params, data, headers, cookies, files, auth, timeout, allow_redirects, proxies, hooks, stream, verify, cert, json)
+        463         }
+        464         send_kwargs.update(settings)
+    --> 465         resp = self.send(prep, **send_kwargs)
+        466 
+        467         return resp
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in send(self, request, **kwargs)
+        571 
+        572         # Send the request
+    --> 573         r = adapter.send(request, **kwargs)
+        574 
+        575         # Total elapsed time of the request (approximately)
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/adapters.pyc in send(self, request, stream, timeout, verify, cert, proxies)
+        413 
+        414         except (ProtocolError, socket.error) as err:
+    --> 415             raise ConnectionError(err, request=request)
+        416 
+        417         except MaxRetryError as e:
+
+
+    ConnectionError: ('Connection aborted.', error(111, 'Connection refused'))
+
+
+Delete files with ``rm`` or directories with ``rmdir``:
+
+.. code:: python
+
+    hdfs.rmdir('/__ibis/dir-write-example')
+
+
+::
+
+
+    ---------------------------------------------------------------------------
+
+    ConnectionError                           Traceback (most recent call last)
+
+    <ipython-input-15-e878009ca31f> in <module>()
+    ----> 1 hdfs.rmdir('/__ibis/dir-write-example')
+    
+
+    /home/wesm/code/cloudera/ibis/ibis/filesystems.pyc in rmdir(self, path)
+        202         Delete a directory and all its contents
+        203         """
+    --> 204         self.client.delete(path, recursive=True)
+        205 
+        206     def find_any_file(self, hdfs_dir):
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in delete(self, hdfs_path, recursive)
+        547     """
+        548     self._logger.info('Deleting %s%s.', hdfs_path, ' [R]' if recursive else '')
+    --> 549     res = self._delete(hdfs_path, recursive=recursive)
+        550     if not res.json()['boolean']:
+        551       raise HdfsError('Remote path %r not found.', hdfs_path)
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in api_handler(client, path, data, **params)
+         87         params=params,
+         88         timeout=client.timeout,
+    ---> 89         **self.kwargs
+         90       )
+         91       if not response: # non 2XX status code
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in delete(url, **kwargs)
+        145     """
+        146 
+    --> 147     return request('delete', url, **kwargs)
+    
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in request(method, url, **kwargs)
+         48 
+         49     session = sessions.Session()
+    ---> 50     response = session.request(method=method, url=url, **kwargs)
+         51     # By explicitly closing the session, we avoid leaving sockets open which
+         52     # can trigger a ResourceWarning in some cases, and look like a memory leak
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in request(self, method, url, params, data, headers, cookies, files, auth, timeout, allow_redirects, proxies, hooks, stream, verify, cert, json)
+        463         }
+        464         send_kwargs.update(settings)
+    --> 465         resp = self.send(prep, **send_kwargs)
+        466 
+        467         return resp
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in send(self, request, **kwargs)
+        571 
+        572         # Send the request
+    --> 573         r = adapter.send(request, **kwargs)
+        574 
+        575         # Total elapsed time of the request (approximately)
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/adapters.pyc in send(self, request, stream, timeout, verify, cert, proxies)
+        413 
+        414         except (ProtocolError, socket.error) as err:
+    --> 415             raise ConnectionError(err, request=request)
+        416 
+        417         except MaxRetryError as e:
+
+
+    ConnectionError: ('Connection aborted.', error(111, 'Connection refused'))
+
+
+.. code:: python
+
+    !rm -rf parquet_dir/
+
+Queries on Parquet, Avro, and Delimited files in HDFS
+=====================================================
+
+Ibis can easily create temporary or persistent Impala tables that
+reference data in the following formats:
+
+-  Parquet (``parquet_file``)
+-  Avro (``avro_file``)
+-  Delimited text formats (CSV, TSV, etc.) (``delimited_file``)
+
+Parquet is the easiest because the schema can be read from the data
+files:
+
+.. code:: python
+
+    path = '/__ibis/ibis-testing-data/parquet/tpch_lineitem'
+    
+    lineitem = con.parquet_file(path)
+    lineitem.limit(2)
+
+
+::
+
+
+    ---------------------------------------------------------------------------
+
+    ConnectionError                           Traceback (most recent call last)
+
+    <ipython-input-17-82585b0fad48> in <module>()
+          1 path = '/__ibis/ibis-testing-data/parquet/tpch_lineitem'
+          2 
+    ----> 3 lineitem = con.parquet_file(path)
+          4 lineitem.limit(2)
+
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in parquet_file(self, hdfs_dir, schema, name, database, external, like_file, like_table, persist)
+        751         # the HDFS directory
+        752         if like_file is None and like_table is None and schema is None:
+    --> 753             like_file = self.hdfs.find_any_file(hdfs_dir)
+        754 
+        755         qualified_name = self._fully_qualified_name(name, database)
+
+
+    /home/wesm/code/cloudera/ibis/ibis/filesystems.pyc in find_any_file(self, hdfs_dir)
+        205 
+        206     def find_any_file(self, hdfs_dir):
+    --> 207         contents = self.ls(hdfs_dir, status=True)
+        208 
+        209         def valid_filename(name):
+
+
+    /home/wesm/code/cloudera/ibis/ibis/filesystems.pyc in ls(self, hdfs_path, status)
+        251     @implements(HDFS.ls)
+        252     def ls(self, hdfs_path, status=False):
+    --> 253         contents = self.client.list(hdfs_path)
+        254         if not status:
+        255             return [path for path, detail in contents]
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in list(self, hdfs_path)
+        582     self._logger.info('Listing %s.', hdfs_path)
+        583     hdfs_path = self.resolve(hdfs_path)
+    --> 584     statuses = self._list_status(hdfs_path).json()['FileStatuses']['FileStatus']
+        585     if len(statuses) == 1 and not statuses[0]['pathSuffix']:
+        586       # This is a normal file.
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in api_handler(client, path, data, **params)
+         87         params=params,
+         88         timeout=client.timeout,
+    ---> 89         **self.kwargs
+         90       )
+         91       if not response: # non 2XX status code
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in get(url, params, **kwargs)
+         67 
+         68     kwargs.setdefault('allow_redirects', True)
+    ---> 69     return request('get', url, params=params, **kwargs)
+         70 
+         71 
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in request(method, url, **kwargs)
+         48 
+         49     session = sessions.Session()
+    ---> 50     response = session.request(method=method, url=url, **kwargs)
+         51     # By explicitly closing the session, we avoid leaving sockets open which
+         52     # can trigger a ResourceWarning in some cases, and look like a memory leak
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in request(self, method, url, params, data, headers, cookies, files, auth, timeout, allow_redirects, proxies, hooks, stream, verify, cert, json)
+        463         }
+        464         send_kwargs.update(settings)
+    --> 465         resp = self.send(prep, **send_kwargs)
+        466 
+        467         return resp
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in send(self, request, **kwargs)
+        571 
+        572         # Send the request
+    --> 573         r = adapter.send(request, **kwargs)
+        574 
+        575         # Total elapsed time of the request (approximately)
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/adapters.pyc in send(self, request, stream, timeout, verify, cert, proxies)
+        413 
+        414         except (ProtocolError, socket.error) as err:
+    --> 415             raise ConnectionError(err, request=request)
+        416 
+        417         except MaxRetryError as e:
+
+
+    ConnectionError: ('Connection aborted.', error(111, 'Connection refused'))
+
+
+.. code:: python
+
+    lineitem.l_extendedprice.sum()
+
+
+::
+
+
+    ---------------------------------------------------------------------------
+
+    NameError                                 Traceback (most recent call last)
+
+    <ipython-input-18-1f5dcd20edc4> in <module>()
+    ----> 1 lineitem.l_extendedprice.sum()
+    
+
+    NameError: name 'lineitem' is not defined
+
+
+If you want to query a Parquet file and also create a table in Impala
+that remains after your session, you can pass more information to
+``parquet_file``:
+
+.. code:: python
+
+    table = con.parquet_file(path, name='my_parquet_table', 
+                             database='ibis_testing',
+                             persist=True)
+    table.l_extendedprice.sum()
+
+
+::
+
+
+    ---------------------------------------------------------------------------
+
+    ConnectionError                           Traceback (most recent call last)
+
+    <ipython-input-19-921fda43ba34> in <module>()
+          1 table = con.parquet_file(path, name='my_parquet_table', 
+          2                          database='ibis_testing',
+    ----> 3                          persist=True)
+          4 table.l_extendedprice.sum()
+
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in parquet_file(self, hdfs_dir, schema, name, database, external, like_file, like_table, persist)
+        751         # the HDFS directory
+        752         if like_file is None and like_table is None and schema is None:
+    --> 753             like_file = self.hdfs.find_any_file(hdfs_dir)
+        754 
+        755         qualified_name = self._fully_qualified_name(name, database)
+
+
+    /home/wesm/code/cloudera/ibis/ibis/filesystems.pyc in find_any_file(self, hdfs_dir)
+        205 
+        206     def find_any_file(self, hdfs_dir):
+    --> 207         contents = self.ls(hdfs_dir, status=True)
+        208 
+        209         def valid_filename(name):
+
+
+    /home/wesm/code/cloudera/ibis/ibis/filesystems.pyc in ls(self, hdfs_path, status)
+        251     @implements(HDFS.ls)
+        252     def ls(self, hdfs_path, status=False):
+    --> 253         contents = self.client.list(hdfs_path)
+        254         if not status:
+        255             return [path for path, detail in contents]
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in list(self, hdfs_path)
+        582     self._logger.info('Listing %s.', hdfs_path)
+        583     hdfs_path = self.resolve(hdfs_path)
+    --> 584     statuses = self._list_status(hdfs_path).json()['FileStatuses']['FileStatus']
+        585     if len(statuses) == 1 and not statuses[0]['pathSuffix']:
+        586       # This is a normal file.
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in api_handler(client, path, data, **params)
+         87         params=params,
+         88         timeout=client.timeout,
+    ---> 89         **self.kwargs
+         90       )
+         91       if not response: # non 2XX status code
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in get(url, params, **kwargs)
+         67 
+         68     kwargs.setdefault('allow_redirects', True)
+    ---> 69     return request('get', url, params=params, **kwargs)
+         70 
+         71 
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in request(method, url, **kwargs)
+         48 
+         49     session = sessions.Session()
+    ---> 50     response = session.request(method=method, url=url, **kwargs)
+         51     # By explicitly closing the session, we avoid leaving sockets open which
+         52     # can trigger a ResourceWarning in some cases, and look like a memory leak
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in request(self, method, url, params, data, headers, cookies, files, auth, timeout, allow_redirects, proxies, hooks, stream, verify, cert, json)
+        463         }
+        464         send_kwargs.update(settings)
+    --> 465         resp = self.send(prep, **send_kwargs)
+        466 
+        467         return resp
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in send(self, request, **kwargs)
+        571 
+        572         # Send the request
+    --> 573         r = adapter.send(request, **kwargs)
+        574 
+        575         # Total elapsed time of the request (approximately)
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/adapters.pyc in send(self, request, stream, timeout, verify, cert, proxies)
+        413 
+        414         except (ProtocolError, socket.error) as err:
+    --> 415             raise ConnectionError(err, request=request)
+        416 
+        417         except MaxRetryError as e:
+
+
+    ConnectionError: ('Connection aborted.', error(111, 'Connection refused'))
+
+
+.. code:: python
+
+    con.table('my_parquet_table').l_extendedprice.sum()
+
+
+::
+
+
+    ---------------------------------------------------------------------------
+
+    HiveServer2Error                          Traceback (most recent call last)
+
+    <ipython-input-20-d5d05faa9233> in <module>()
+    ----> 1 con.table('my_parquet_table').l_extendedprice.sum()
+    
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in table(self, name, database)
+         58         """
+         59         qualified_name = self._fully_qualified_name(name, database)
+    ---> 60         schema = self._get_table_schema(qualified_name)
+         61         node = ops.DatabaseTable(qualified_name, schema, self)
+         62         return ir.TableExpr(node)
+
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in _get_table_schema(self, tname)
+        903     def _get_table_schema(self, tname):
+        904         query = 'SELECT * FROM {0} LIMIT 0'.format(tname)
+    --> 905         return self._get_schema_using_query(query)
+        906 
+        907     def _get_schema_using_query(self, query):
+
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in _get_schema_using_query(self, query)
+        906 
+        907     def _get_schema_using_query(self, query):
+    --> 908         cursor = self._execute(query, results=True)
+        909 
+        910         # resets the state of the cursor and closes operation
+
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in _execute(self, query, results)
+         71 
+         72     def _execute(self, query, results=False):
+    ---> 73         cur = self.con.execute(query)
+         74         if results:
+         75             return cur
+
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in execute(self, query)
+        189 
+        190         try:
+    --> 191             cursor.execute(query)
+        192         except:
+        193             cursor.release()
+
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in execute(self, stmt)
+        270 
+        271     def execute(self, stmt):
+    --> 272         self.cursor.execute(stmt)
+        273 
+        274     def fetchall(self):
+
+
+    /home/wesm/code/cloudera/impyla/impala/dbapi/hiveserver2.pyc in execute(self, operation, parameters, configuration)
+        149                 self.service, self.session_handle, self._last_operation_string)
+        150 
+    --> 151         self._execute_sync(op)
+        152 
+        153     def _execute_sync(self, operation_fn):
+
+
+    /home/wesm/code/cloudera/impyla/impala/dbapi/hiveserver2.pyc in _execute_sync(self, operation_fn)
+        155         # self._last_operation_handle
+        156         self._reset_state()
+    --> 157         operation_fn()
+        158         self._last_operation_active = True
+        159         self._wait_to_finish()  # make execute synchronous
+
+
+    /home/wesm/code/cloudera/impyla/impala/dbapi/hiveserver2.pyc in op()
+        147                 self._last_operation_string = operation
+        148             self._last_operation_handle = rpc.execute_statement(
+    --> 149                 self.service, self.session_handle, self._last_operation_string)
+        150 
+        151         self._execute_sync(op)
+
+
+    /home/wesm/code/cloudera/impyla/impala/_rpc/hiveserver2.pyc in wrapper(*args, **kwargs)
+        130                 if not transport.isOpen():
+        131                     transport.open()
+    --> 132                 return func(*args, **kwargs)
+        133             except socket.error:
+        134                 pass
+
+
+    /home/wesm/code/cloudera/impyla/impala/_rpc/hiveserver2.pyc in execute_statement(service, session_handle, statement, configuration, async)
+        231                                runAsync=async)
+        232     resp = service.ExecuteStatement(req)
+    --> 233     err_if_rpc_not_ok(resp)
+        234     return resp.operationHandle
+        235 
+
+
+    /home/wesm/code/cloudera/impyla/impala/_rpc/hiveserver2.pyc in err_if_rpc_not_ok(resp)
+         78             resp.status.statusCode != TStatusCode.SUCCESS_WITH_INFO_STATUS and
+         79             resp.status.statusCode != TStatusCode.STILL_EXECUTING_STATUS):
+    ---> 80         raise HiveServer2Error(resp.status.errorMessage)
+         81 
+         82 
+
+
+    HiveServer2Error: AnalysisException: Table does not exist: ibis_testing.my_parquet_table
+
+
+
+.. code:: python
+
+    con.drop_table('my_parquet_table')
+
+
+::
+
+
+    ---------------------------------------------------------------------------
+
+    HiveServer2Error                          Traceback (most recent call last)
+
+    <ipython-input-21-5796c8ae87b6> in <module>()
+    ----> 1 con.drop_table('my_parquet_table')
+    
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in drop_table(self, table_name, database, force)
+        857         statement = ddl.DropTable(table_name, database=database,
+        858                                   must_exist=not force)
+    --> 859         self._execute(statement)
+        860 
+        861     def truncate_table(self, table_name, database=None):
+
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in _execute(self, query, results)
+         71 
+         72     def _execute(self, query, results=False):
+    ---> 73         cur = self.con.execute(query)
+         74         if results:
+         75             return cur
+
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in execute(self, query)
+        189 
+        190         try:
+    --> 191             cursor.execute(query)
+        192         except:
+        193             cursor.release()
+
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in execute(self, stmt)
+        270 
+        271     def execute(self, stmt):
+    --> 272         self.cursor.execute(stmt)
+        273 
+        274     def fetchall(self):
+
+
+    /home/wesm/code/cloudera/impyla/impala/dbapi/hiveserver2.pyc in execute(self, operation, parameters, configuration)
+        149                 self.service, self.session_handle, self._last_operation_string)
+        150 
+    --> 151         self._execute_sync(op)
+        152 
+        153     def _execute_sync(self, operation_fn):
+
+
+    /home/wesm/code/cloudera/impyla/impala/dbapi/hiveserver2.pyc in _execute_sync(self, operation_fn)
+        155         # self._last_operation_handle
+        156         self._reset_state()
+    --> 157         operation_fn()
+        158         self._last_operation_active = True
+        159         self._wait_to_finish()  # make execute synchronous
+
+
+    /home/wesm/code/cloudera/impyla/impala/dbapi/hiveserver2.pyc in op()
+        147                 self._last_operation_string = operation
+        148             self._last_operation_handle = rpc.execute_statement(
+    --> 149                 self.service, self.session_handle, self._last_operation_string)
+        150 
+        151         self._execute_sync(op)
+
+
+    /home/wesm/code/cloudera/impyla/impala/_rpc/hiveserver2.pyc in wrapper(*args, **kwargs)
+        130                 if not transport.isOpen():
+        131                     transport.open()
+    --> 132                 return func(*args, **kwargs)
+        133             except socket.error:
+        134                 pass
+
+
+    /home/wesm/code/cloudera/impyla/impala/_rpc/hiveserver2.pyc in execute_statement(service, session_handle, statement, configuration, async)
+        231                                runAsync=async)
+        232     resp = service.ExecuteStatement(req)
+    --> 233     err_if_rpc_not_ok(resp)
+        234     return resp.operationHandle
+        235 
+
+
+    /home/wesm/code/cloudera/impyla/impala/_rpc/hiveserver2.pyc in err_if_rpc_not_ok(resp)
+         78             resp.status.statusCode != TStatusCode.SUCCESS_WITH_INFO_STATUS and
+         79             resp.status.statusCode != TStatusCode.STILL_EXECUTING_STATUS):
+    ---> 80         raise HiveServer2Error(resp.status.errorMessage)
+         81 
+         82 
+
+
+    HiveServer2Error: AnalysisException: Table does not exist: ibis_testing.my_parquet_table
+
+
+
+To query delimited files, you need to write down an Ibis schema. At some
+point we'd like to build some helper tools that will infer the schema
+for you, all in good time.
+
+There's some CSV files in the test folder, so let's use those:
+
+.. code:: python
+
+    hdfs.get('/__ibis/ibis-testing-data/csv', 'csv-files')
+
+
+::
+
+
+    ---------------------------------------------------------------------------
+
+    ConnectionError                           Traceback (most recent call last)
+
+    <ipython-input-22-4db8eee5bf68> in <module>()
+    ----> 1 hdfs.get('/__ibis/ibis-testing-data/csv', 'csv-files')
+    
+
+    /home/wesm/code/cloudera/ibis/ibis/filesystems.pyc in get(self, hdfs_path, local_path, overwrite, verbose)
+        370                     _scrape_dir(hpath, dst)
+        371 
+    --> 372         status = self.status(hdfs_path)
+        373         if status['type'] == 'FILE':
+        374             if not overwrite and osp.exists(local_path):
+
+
+    /home/wesm/code/cloudera/ibis/ibis/filesystems.pyc in status(self, path)
+        239         Retrieve HDFS metadata for path
+        240         """
+    --> 241         return self.client.status(path)
+        242 
+        243     @implements(HDFS.exists)
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in status(self, hdfs_path)
+        259     """
+        260     self._logger.info('Fetching status for %s.', hdfs_path)
+    --> 261     return self._get_file_status(hdfs_path).json()['FileStatus']
+        262 
+        263   def parts(self, hdfs_path, parts=None):
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in api_handler(client, path, data, **params)
+         87         params=params,
+         88         timeout=client.timeout,
+    ---> 89         **self.kwargs
+         90       )
+         91       if not response: # non 2XX status code
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in get(url, params, **kwargs)
+         67 
+         68     kwargs.setdefault('allow_redirects', True)
+    ---> 69     return request('get', url, params=params, **kwargs)
+         70 
+         71 
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in request(method, url, **kwargs)
+         48 
+         49     session = sessions.Session()
+    ---> 50     response = session.request(method=method, url=url, **kwargs)
+         51     # By explicitly closing the session, we avoid leaving sockets open which
+         52     # can trigger a ResourceWarning in some cases, and look like a memory leak
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in request(self, method, url, params, data, headers, cookies, files, auth, timeout, allow_redirects, proxies, hooks, stream, verify, cert, json)
+        463         }
+        464         send_kwargs.update(settings)
+    --> 465         resp = self.send(prep, **send_kwargs)
+        466 
+        467         return resp
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in send(self, request, **kwargs)
+        571 
+        572         # Send the request
+    --> 573         r = adapter.send(request, **kwargs)
+        574 
+        575         # Total elapsed time of the request (approximately)
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/adapters.pyc in send(self, request, stream, timeout, verify, cert, proxies)
+        413 
+        414         except (ProtocolError, socket.error) as err:
+    --> 415             raise ConnectionError(err, request=request)
+        416 
+        417         except MaxRetryError as e:
+
+
+    ConnectionError: ('Connection aborted.', error(111, 'Connection refused'))
+
+
+.. code:: python
+
+    !cat csv-files/0.csv
+
+
+.. parsed-literal::
+
+    cat: csv-files/0.csv: No such file or directory
+
+
+.. code:: python
+
+    !rm -rf csv-files/
+
+The schema here is pretty simple (see ``ibis.schema`` for more):
+
+.. code:: python
+
+    schema = ibis.schema([('foo', 'string'),
+                          ('bar', 'double'),
+                          ('baz', 'int32')])
+    
+    table = con.delimited_file('/__ibis/ibis-testing-data/csv',
+                               schema)
+    table.limit(10)
+
+
+
+
+.. parsed-literal::
+
+              foo       bar  baz
+    0  Rw2uUzXD5q -0.669256   46
+    1  Fqy0zVOfkG -1.452423   66
+    2  Kbx8SzqBFn -0.409042    8
+    3  R876Z9N0hb -1.191028    2
+    4  CRfBHbL6Wu  0.297024   70
+    5  0hr5TToAYT -1.084084   66
+    6  AukbgF0kKJ  0.747442   57
+    7  7zCvJvy1qM -0.477290   80
+    8  0cJFGBGQOG  1.164071   86
+    9  2gkIYbvcCM -1.281811   22
+
+
+
+.. code:: python
+
+    table.bar.summary()
+
+
+
+
+.. parsed-literal::
+
+       count  nulls       min       max        sum     mean  approx_nunique
+    0    100      0 -1.452423  1.164071 -43.563963 -0.43564              10
+
+
+
+For functions like ``parquet_file`` and ``delimited_file``, an HDFS
+directory must be passed (we'll add support for S3 and other filesystems
+later) and the directory must contain files all having the same schema.
+
+If you have Avro data, you can query it too if you have the full avro
+schema:
+
+.. code:: python
+
+    avro_schema = {
+        "fields": [
+            {"type": ["int", "null"], "name": "R_REGIONKEY"},
+            {"type": ["string", "null"], "name": "R_NAME"},
+            {"type": ["string", "null"], "name": "R_COMMENT"}],
+        "type": "record",
+        "name": "a"
+    }
+    
+    table = con.avro_file('/__ibis/ibis-testing-data/avro/tpch.region', avro_schema)
+    table
+
+
+
+
+.. parsed-literal::
+
+    Empty DataFrame
+    Columns: [r_regionkey, r_name, r_comment]
+    Index: []
+
+
+
+Other helper functions for interacting with the database
+========================================================
+
+We're adding a growing list of useful utility functions for interacting
+with an Impala cluster on the client object. The idea is that you should
+be able to do any database-admin-type work with Ibis and not have to
+switch over to the Impala SQL shell. Any ways we can make this more
+pleasant, please let us know.
+
+Here's some of the features, which we'll give examples for:
+
+-  Listing and searching for available databases and tables
+-  Creating and dropping databases
+-  Getting table schemas
+
+.. code:: python
+
+    con.list_databases(like='ibis*')
+
+
+
+
+.. parsed-literal::
+
+    ['ibis_testing']
+
+
+
+.. code:: python
+
+    con.list_tables(database='ibis_testing', like='tpch*')
+
+
+
+
+.. parsed-literal::
+
+    ['tpch_customer',
+     'tpch_lineitem',
+     'tpch_nation',
+     'tpch_orders',
+     'tpch_part',
+     'tpch_partsupp',
+     'tpch_region',
+     'tpch_region_avro',
+     'tpch_supplier']
+
+
+
+.. code:: python
+
+    schema = con.get_schema('functional_alltypes')
+    schema
+
+
+
+
+.. parsed-literal::
+
+    ibis.Schema {  
+      id               int32
+      bool_col         boolean
+      tinyint_col      int8
+      smallint_col     int16
+      int_col          int32
+      bigint_col       int64
+      float_col        float
+      double_col       double
+      date_string_col  string
+      string_col       string
+      timestamp_col    timestamp
+      year             int32
+      month            int32
+    }
+
+
+
+Databases can be created, too, and you can set the storage path in HDFS
+you want for the data files
+
+.. code:: python
+
+    db = 'ibis_testing2'
+    con.create_database(db, path='/__ibis/my-test-database')
+    con.create_table('example_table', con.table('functional_alltypes'),
+                     database=db)
+
+
+::
+
+
+    ---------------------------------------------------------------------------
+
+    ConnectionError                           Traceback (most recent call last)
+
+    <ipython-input-31-e9307ccae21d> in <module>()
+          1 db = 'ibis_testing2'
+    ----> 2 con.create_database(db, path='/__ibis/my-test-database')
+          3 con.create_table('example_table', con.table('functional_alltypes'),
+          4                  database=db)
+
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in create_database(self, name, path, fail_if_exists)
+        415             # explicit mkdir ensures the user own the dir rather than impala,
+        416             # which is easier for manual cleanup, if necessary
+    --> 417             self._hdfs.mkdir(path, create_parent=True)
+        418         statement = ddl.CreateDatabase(name, path=path,
+        419                                        fail_if_exists=fail_if_exists)
+
+
+    /home/wesm/code/cloudera/ibis/ibis/filesystems.pyc in mkdir(self, dir_path, create_parent)
+        263         # create a temporary file, then delete it
+        264         dummy = pjoin(dir_path, util.guid())
+    --> 265         self.client.write(dummy, '')
+        266         self.client.delete(dummy)
+        267 
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in write(self, hdfs_path, data, overwrite, permission, blocksize, replication, buffersize)
+        341       blocksize=blocksize,
+        342       replication=replication,
+    --> 343       buffersize=buffersize,
+        344     )
+        345     res_2 = rq.put(res_1.headers['location'], data=data,
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in api_handler(client, path, data, **params)
+         87         params=params,
+         88         timeout=client.timeout,
+    ---> 89         **self.kwargs
+         90       )
+         91       if not response: # non 2XX status code
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in put(url, data, **kwargs)
+        120     """
+        121 
+    --> 122     return request('put', url, data=data, **kwargs)
+        123 
+        124 
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in request(method, url, **kwargs)
+         48 
+         49     session = sessions.Session()
+    ---> 50     response = session.request(method=method, url=url, **kwargs)
+         51     # By explicitly closing the session, we avoid leaving sockets open which
+         52     # can trigger a ResourceWarning in some cases, and look like a memory leak
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in request(self, method, url, params, data, headers, cookies, files, auth, timeout, allow_redirects, proxies, hooks, stream, verify, cert, json)
+        463         }
+        464         send_kwargs.update(settings)
+    --> 465         resp = self.send(prep, **send_kwargs)
+        466 
+        467         return resp
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in send(self, request, **kwargs)
+        571 
+        572         # Send the request
+    --> 573         r = adapter.send(request, **kwargs)
+        574 
+        575         # Total elapsed time of the request (approximately)
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/adapters.pyc in send(self, request, stream, timeout, verify, cert, proxies)
+        413 
+        414         except (ProtocolError, socket.error) as err:
+    --> 415             raise ConnectionError(err, request=request)
+        416 
+        417         except MaxRetryError as e:
+
+
+    ConnectionError: ('Connection aborted.', error(111, 'Connection refused'))
+
+
+Hopefully, there will be data files in the indicated spot in HDFS:
+
+.. code:: python
+
+    hdfs.ls('/__ibis/my-test-database')
+
+
+::
+
+
+    ---------------------------------------------------------------------------
+
+    ConnectionError                           Traceback (most recent call last)
+
+    <ipython-input-32-379ea1d7c676> in <module>()
+    ----> 1 hdfs.ls('/__ibis/my-test-database')
+    
+
+    /home/wesm/code/cloudera/ibis/ibis/filesystems.pyc in ls(self, hdfs_path, status)
+        251     @implements(HDFS.ls)
+        252     def ls(self, hdfs_path, status=False):
+    --> 253         contents = self.client.list(hdfs_path)
+        254         if not status:
+        255             return [path for path, detail in contents]
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in list(self, hdfs_path)
+        582     self._logger.info('Listing %s.', hdfs_path)
+        583     hdfs_path = self.resolve(hdfs_path)
+    --> 584     statuses = self._list_status(hdfs_path).json()['FileStatuses']['FileStatus']
+        585     if len(statuses) == 1 and not statuses[0]['pathSuffix']:
+        586       # This is a normal file.
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/hdfs-1.1.1-py2.7.egg/hdfs/client.pyc in api_handler(client, path, data, **params)
+         87         params=params,
+         88         timeout=client.timeout,
+    ---> 89         **self.kwargs
+         90       )
+         91       if not response: # non 2XX status code
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in get(url, params, **kwargs)
+         67 
+         68     kwargs.setdefault('allow_redirects', True)
+    ---> 69     return request('get', url, params=params, **kwargs)
+         70 
+         71 
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/api.pyc in request(method, url, **kwargs)
+         48 
+         49     session = sessions.Session()
+    ---> 50     response = session.request(method=method, url=url, **kwargs)
+         51     # By explicitly closing the session, we avoid leaving sockets open which
+         52     # can trigger a ResourceWarning in some cases, and look like a memory leak
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in request(self, method, url, params, data, headers, cookies, files, auth, timeout, allow_redirects, proxies, hooks, stream, verify, cert, json)
+        463         }
+        464         send_kwargs.update(settings)
+    --> 465         resp = self.send(prep, **send_kwargs)
+        466 
+        467         return resp
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/sessions.pyc in send(self, request, **kwargs)
+        571 
+        572         # Send the request
+    --> 573         r = adapter.send(request, **kwargs)
+        574 
+        575         # Total elapsed time of the request (approximately)
+
+
+    /home/wesm/anaconda/lib/python2.7/site-packages/requests/adapters.pyc in send(self, request, stream, timeout, verify, cert, proxies)
+        413 
+        414         except (ProtocolError, socket.error) as err:
+    --> 415             raise ConnectionError(err, request=request)
+        416 
+        417         except MaxRetryError as e:
+
+
+    ConnectionError: ('Connection aborted.', error(111, 'Connection refused'))
+
+
+To drop a database, including all tables in it, you can use
+``drop_database`` with ``force=True``:
+
+.. code:: python
+
+    con.drop_database(db, force=True)
+
+
+::
+
+
+    ---------------------------------------------------------------------------
+
+    HiveServer2Error                          Traceback (most recent call last)
+
+    <ipython-input-33-6cbf57d2ac50> in <module>()
+    ----> 1 con.drop_database(db, force=True)
+    
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in drop_database(self, name, force)
+        432           IntegrityError
+        433         """
+    --> 434         tables = self.list_tables(database=name)
+        435         if force:
+        436             for table in tables:
+
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in list_tables(self, like, database)
+        366             statement += " LIKE '{0}'".format(like)
+        367 
+    --> 368         cur = self._execute(statement, results=True)
+        369         result = self._get_list(cur)
+        370         cur.release()
+
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in _execute(self, query, results)
+         71 
+         72     def _execute(self, query, results=False):
+    ---> 73         cur = self.con.execute(query)
+         74         if results:
+         75             return cur
+
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in execute(self, query)
+        189 
+        190         try:
+    --> 191             cursor.execute(query)
+        192         except:
+        193             cursor.release()
+
+
+    /home/wesm/code/cloudera/ibis/ibis/client.pyc in execute(self, stmt)
+        270 
+        271     def execute(self, stmt):
+    --> 272         self.cursor.execute(stmt)
+        273 
+        274     def fetchall(self):
+
+
+    /home/wesm/code/cloudera/impyla/impala/dbapi/hiveserver2.pyc in execute(self, operation, parameters, configuration)
+        149                 self.service, self.session_handle, self._last_operation_string)
+        150 
+    --> 151         self._execute_sync(op)
+        152 
+        153     def _execute_sync(self, operation_fn):
+
+
+    /home/wesm/code/cloudera/impyla/impala/dbapi/hiveserver2.pyc in _execute_sync(self, operation_fn)
+        155         # self._last_operation_handle
+        156         self._reset_state()
+    --> 157         operation_fn()
+        158         self._last_operation_active = True
+        159         self._wait_to_finish()  # make execute synchronous
+
+
+    /home/wesm/code/cloudera/impyla/impala/dbapi/hiveserver2.pyc in op()
+        147                 self._last_operation_string = operation
+        148             self._last_operation_handle = rpc.execute_statement(
+    --> 149                 self.service, self.session_handle, self._last_operation_string)
+        150 
+        151         self._execute_sync(op)
+
+
+    /home/wesm/code/cloudera/impyla/impala/_rpc/hiveserver2.pyc in wrapper(*args, **kwargs)
+        130                 if not transport.isOpen():
+        131                     transport.open()
+    --> 132                 return func(*args, **kwargs)
+        133             except socket.error:
+        134                 pass
+
+
+    /home/wesm/code/cloudera/impyla/impala/_rpc/hiveserver2.pyc in execute_statement(service, session_handle, statement, configuration, async)
+        231                                runAsync=async)
+        232     resp = service.ExecuteStatement(req)
+    --> 233     err_if_rpc_not_ok(resp)
+        234     return resp.operationHandle
+        235 
+
+
+    /home/wesm/code/cloudera/impyla/impala/_rpc/hiveserver2.pyc in err_if_rpc_not_ok(resp)
+         78             resp.status.statusCode != TStatusCode.SUCCESS_WITH_INFO_STATUS and
+         79             resp.status.statusCode != TStatusCode.STILL_EXECUTING_STATUS):
+    ---> 80         raise HiveServer2Error(resp.status.errorMessage)
+         81 
+         82 
+
+
+    HiveServer2Error: AnalysisException: Database does not exist: ibis_testing2
+
+
+
+Dealing with Partitioned tables in Impala
+=========================================
+
+**Placeholder:** This is not yet implemented. If you have use cases,
+please let us know.
+
+Faster queries on small data in Impala
+======================================
+
+Since Impala internally uses LLVM to compile parts of queries (aka
+"codegen") to make them faster on large data sets there is a certain
+amount of overhead with running many kinds of queries, even on small
+datasets. You can disable LLVM code generation when using Ibis, which
+may significantly speed up queries on smaller datasets:
+
+.. code:: python
+
+    from numpy.random import rand
+
+.. code:: python
+
+    con.disable_codegen()
+
+.. code:: python
+
+    t = con.table('ibis_testing.functional_alltypes')
+    
+    %timeit (t.double_col + rand()).sum().execute()
+
+
+.. parsed-literal::
+
+    10 loops, best of 3: 119 ms per loop
+
+
+.. code:: python
+
+    # Turn codegen back on
+    con.disable_codegen(False)
+
+.. code:: python
+
+    %timeit (t.double_col + rand()).sum().execute()
+
+
+.. parsed-literal::
+
+    1 loops, best of 3: 732 ms per loop
+
+
+It's important to remember that codegen is a fixed overhead and will
+significantly speed up queries on big data

@@ -1,0 +1,455 @@
+
+More filtering mojo for your analytics
+======================================
+
+The filtering examples we've shown to this point have been pretty
+simple, either comparisons between columns or fixed values, or set
+filter functions like ``isin`` and ``notin``.
+
+Ibis supports a number of richer analytical filters that can involve one
+or more of:
+
+-  Aggregates computed from the same or other tables
+-  Conditional aggregates (in SQL-speak these are similar to "correlated
+   subqueries")
+-  "Existence" set filters (equivalent to the SQL ``EXISTS`` and
+   ``NOT EXISTS`` keywords)
+
+.. code:: python
+
+    import ibis
+    import os
+    hdfs_port = os.environ.get('IBIS_WEBHDFS_PORT', 50070)
+    
+    ic = ibis.impala_connect(host='quickstart.cloudera', database='ibis_testing')
+    hdfs = ibis.hdfs_connect(host='quickstart.cloudera', port=hdfs_port)
+    con = ibis.make_client(ic, hdfs_client=hdfs)
+    
+    ibis.options.interactive = True
+
+Using scalar aggregates in filters
+==================================
+
+.. code:: python
+
+    table = con.table('functional_alltypes')
+    table.limit(5)
+
+
+
+
+.. parsed-literal::
+
+        id bool_col  tinyint_col  smallint_col  int_col  bigint_col  float_col  \
+    0  310     True            0             0        0           0        0.0   
+    1  311    False            1             1        1          10        1.1   
+    2  312     True            2             2        2          20        2.2   
+    3  313    False            3             3        3          30        3.3   
+    4  314     True            4             4        4          40        4.4   
+    
+       double_col date_string_col string_col           timestamp_col  year  month  
+    0         0.0        02/01/09          0 2009-02-01 00:00:00.000  2009      2  
+    1        10.1        02/01/09          1 2009-02-01 00:01:00.000  2009      2  
+    2        20.2        02/01/09          2 2009-02-01 00:02:00.100  2009      2  
+    3        30.3        02/01/09          3 2009-02-01 00:03:00.300  2009      2  
+    4        40.4        02/01/09          4 2009-02-01 00:04:00.600  2009      2  
+
+
+
+We could always compute some aggregate value from the table and use that
+in another expression, or we can use a data-derived aggregate in the
+filter. Take the average of a column for example:
+
+.. code:: python
+
+    table.double_col.mean()
+
+
+
+
+.. parsed-literal::
+
+    45.450000000000003
+
+
+
+You can use this expression as a substitute for a scalar value in a
+filter, and the execution engine will combine everything into a single
+query rather than having to access Impala multiple times:
+
+.. code:: python
+
+    cond = table.bigint_col > table.double_col.mean()
+    expr = table[cond & table.bool_col].limit(5)
+    expr
+
+
+
+
+.. parsed-literal::
+
+         id bool_col  tinyint_col  smallint_col  int_col  bigint_col  float_col  \
+    0  1206     True            6             6        6          60        6.6   
+    1  1208     True            8             8        8          80        8.8   
+    2  1216     True            6             6        6          60        6.6   
+    3  1218     True            8             8        8          80        8.8   
+    4  1226     True            6             6        6          60        6.6   
+    
+       double_col date_string_col string_col           timestamp_col  year  month  
+    0        60.6        05/01/09          6 2009-05-01 00:06:00.150  2009      5  
+    1        80.8        05/01/09          8 2009-05-01 00:08:00.280  2009      5  
+    2        60.6        05/02/09          6 2009-05-02 00:16:00.600  2009      5  
+    3        80.8        05/02/09          8 2009-05-02 00:18:00.730  2009      5  
+    4        60.6        05/03/09          6 2009-05-03 00:26:01.500  2009      5  
+
+
+
+Conditional aggregates
+======================
+
+Suppose that we wish to filter using an aggregate computed conditional
+on some other expressions holding true. Using the TPC-H datasets,
+suppose that we want to filter customers based on the following
+criteria: Orders such that their amount exceeds the average amount for
+their sales region over the whole dataset. This can be computed any
+numbers of ways (such as joining auxiliary tables and filtering
+post-join)
+
+Again, from prior examples, here are the joined up tables with all the
+customer data:
+
+.. code:: python
+
+    region = con.table('tpch_region')
+    nation = con.table('tpch_nation')
+    customer = con.table('tpch_customer')
+    orders = con.table('tpch_orders')
+    
+    fields_of_interest = [customer,
+                          region.r_name.name('region'), 
+                          orders.o_totalprice,
+                          orders.o_orderdate.cast('timestamp').name('odate')]
+    
+    tpch = (region.join(nation, region.r_regionkey == nation.n_regionkey)
+            .join(customer, customer.c_nationkey == nation.n_nationkey)
+            .join(orders, orders.o_custkey == customer.c_custkey)
+            [fields_of_interest])
+    
+    tpch.limit(5)
+
+
+
+
+.. parsed-literal::
+
+       c_custkey              c_name               c_address  c_nationkey  \
+    0     149909  Customer#000149909  D0WBgaCvitADwGzti,6S9D           16   
+    1     149909  Customer#000149909  D0WBgaCvitADwGzti,6S9D           16   
+    2     149909  Customer#000149909  D0WBgaCvitADwGzti,6S9D           16   
+    3     149909  Customer#000149909  D0WBgaCvitADwGzti,6S9D           16   
+    4     149909  Customer#000149909  D0WBgaCvitADwGzti,6S9D           16   
+    
+               c_phone c_acctbal c_mktsegment  \
+    0  26-258-626-2381   9401.92    MACHINERY   
+    1  26-258-626-2381   9401.92    MACHINERY   
+    2  26-258-626-2381   9401.92    MACHINERY   
+    3  26-258-626-2381   9401.92    MACHINERY   
+    4  26-258-626-2381   9401.92    MACHINERY   
+    
+                                               c_comment  region o_totalprice  \
+    0  lyly pending platelets sleep quickly above the...  AFRICA    275266.73   
+    1  lyly pending platelets sleep quickly above the...  AFRICA    137016.47   
+    2  lyly pending platelets sleep quickly above the...  AFRICA    267222.99   
+    3  lyly pending platelets sleep quickly above the...  AFRICA    222958.49   
+    4  lyly pending platelets sleep quickly above the...  AFRICA     85184.71   
+    
+           odate  
+    0 1996-05-17  
+    1 1997-07-04  
+    2 1997-10-05  
+    3 1994-12-01  
+    4 1992-11-25  
+
+
+
+In this particular case, filtering based on the conditional average
+``o_totalprice`` by region requires creating a table view (similar to
+the self-join examples from earlier) that can be treated as a distinct
+table entity in the expression. This would **not** be required if we
+were computing a conditional statistic from some other table. So this is
+a little more complicated than some other cases would be:
+
+.. code:: python
+
+    t2 = tpch.view()
+    conditional_avg = t2[(t2.region == tpch.region)].o_totalprice.mean()
+
+Once you've done this, you can use the conditional average in a filter
+expression
+
+.. code:: python
+
+    amount_filter = tpch.o_totalprice > conditional_avg
+    tpch[amount_filter].limit(10)
+
+
+
+
+.. parsed-literal::
+
+       c_custkey              c_name               c_address  c_nationkey  \
+    0     149909  Customer#000149909  D0WBgaCvitADwGzti,6S9D           16   
+    1     149909  Customer#000149909  D0WBgaCvitADwGzti,6S9D           16   
+    2     149909  Customer#000149909  D0WBgaCvitADwGzti,6S9D           16   
+    3     149909  Customer#000149909  D0WBgaCvitADwGzti,6S9D           16   
+    4     149909  Customer#000149909  D0WBgaCvitADwGzti,6S9D           16   
+    5     149909  Customer#000149909  D0WBgaCvitADwGzti,6S9D           16   
+    6     149909  Customer#000149909  D0WBgaCvitADwGzti,6S9D           16   
+    7     149909  Customer#000149909  D0WBgaCvitADwGzti,6S9D           16   
+    8     149894  Customer#000149894             UBbFFFjfeGG           16   
+    9     149894  Customer#000149894             UBbFFFjfeGG           16   
+    
+               c_phone c_acctbal c_mktsegment  \
+    0  26-258-626-2381   9401.92    MACHINERY   
+    1  26-258-626-2381   9401.92    MACHINERY   
+    2  26-258-626-2381   9401.92    MACHINERY   
+    3  26-258-626-2381   9401.92    MACHINERY   
+    4  26-258-626-2381   9401.92    MACHINERY   
+    5  26-258-626-2381   9401.92    MACHINERY   
+    6  26-258-626-2381   9401.92    MACHINERY   
+    7  26-258-626-2381   9401.92    MACHINERY   
+    8  26-969-765-2420    907.11     BUILDING   
+    9  26-969-765-2420    907.11     BUILDING   
+    
+                                               c_comment  region o_totalprice  \
+    0  lyly pending platelets sleep quickly above the...  AFRICA    275266.73   
+    1  lyly pending platelets sleep quickly above the...  AFRICA    267222.99   
+    2  lyly pending platelets sleep quickly above the...  AFRICA    222958.49   
+    3  lyly pending platelets sleep quickly above the...  AFRICA    196108.94   
+    4  lyly pending platelets sleep quickly above the...  AFRICA    206459.14   
+    5  lyly pending platelets sleep quickly above the...  AFRICA    331021.81   
+    6  lyly pending platelets sleep quickly above the...  AFRICA    266370.41   
+    7  lyly pending platelets sleep quickly above the...  AFRICA    210687.72   
+    8  ect quickly. ironic, regular pinto beans along...  AFRICA    353546.02   
+    9  ect quickly. ironic, regular pinto beans along...  AFRICA    249303.89   
+    
+           odate  
+    0 1996-05-17  
+    1 1997-10-05  
+    2 1994-12-01  
+    3 1996-06-09  
+    4 1995-06-30  
+    5 1993-08-31  
+    6 1992-10-07  
+    7 1992-06-04  
+    8 1994-06-29  
+    9 1995-10-02  
+
+
+
+By looking at the table sizes before and after applying the filter you
+can see the relative size of the subset taken.
+
+.. code:: python
+
+    tpch.count()
+
+
+
+
+.. parsed-literal::
+
+    1500000
+
+
+
+.. code:: python
+
+    tpch[amount_filter].count()
+
+
+
+
+.. parsed-literal::
+
+    711969
+
+
+
+Or even group by year and compare before and after:
+
+.. code:: python
+
+    year = tpch.odate.year().name('year')
+    
+    pre_sizes = tpch.group_by(year).size()
+    post_sizes = tpch[amount_filter].group_by(year).size()
+    
+    percent = ((post_sizes['count'] / pre_sizes['count'].cast('double'))
+               .name('fraction'))
+    
+    expr = (pre_sizes.join(post_sizes, pre_sizes.year == post_sizes.year)
+            [pre_sizes.year, 
+             pre_sizes['count'].name('pre_count'),
+             post_sizes['count'].name('post_count'),
+             percent])
+    expr
+
+
+
+
+.. parsed-literal::
+
+       year  pre_count  post_count  fraction
+    0  1994     227597      108087  0.474905
+    1  1996     228626      108757  0.475698
+    2  1992     227089      107815  0.474770
+    3  1998     133623       63551  0.475599
+    4  1993     226645      107703  0.475206
+    5  1995     228637      108315  0.473742
+    6  1997     227783      107741  0.472998
+
+
+
+"Existence" filters
+===================
+
+Some filtering involves checking for the existence of a particular value
+in a column of another table, or amount the results of some value
+expression. This is common in many-to-many relationships, and can be
+performed in numerous different ways, but it's nice to be able to
+express it with a single concise statement and let Ibis compute it
+optimally.
+
+Here's some examples:
+
+-  Filter down to customers having at least one open order
+-  Find customers having no open orders with 1-URGENT status
+-  Find stores (in the stores table) having the same name as a vendor
+   (in the vendors table).
+
+We'll go ahead and solve the first couple of these problems using the
+TPC-H tables to illustrate the API:
+
+.. code:: python
+
+    customer = con.table('tpch_customer')
+    orders = con.table('tpch_orders')
+
+.. code:: python
+
+    orders.limit(5)
+
+
+
+
+.. parsed-literal::
+
+       o_orderkey  o_custkey o_orderstatus o_totalprice o_orderdate  \
+    0           1      36901             O    173665.47  1996-01-02   
+    1           2      78002             O     46929.18  1996-12-01   
+    2           3     123314             F    193846.25  1993-10-14   
+    3           4     136777             O     32151.78  1995-10-11   
+    4           5      44485             F    144659.20  1994-07-30   
+    
+      o_orderpriority          o_clerk  o_shippriority  \
+    0           5-LOW  Clerk#000000951               0   
+    1        1-URGENT  Clerk#000000880               0   
+    2           5-LOW  Clerk#000000955               0   
+    3           5-LOW  Clerk#000000124               0   
+    4           5-LOW  Clerk#000000925               0   
+    
+                                               o_comment  
+    0                 nstructions sleep furiously among   
+    1   foxes. pending accounts at the pending, silen...  
+    2  sly final accounts boost. carefully regular id...  
+    3  sits. slyly regular warthogs cajole. regular, ...  
+    4  quickly. bold deposits sleep slyly. packages u...  
+
+
+
+We introduce the ``any`` reduction:
+
+.. code:: python
+
+    has_open_orders = ((orders.o_orderstatus == 'O') & 
+                       (customer.c_custkey == orders.o_custkey)).any()
+
+This is now a valid filter:
+
+.. code:: python
+
+    customer[has_open_orders].limit(10)
+
+
+
+
+.. parsed-literal::
+
+       c_custkey              c_name                              c_address  \
+    0          1  Customer#000000001                      IVhzIApeRb ot,c,E   
+    1          2  Customer#000000002         XSTf4,NCwDVaWNe6tEgvwfmRchLXak   
+    2          4  Customer#000000004                            XxVSJsLAGtn   
+    3          5  Customer#000000005           KvpyuHCplrB84WgAiGV6sYpZq7Tj   
+    4          7  Customer#000000007         TcGe5gaZNgVePxU5kRrvXBfkasDTea   
+    5          8  Customer#000000008  I0B10bB0AymmC, 0PrRYBCP1yGJ8xcBPmWhl5   
+    6         10  Customer#000000010     6LrEaV6KR6PLVcgl2ArL Q3rqzLzcT1 v2   
+    7         11  Customer#000000011                PkWS 3HlXqwTuzrKg633BEi   
+    8         13  Customer#000000013                nsXQu0oVjD7PM659uC3SRSp   
+    9         14  Customer#000000014                        KXkletMlL2JQEA    
+    
+       c_nationkey          c_phone c_acctbal c_mktsegment  \
+    0           15  25-989-741-2988    711.56     BUILDING   
+    1           13  23-768-687-3665    121.65   AUTOMOBILE   
+    2            4  14-128-190-5944   2866.83    MACHINERY   
+    3            3  13-750-942-6364    794.47    HOUSEHOLD   
+    4           18  28-190-982-9759   9561.95   AUTOMOBILE   
+    5           17  27-147-574-9335   6819.74     BUILDING   
+    6            5  15-741-346-9870   2753.54    HOUSEHOLD   
+    7           23  33-464-151-3439   -272.60     BUILDING   
+    8            3  13-761-547-5974   3857.34     BUILDING   
+    9            1  11-845-129-3851   5266.30    FURNITURE   
+    
+                                               c_comment  
+    0  to the even, regular platelets. regular, ironi...  
+    1  l accounts. blithely ironic theodolites integr...  
+    2   requests. final, regular ideas sleep final accou  
+    3  n accounts will have to unwind. foxes cajole a...  
+    4  ainst the ironic, express theodolites. express...  
+    5  among the slyly regular theodolites kindle bli...  
+    6                    es regular deposits haggle. fur  
+    7  ckages. requests sleep slyly. quickly even pin...  
+    8  ounts sleep carefully after the close frays. c...  
+    9                  , ironic packages across the unus  
+
+
+
+For the second example, in which we want to find customers not having
+any open urgent orders, we write down the condition that they *do* have
+some first:
+
+.. code:: python
+
+    has_open_urgent_orders = ((orders.o_orderstatus == 'O') & 
+                              (orders.o_orderpriority == '1-URGENT') & 
+                              (customer.c_custkey == orders.o_custkey)).any()
+
+Now, we can negate this condition and use it as a filter:
+
+.. code:: python
+
+    customer[-has_open_urgent_orders].count()
+
+
+
+
+.. parsed-literal::
+
+    75801
+
+
+
+In this case, it is true that ``customer.c_custkey`` has no duplicate
+values, but that need not be the case. There could be multiple copies of
+any given value in either table column being compared, and the behavior
+will be the same (existence or non-existence is verified).
