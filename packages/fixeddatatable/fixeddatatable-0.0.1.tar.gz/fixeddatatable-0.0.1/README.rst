@@ -1,0 +1,50 @@
+FixedDataTablePy
+================
+
+Python utilities for building and rendering FixedDataTable components.
+
+Installation
+------------
+
+Install the python package::
+
+  python setup.py install
+
+Install the javascript libary with bower::
+
+  bower install fixed-data-table-py
+
+
+Example
+-------
+
+See the sample_project for a full example of a Flask app.
+
+In your view::
+
+  from fixeddatatable import Table, Column
+
+  rows = [
+      {'Col 1': 'a1', 'Col 2': 'b1', 'Col 3': 'b3'},
+      {'Col 1': 'a2', 'Col 2': 'b2', 'Col 3': 'b4'},
+      {'Col 1': 'a3', 'Col 2': 'b3', 'Col 3': 'b4'},
+  ]
+  cols = [
+      Column(label='Col 1', key='col1', width=100),
+      Column(label='Col 2', key='col2', width=100),
+      Column(label='Col 3', key='col3', width=100),
+  ]
+  tbl = Table(row_height=50, width=5000, height=5000, colums=cols)
+
+
+In your template::
+
+  <div id="datatable"></div>
+
+  <script type="text/javascript">
+    var tableData = tbl.json|safe;
+    React.render(
+      React.createElement(FixedDataTablePy, {options: table_data}),
+      document.getElementById('yourid')
+    );
+  </script>
