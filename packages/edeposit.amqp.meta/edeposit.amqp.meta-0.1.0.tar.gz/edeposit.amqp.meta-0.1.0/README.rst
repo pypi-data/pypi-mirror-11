@@ -1,0 +1,1 @@
+This package contains nothing but dependencies to other packages, to allow easy installation of the Edeposit software.
