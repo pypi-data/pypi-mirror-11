@@ -1,0 +1,272 @@
+==============================================================
+ PyBBDB -- an interface to the Insidious Big Brother Database
+==============================================================
+
+.. contents::
+
+Introduction
+============
+
+PyBBDB may sound like a rude noise, but it is actually a Python interface
+to the Insidious Big Brother Database (BBDB_), an address book used with
+`GNU Emacs`_.  You can find out more about BBDB on the `Emacs Wiki`_.  The
+PyBBDB source repo is hosted at Bitbucket_.  Releases can be found on
+PyPI_.
+
+.. note::
+
+   This module only handles BBDB version 2.  There is a version 3 in
+   development on Savannah_, but there has been no public release as yet.
+
+Requirements
+============
+
+To install and run it:
+    pyparsing_, voluptuous_ and six_
+
+To build source distributions from the checked-out Mercurial_ repo:
+    hgtools_
+
+To run unit tests:
+    pytest_
+
+Installation
+============
+
+The usual incantation will install things::
+
+    python setup.py install
+
+Usage
+=====
+
+Creating a BBDB database
+------------------------
+
+To create a new database is as simple as you might expect::
+
+    >>> from bbdb import BBDB
+    >>> db = BBDB()
+
+The database starts with no records.  To add a new one, use the
+``add_record()`` method, specifying the first and last names, and any other
+attributes you want to set::
+
+    >>> fred = db.add_record("Fred", "Flintstone")
+    >>> fred
+    <Record: Fred Flintstone>
+
+    >>> barney = db.add_record("Barney", "Rubble")
+    >>> db
+    <BBDB: 2 records>
+
+You can use the returned record object to set other attributes::
+
+    >>> fred.set_company("Slate Rock & Gravel")
+
+A ``Record`` is a subclass of ``OrderedDict``, so you can set or modify
+attributes in this style::
+
+    >>> fred["company"] = "Slate Rock & Gravel"
+
+As a convenience, there are properties for each of the valid attributes::
+
+    >>> fred.firstname
+    'Fred'
+
+    >>> fred.company
+    'Slate Rock & Gravel'
+
+There's also a composite ``name`` property::
+
+    >>> fred.name
+    'Fred Flintstone'
+
+Some BBDB attributes consist of lists of things, and there are ``add_*()``
+methods for these::
+
+    >>> fred.add_net("fred@bedrock.org")
+    >>> fred.add_net("fred.flintstone@gravel.com")
+    >>> fred.net
+    ['fred@bedrock.org', 'fred.flintstone@gravel.com']
+
+    >>> fred.add_aka("Freddie")
+    >>> fred.aka
+    ['Freddie']
+
+Telephone records consist of a location tag and a phone number string::
+
+    >>> fred.add_phone("Work", "555-6789")
+    >>> fred.add_phone("Home", "555-1234")
+    >>> fred.phone
+    SortedDict([('Home', '555-1234'), ('Work', '555-6789')])
+
+Records can have multiple addresses, each indexed by a location tag.  Each
+address in turn has several attributes::
+
+    >>> home = fred.add_address("Home")
+    >>> home.add_location("Cave 2a", "345 Cavestone Road")
+    >>> home.set_city("Bedrock")
+    >>> home.set_state("Hanna Barbera")
+    >>> home.set_zipcode("12345")
+    >>> home.set_country("USA")
+
+    >>> home
+    <Address: Cave 2a, 345 Cavestone Road, Bedrock, Hanna Barbera, 12345, USA>
+
+    >>> home.location
+    ['Cave 2a', '345 Cavestone Road']
+
+    >>> home.zipcode
+    '12345'
+
+Finally, each entry can have an arbitrary dictionary of user-defined
+fields::
+
+    >>> fred.add_field("spouse", "Wilma")
+    >>> fred.add_field("kids", "Pebbles, Bam-Bam")
+    >>> fred.add_field("catchphrase", '"Yabba dabba doo!"')
+    >>> fred.fields
+    SortedDict([('catchphrase', '"Yabba dabba doo!"'), ('kids', 'Pebbles, Bam-Bam'), ('spouse', 'Wilma')])
+
+Reading and writing BBDB files
+------------------------------
+
+The ``write()`` method will write the database to a stream (default
+``stdout``) in a format suitable for use by GNU Emacs::
+
+    >>> db.write()                        # doctest: +ELLIPSIS
+    ;; -*-coding: utf-8-emacs;-*-
+    ;;; file-version: 6
+    ;;; user-fields: (catchphrase kids spouse)
+    ["Barney" "Rubble" nil nil nil nil nil nil nil]
+    ["Fred" "Flintstone" ("Freddie") "Slate Rock & Gravel" (["Home" "555-1234"] ...
+
+The convenience ``write_file()`` method will put that in a file::
+
+    >>> db.write_file("examples/bbdb.el")
+
+You can read a database from file using the ``fromfile()`` static method::
+
+    >>> newdb = BBDB.fromfile("examples/bbdb.el")
+    >>> newdb
+    <BBDB: 2 records>
+
+    >>> newdb == db
+    True
+
+The ``read()`` and ``read_file()`` methods of a BBDB database can be used
+import records from other databases.
+
+Exporting to other formats
+--------------------------
+
+Since all BBDB objects are subclasses of ``OrderedDict``, you can easily
+serialize it to other formats.  For example, JSON::
+
+    >>> import sys
+    >>> import json
+    >>> json.dump(db, sys.stdout, indent=4)  # doctest: +NORMALIZE_WHITESPACE +REPORT_UDIFF
+    {
+        "coding": "utf-8-emacs", 
+        "fileversion": 6, 
+        "records": [
+            {
+                "firstname": "Barney", 
+                "lastname": "Rubble", 
+                "company": "", 
+                "aka": [], 
+                "phone": {}, 
+                "address": {}, 
+                "net": [], 
+                "fields": {}
+            }, 
+            {
+                "firstname": "Fred", 
+                "lastname": "Flintstone", 
+                "company": "Slate Rock & Gravel", 
+                "aka": [
+                    "Freddie"
+                ], 
+                "phone": {
+                    "Home": "555-1234", 
+                    "Work": "555-6789"
+                }, 
+                "address": {
+                    "Home": {
+                        "location": [
+                            "Cave 2a", 
+                            "345 Cavestone Road"
+                        ], 
+                        "city": "Bedrock", 
+                        "state": "Hanna Barbera", 
+                        "zipcode": "12345", 
+                        "country": "USA"
+                    }
+                }, 
+                "net": [
+                    "fred@bedrock.org", 
+                    "fred.flintstone@gravel.com"
+                ], 
+                "fields": {
+                    "catchphrase": "\"Yabba dabba doo!\"", 
+                    "kids": "Pebbles, Bam-Bam", 
+                    "spouse": "Wilma"
+                }
+            }
+        ]
+    }
+
+You can create a BBDB database from an appropriately-structured dict using
+the ``fromdict`` method::
+
+    >>> serialized = json.dumps(db)
+    >>> data = json.loads(serialized)
+    >>> newdb = BBDB.fromdict(data)
+    >>> newdb == db
+    True
+
+Release history
+===============
+
+Version 0.3 (22 July 2015)
+--------------------------
+
+* Bugfix: get things working properly with Python 3.
+
+Version 0.2 (2 July 2015)
+-------------------------
+
+* Add validation of data using voluptuous_.
+* Add a bunch of demo converter programs.
+* Add tox_ test support.
+* Add Python 3 support.
+
+* Bugfix: convert records from file to correct type.
+
+Version 0.1 (11 June 2015)
+--------------------------
+
+* Initial release.
+
+Feedback
+========
+
+Report any problems, bugs, etc, to me (Glenn Hutchings) at
+zondo42@gmail.com.  Patches will also be welcome!
+
+.. _Bitbucket: https://bitbucket.org/zondo/pybbdb
+.. _BBDB: http://bbdb.sourceforge.net
+.. _PyPI: https://pypi.python.org/pypi/pybbdb
+.. _Emacs Wiki: http://www.emacswiki.org/emacs/CategoryBbdb
+.. _Mercurial: http://mercurial.selenic.com
+.. _GNU Emacs: https://www.gnu.org/software/emacs
+.. _Savannah: https://savannah.nongnu.org/projects/bbdb
+.. _hgtools: https://pypi.python.org/pypi/hgtools
+.. _pyparsing: https://pypi.python.org/pypi/pyparsing
+.. _pytest: https://pypi.python.org/pypi/pytest
+.. _six: https://pypi.python.org/pypi/six
+.. _tox: https://pypi.python.org/pypi/tox
+.. _voluptuous: https://pypi.python.org/pypi/voluptuous
+
+
