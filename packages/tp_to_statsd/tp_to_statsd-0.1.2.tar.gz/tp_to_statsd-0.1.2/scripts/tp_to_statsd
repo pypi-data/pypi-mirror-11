@@ -1,0 +1,76 @@
+#!/usr/bin/env python
+
+import argparse
+
+from tp_to_statsd import TP, update_statsd_gauge
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description='Record TP figures using statsd. Generally you want to restrict to a single process, as state names tend to overlap. You must provide at least one entity type.',
+    )
+    parser.add_argument(
+        '--user', dest='tp_user', nargs=1,
+        help='TP user (or TP_USER environment variable)',
+    )
+    parser.add_argument(
+        '--password', dest='tp_password',
+        help='TP password (or TP_PASSWORD environment variable)',
+    )
+    parser.add_argument(
+        '--api-base', dest='tp_apibase',
+        help='TP API base URI (or TP_API_BASE environment variable)',
+    )
+    parser.add_argument(
+        '--process', dest='tp_processes', action='append',
+        help='Restrict to given TP process (may be repeated)',
+    )
+    parser.add_argument(
+        '--type', dest='tp_types', action='append',
+        required=True,
+        help='Record for given TP entity type (may be repeated)',
+    )
+
+    args = parser.parse_args()
+
+    api = TP(
+        args.tp_apibase,
+        args.tp_user,
+        args.tp_password,
+    )
+
+    for tp_type in args.tp_types:
+        # eg 'UserStory', 'Bug'
+
+        if args.tp_processes is not None and len(args.tp_processes) > 0:
+            states = []
+            for tp_process in args.tp_processes:
+                filters = {
+                    'tp_type': tp_type,
+                    'tp_process': tp_process,
+                }
+                states.extend(api.get_states(**filters))
+
+                for state_id, state_name in states:
+                    update_statsd_gauge(
+                        tp_process,
+                        tp_type,
+                        state_name,
+                        api.get_state_count(
+                            state_id,
+                            tp_type,
+                        )
+                    )
+        else:
+            states = api.get_states(tp_type=tp_type)
+
+            for state_id, state_name in states:
+                update_statsd_gauge(
+                    'ALL',
+                    tp_type,
+                    state_name,
+                    api.get_state_count(
+                        state_id,
+                        tp_type,
+                    )
+                )
