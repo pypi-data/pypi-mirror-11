@@ -1,0 +1,65 @@
+"""
+Using the Bezier object's .points() method to connect letters together.
+
+Lines are drawn between points of each letter contour that are within
+a certain distance from each other.
+"""
+
+size(600, 207)
+background(0.3,0,0.2)
+
+# This utility function calculates the length between points.
+# It's just the standard Pythagorean algorithm.
+def calc_length(x1, y1, x2, y2):
+    from math import sqrt, pow
+    return sqrt(pow(x2-x1, 2) + pow(y2-y1, 2))
+
+# First, create a textpath that we will use further on.
+font(150)
+path = textpath("SPIDER", 20, 150)
+
+# Select a color for the lines.
+nofill()
+stroke(1)
+pen(0.3)
+
+# The mutation adds a little extra randomness to each calculated point.
+# Increase it to make the lines deviate more from the template path.
+mutation = 2.0
+
+# The maximum distance between two points. Increase this to get a more
+# "spidery" effect.
+maxdist = 40.0
+
+# Number of lines for each contour.
+lines_per_contour = 300
+
+# Beziers have a .contours property that returns each seperate sub-path.
+# Note that "holes" in a letter (such as a P or D) are contours as well.
+for contour in path.contours:
+    # Get a list of 100 points on each contour, evenly spaced throughout
+    # the path. These coordinates are different from the Curve elements
+    # in the path since they don't include any "control handles".
+    path_points = list(contour.points(100))
+
+    # Draw a fixed number of lines per contour
+    for i in range(lines_per_contour):
+        # Choose a random starting point on the path
+        pt1 = choice(path_points)
+        # To find the second point, we use a "brute-force" approach.
+        # We randomly select a point on the path, and see if its distance
+        # from the first point is smaller than the maximum allowed distance.
+        # If it is, the point is selected; otherwise, we try another point.
+        # Note that this might loop infinitely for very short (or negative) distances.
+        # Use Command-Period to break out of the loop.
+
+        # Initialize the current length to "infinity", which means it won't get selected.
+        length = float("inf")
+        while length > maxdist:
+            pt2  = choice(path_points)
+            length = calc_length(pt1.x, pt1.y, pt2.x, pt2.y)
+
+        # Once we've found a second point, draw it. Try increasing the mutation parameter
+        # to add a bit of randomness to the position of the line.
+        line(pt1.x + random(-mutation, mutation), pt1.y + random(-mutation, mutation),
+             pt2.x + random(-mutation, mutation), pt2.y + random(-mutation, mutation))
