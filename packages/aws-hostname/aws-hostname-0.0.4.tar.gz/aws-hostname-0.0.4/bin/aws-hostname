@@ -1,0 +1,139 @@
+#!/usr/bin/env python
+
+from __future__ import print_function
+
+import argparse
+import boto.ec2
+import os
+import re
+import sys
+
+
+def print_error(*objs):
+    print("WARNING:", *objs, file=sys.stderr)
+    sys.exit(1)
+
+
+def is_valid_hostname(hostname):
+    if len(hostname) > 255:
+        return False
+    if hostname[-1] == ".":
+        # strip exactly one dot from the right, if present
+        hostname = hostname[:-1]
+    allowed = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
+    return all(allowed.match(x) for x in hostname.split("."))
+
+
+def get_connection(args):
+    return boto.ec2.connect_to_region(
+        args.ec2_region,
+        aws_access_key_id=args.aws_access_key_id,
+        aws_secret_access_key=args.aws_secret_access_key,
+    )
+
+
+def truthy(s):
+    s = str(s).lower()
+    return s in ['true', '1', 't', 'y']
+
+
+def get_args():
+    defaults = {
+        'ec2-instance-id': os.environ.get('EC2_INSTANCE_ID'),
+        'ec2-region': os.environ.get('EC2_REGION'),
+        'aws-access-key-id': os.environ.get('AWS_ACCESS_KEY_ID'),
+        'aws-secret-access-key': os.environ.get('AWS_SECRET_ACCESS_KEY'),
+        'aws-tag': os.environ.get('AWS_TAG', 'aws:autoscaling:groupName'),
+        'no-i': truthy(os.environ.get('NO_I', '0')),
+        'use-iam-profile': os.environ.get('USE_IAM_PROFILE', '0'),
+	'delete-instance-id': os.environ.get('DELETE_INSTANCE_ID', '0'),
+    }
+    description = 'aws-hostname, a tool to output valid AWS hostnames'
+    formatter_class = argparse.RawDescriptionHelpFormatter
+    parser = argparse.ArgumentParser(description=description,
+                                     epilog='aws-hostname is pwnage',
+                                     formatter_class=formatter_class)
+    parser.add_argument('-i', '--ec2-instance-id',
+                        type=str,
+                        help='EC2 Instance ID',
+                        default=defaults['ec2-instance-id'],
+                        dest='ec2_instance_id')
+    parser.add_argument('-r', '--ec2-region',
+                        type=str,
+                        help='EC2 Region',
+                        default=defaults['ec2-region'],
+                        dest='ec2_region')
+    parser.add_argument('-a', '--aws-access-key-id',
+                        type=str,
+                        help='AWS Access Key ID',
+                        default=defaults['aws-access-key-id'],
+                        dest='aws_access_key_id')
+    parser.add_argument('-s', '--aws-secret-access-key',
+                        type=str,
+                        help='AWS Secret Access Key',
+                        default=defaults['aws-secret-access-key'],
+                        dest='aws_secret_access_key')
+    parser.add_argument('-t', '--aws-tag',
+                        type=str,
+                        help='AWS Tag to use',
+                        default=defaults['aws-tag'],
+                        dest='aws_tag')
+    parser.add_argument('-n', '--no-i',
+                        action='store_true',
+                        help='Remove "i-" from instance-id',
+                        default=defaults['no-i'],
+                        dest='no_i')
+    parser.add_argument('-u', '--use-iam-profile',
+                        action='store_true',
+                        help="Use Attached IAM profile instead of keys",
+                        default=defaults['use-iam-profile'],
+                        dest='use_iam_profile')
+    parser.add_argument('-d', '--delete-instance-id',
+                        action='store_true',
+                        help="Delete instance id from returned hostname",
+                        default=defaults['delete-instance-id'],
+                        dest='delete_instance_id')
+    return parser.parse_args()
+
+
+def main():
+    args = get_args()
+    if args.use_iam_profile is True:
+        conn = boto.ec2.connect_to_region(args.ec2_region)
+    else:
+       conn = get_connection(args)
+    if not conn:
+        print_error("Invalid AWS connection")
+
+    hostname = None
+    reservations = conn.get_all_instances()
+
+    for res in reservations:
+        for i in res.instances:
+            if i.id != args.ec2_instance_id:
+                continue
+
+            if args.aws_tag in i.tags:
+                stripped_tag = i.tags[args.aws_tag].strip()
+                instance_id = str(i.id)
+                if args.no_i is True:
+                    instance_id = instance_id.replace('i-', '')
+                if args.delete_instance_id is True:
+                    hostname = stripped_tag
+                else:
+                    hostname = "{0}-{1}".format(stripped_tag, instance_id)
+                hostname = hostname.replace('_', '-')
+            elif 'Name' in i.tags:
+                hostname = i.tags['Name'].strip()
+                hostname = hostname.replace('_', '-')
+
+    if hostname is None:
+        print_error('No hostname found')
+
+    if not is_valid_hostname(hostname):
+        print_error('Invalid hostname {0}'.format(hostname))
+
+    print(hostname)
+
+if __name__ == '__main__':
+    main()
