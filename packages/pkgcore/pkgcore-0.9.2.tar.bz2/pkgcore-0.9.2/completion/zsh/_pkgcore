@@ -1,0 +1,410 @@
+#compdef pebuild pinspect pmaint pmerge pquery
+
+cli_common_main_args=(
+  '(- :)'--version'[show version information and exit]'
+  '--add-config[modify an existing configuration section]'
+  '--new-config[add a new configuration section]'
+  '--empty-config[do not load user/system configuration]'
+  '--config[override location of config files]:config path:_files'
+  "--color=[Color output]:yes/no:((y\:'yes' n\:'no'))"
+)
+
+cli_common_output_args=(
+  '(- :)'{-h,--help}'[show help information and exit]'
+  '(--debug --help -h)--debug[enable debugging output]'
+  '(--quiet -q --verbose -v)'{-q,--quiet}'[suppress non-error output]'
+  '(--verbose -v --quiet -q)'{-v,--verbose}'[show verbose output]'
+)
+
+cli_common_args=(
+  $cli_common_main_args
+  $cli_common_output_args
+)
+
+_pebuild() {
+  local curcontext=$curcontext state state_descr line ret=1
+  typeset -A opt_args
+
+  _arguments -C \
+    $cli_common_args \
+    "--no-auto[run just the specified phases; it's up to the invoker to get the order right]" \
+    '(-): :->atom-or-ebuild' \
+    '(-)*:: :->phase' \
+    && ret=0
+
+  case $state in
+    (atom-or-ebuild)
+      _arguments \
+        '*:ebuild:_files -g \*.ebuild' \
+        && ret=0
+      ;;
+    (phase)
+      typeset -a phases
+
+      phases=(
+        clean:"remove the package's temporary directory"
+        setup:'run package specific setup actions or checks'
+        unpack:'unpack all the sources to the workdir'
+        prepare:'preparation of all sources such as applying patches'
+        configure:'run configuration steps'
+        compile:'run compilation steps'
+        test:'run test steps'
+        install:'install the package to the temp directory'
+      )
+
+      _describe -t phases phase phases && ret=0
+      ;;
+
+    (*)
+      _nothing
+      ;;
+  esac
+
+  return ret
+}
+
+_pinspect() {
+  local curcontext=$curcontext state state_descr line ret=1
+  typeset -A opt_args
+
+  _arguments -C \
+    $cli_common_args \
+    '(-): :->command' \
+    '(-)*:: :->subcommand' \
+    && ret=0
+
+  case $state in
+    (command)
+      typeset -a subcommands
+
+      subcommands=(
+        pkgsets:'pkgset related introspection'
+        eapi_usage:'report of eapi usage for targeted repos'
+        license_usage:'report of license usage for targeted repos'
+        eclass_usage:'report of eclass usage for targeted repos'
+        mirror_usage:'report of SRC_URI mirror usage for targeted repos'
+        distfiles_usage:'report detailing distfiles space usage for targeted repos'
+        query:'auxiliary access to ebuild/repository info via portageq akin API'
+        portageq:'portageq compatible interface to query commands'
+        profile:'profile related querying'
+        digests:'identify what packages are missing digest info'
+      )
+
+      _describe -t subcommands subcommand subcommands && ret=0
+
+      ;;
+    (subcommand)
+      curcontext=${curcontext%:*}-$line[1]:
+
+      typeset -a historical_repo_data_opts
+      historical_repo_data_opts=(
+        '(- :)'{-h,--help}'[show help information and exit]'
+        '--no-final-summary[disable outputting a summary of data across all repos]'
+        '--sort-by-name[sort output by name, rather then by frequency]'
+        '--first[show only the first N detail items]:number'
+        '--last[show only the last N detail items]:number'
+        '*:repo:_repos'
+      )
+
+      case $line[1] in
+        (pkgsets)
+          _arguments -C -A '-*' \
+            '(- :)'{-h,--help}'[show help information and exit]' \
+            '--all[display info on all pkgsets]' \
+            ':pkgset:' \
+            && ret=0
+          ;;
+        ((eapi|license|eclass|mirror)_usage)
+          _arguments -C -A '-*' \
+            $historical_repo_data_opts \
+            && ret=0
+          ;;
+        (distfiles_usage)
+          _arguments -C -A '-*' \
+            '--no-repo-summary[disable outputting repo summaries]' \
+            '--no-detail[disable outputting a detail view of all repos]' \
+            '--include-nonmirrored[if set, nonmirrored distfiles will be included in the total]' \
+            '--include-restricted[if set, fetch restricted distfiles will be included in the total]' \
+            $historical_repo_data_opts \
+            && ret=0
+          ;;
+        (query)
+          ;;
+        (portageq)
+          ;;
+        (profile)
+          typeset -a profile_attrs
+
+          profile_attrs=(
+            parent:'output the linearized tree of inherited parents'
+            eapi:'output EAPI support required for reading this profile'
+            deprecated:'dump deprecation notices, if any'
+            provided:'list all package.provided packages'
+            system:'output the system package set'
+            use_expand:'output the USE_EXPAND configuration for this profile'
+            iuse_effective:'output the IUSE_EFFECTIVE value for this profile'
+            masks:'inspect package masks'
+            unmasks:'inspect package unmasks'
+            bashrcs:'inspect bashrcs'
+            keywords:'inspect package.keywords'
+            accept_keywords:'inspect package.accept_keywords'
+            use:'inspect package.use'
+            masked_use:'inspect masked use flags'
+            stable_masked_use:'inspect stable masked use flags'
+            forced_use:'inspect forced use flags'
+            stable_forced_use:'inspect stable forced use flags'
+            defaults:'inspect defined configuration for this profile'
+            arch:'output the arch defined for this profile'
+          )
+
+          _arguments -C -w -S -s -A '-*' \
+            '(- :)'{-h,--help}'[show help information and exit]' \
+            '1:profile attribute:(($profile_attrs))' \
+            '2:profile:_profiles -f' \
+            && ret=0
+          ;;
+        (digests)
+          _arguments -C -A '-*' \
+            '(- :)'{-h,--help}'[show help information and exit]' \
+            ':repo:_repos' \
+            && ret=0
+          ;;
+        (*)
+          _nothing
+          ;;
+      esac
+      ;;
+  esac
+  return ret
+}
+
+_pmaint() {
+  local curcontext=$curcontext state state_descr line ret=1
+  typeset -A opt_args
+
+  _arguments -C \
+    $cli_common_args \
+    '(-): :->command' \
+    '(-)*:: :->subcommand' \
+    && ret=0
+
+  case $state in
+    (command)
+      typeset -a subcommands
+
+      subcommands=(
+        sync:'synchronize a local repository with its defined remote'
+        copy:'copy binpkgs between repositories; primarily useful for quickpkging a livefs pkg'
+        regen:'regenerate repository caches'
+        perl-rebuild:'perl-rebuild support for use after upgrading perl (experimental)'
+        env-update:'update env.d and ldconfig'
+        mirror:'mirror the sources for a package in full'
+        digest:'update package manifests'
+      )
+
+      _describe -t subcommands subcommand subcommands && ret=0
+      ;;
+    (subcommand)
+      curcontext=${curcontext%:*}-$line[1]:
+
+      case $line[1] in
+        (sync)
+          _arguments -C -w -S -s -A '-*' \
+            $cli_common_output_args \
+            '*:repo:_repos' \
+            && ret=0
+          ;;
+        (copy)
+          _arguments -C -w -S -s -A '-*' \
+            $cli_common_output_args \
+            {'(--source-repo)-s','(-s)--source-repo'}'[copy strictly from the supplied repository]:repo:_repos' \
+            {'(--ignore-missing)-i','(-i)--ignore-missing'}"[if a matching pkg already exists in the target, don't update it]" \
+            ':target repo:_repos' \
+            ':query:' \
+            && ret=0
+          ;;
+        (regen)
+          _arguments -C -w -S -s -A '-*' \
+            $cli_common_output_args \
+            '--disable-eclass-caching[disable caching eclasses into functions (results in a ~2x slower regen process, only disable when debugging)]' \
+            {'(--threads)-t','(-t)--threads'}'[number of threads to use for regeneration (defaults to using all available processors]:number' \
+            '--force[force regeneration to occur regardless of staleness checks]' \
+            '--rsync[update timestamps for rsync repos]' \
+            '*:repo:_repos' \
+            && ret=0
+          ;;
+        (perl-rebuild)
+          _arguments -C -w -S -s -A '-*' \
+            $cli_common_output_args \
+            ':new perl version (e.g. 5.22.0):' \
+            && ret=0
+          ;;
+        (env-update)
+          _arguments -C -w -S -s -A '-*' \
+            $cli_common_output_args \
+            '--skip-ldconfig[do not update etc/ldso.conf and ld.so.cache]' \
+            && ret=0
+          ;;
+        (mirror)
+          _arguments -C -w -S -s -A '-*' \
+            $cli_common_output_args \
+            {'(--ignore-failures)-f','(-f)--ignore-failures'}'[if a failure occurs, keep going]' \
+            ':query:' \
+            && ret=0
+          ;;
+        (digest)
+          _arguments -C -w -S -s -A '-*' \
+            $cli_common_output_args \
+            {'(--repo)-r','(-r)--repo'}'[target repository]:repo:_repos' \
+            '*::ebuild:_files -g \*.ebuild' \
+            && ret=0
+          ;;
+        (*)
+          _nothing
+          ;;
+      esac
+      ;;
+  esac
+
+  return ret
+}
+
+_pmerge() {
+  _nothing
+}
+
+_pquery() {
+  _nothing
+}
+
+_repos() {
+  # optional args
+  # -c output completion format
+  # -v section:key
+  # -p print the output instead of using completion
+  # -l use repo locations instead of repo_ids
+  zparseopts -E -A opts c l p v:
+
+  local repo_name output_type
+  typeset -a repos output
+
+  if [[ -e /etc/portage/repos.conf ]]; then
+    repos_conf_files=( /etc/portage/repos.conf /etc/portage/repos.conf/** )
+  else
+    repos_conf_files=( /usr/share/pkgcore/config/repos.conf )
+  fi
+
+  IFS='= '
+
+  local file
+  for file in "${repos_conf_files[@]}"; do
+    [[ -f ${file} ]] || continue
+    while read -r name value; do
+      # skip comments and empty lines
+      [[ -z ${name} || ${name} == '#'* ]] && continue
+      if [[ (${name} == '['*']') && -z ${value} ]]; then
+        repo_name=${name//(\[|\])}
+        [[ ${repo_name} != "DEFAULT" ]] && repos+=(${repo_name})
+        typeset -A ${repo_name}
+      else
+        eval "${repo_name}[${name}]=\"${value}\""
+      fi
+    done < ${file}
+  done
+
+  if [[ -n $opts[(I)-v] ]]; then
+    section=${opts[-v]%%:*}
+    value=${opts[-v]##*:}
+    eval "output=\${${section}[${value}]}"
+  elif [[ -n $opts[(I)-l] ]]; then
+    # repo paths
+    output_type="repo paths"
+    for repo in $repos; do
+      eval "output+=(\${${repo}[location]})"
+    done
+  else
+    output_type="repos"
+    # repo names
+    output=(${repos})
+  fi
+
+  if [[ -n $opts[(I)-p] ]]; then
+    print $output
+  else
+    _describe -t repos ${output_type} output
+  fi
+}
+
+_arches() {
+  # optional args
+  # -s type -> output a certain type of arch, e.g. -v stable outputs stable arches only
+  # -p print the output instead of using completion
+  zparseopts -E -A opts s: p
+
+  local arch_type
+  typeset -a arches
+
+  arches=($(_profiles -p -a $*))
+
+  arch_type=${opts[-s]:-arches}
+
+  if [[ -n $opts[(I)-p] ]]; then
+    print $arches
+  else
+    _describe -t arches ${arch_type} arches
+  fi
+}
+
+_profiles() {
+  # optional args
+  # -a output arches instead of profiles
+  # -r specify the repo to use; otherwise the default repo is used
+  # -p print the output instead of using completion
+  # -f output full, absolute profile paths
+  zparseopts -E -A opts a p f r:
+
+  local file repo repo_path arch path pstatus
+  typeset -a arches profiles
+
+  if [[ -n $opts[(I)-r] ]]; then
+    repo=$opts[-r]
+  else
+    repo=$(_repos -p -v DEFAULT:main-repo)
+  fi
+
+  repo_path=$(_repos -p -v "${repo}:location")
+  file=${repo_path}/profiles/profiles.desc
+
+  if [[ -f ${file} ]]; then
+    while read -r arch path pstatus; do
+      # skip comments and empty lines
+      [[ -z ${arch} || ${arch} == '#'* ]] && continue
+      arches+=($arch)
+      [[ -n $opts[(I)-f] ]] && path=$repo_path/profiles/$path
+      profiles+=(${path})
+    done < ${file}
+  fi
+
+  if [[ -n $opts[(I)-a] ]]; then
+    print ${(u)arches}
+    return
+  fi
+
+  if [[ -n $opts[(I)-p] ]]; then
+    print $profiles
+  else
+    _describe -t profiles 'profiles' profiles $*
+  fi
+}
+
+_pkgcore() {
+  local ret=1
+
+  _call_function ret _$service
+
+  return ret
+}
+
+_pkgcore
+
+# vim: set et sw=2 ts=2 ft=zsh:
