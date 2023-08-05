@@ -1,0 +1,55 @@
+diff --git a/pymodis/downmodis.py b/pymodis/downmodis.py
+index a4984be..7764491 100644
+--- a/pymodis/downmodis.py
++++ b/pymodis/downmodis.py
+@@ -72,6 +72,11 @@ if GDAL:
+         GDAL = False
+         print("GDAL installation has no support for HDF4, please update GDAL")
+ 
++try:
++    from progress_bar import InitBar
++except:
++    InitBar = None
++
+ 
+ def urljoin(*args):
+     """Joins given arguments into a url. Trailing but not leading slashes are
+@@ -277,6 +282,11 @@ class downModis:
+         for f in os.listdir(self.writeFilePath):
+             if os.path.isfile(os.path.join(self.writeFilePath, f)):
+                 self.fileInPath.append(f)
++        # set useful variable for progress bar
++        if InitBar:
++            self.totalDown = None
++            self.numDown = 0
++            self.progbar = InitBar()
+ 
+     def removeEmptyFiles(self):
+         """Function to remove files in the download directory that have
+@@ -585,6 +595,7 @@ class downModis:
+             self._downloadFileHTTP(filDown, filHdf, day)
+         elif self.urltype == 'ftp':
+             self._downloadFileFTP(filDown, filHdf)
++        #self.numDown +=
+ 
+     def _downloadFileHTTP(self, filDown, filHdf, day):
+         """Download a single file from the http server
+@@ -687,6 +698,8 @@ class downModis:
+            :param list listFilesDown: list of the files to download, returned
+                                       by checkDataExist function
+         """
++        if not self.totalDown:
++            self.totalDown = listFilesDown
+         # for each file in files' list
+         for i in listFilesDown:
+             fileSplit = i.split('.')
+@@ -729,6 +742,9 @@ class downModis:
+             days = self.getAllDays()
+         else:
+             days = self.getListDays()
++        # set the total of file to download
++        if InitBar:
++            self.totalDown = len(days) * len(self.tiles) * 2
+         # log the days to download
+         if self.debug:
+             logging.debug("The number of days to download is: "
