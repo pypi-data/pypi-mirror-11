@@ -1,0 +1,237 @@
+<!--!
+   Copyright 2015 CityGrid Media, LLC
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+-->
+<div metal:use-macro="layout">
+  <div metal:fill-slot="content">
+    <div>
+
+      <div tal:condition="commit == 'true'">
+        <p id="promote">
+        <table width="100%">
+          <tr class="subh">
+            <td class="subh">Success!</td>
+            <td colspan="8" tal:attributes="class '%s' % to_env" tal:condition="to_state == '3'" tal:content="'Successfully staged artifact id to %s: %s' % (to_env, artifact_id)">0</td>
+            <td colspan="8" tal:attributes="class '%s' % to_env" tal:condition="to_state != '3'" tal:content="'Successfully promoted artifact id to %s: %s' % (to_env, artifact_id)">0</td>
+          </tr>
+        </table>
+        </p>
+      </div>
+
+      <div tal:condition="application_id">
+
+        <h2>Deployment summary by environment</h2>
+
+        <div class="deploy_header">
+          <div class="deploy_header_title">
+            <div class="deploy_header_element">Application Name </div>
+            <div class="deploy_header_element">Application ID </div>
+            <div class="deploy_header_element">Nodegroup </div>
+          </div>
+          <div class="deploy_header_edit" tal:condition="user.cp_auth">
+            <a class="button" href="/cp/application?mode=edit&application_id=0"
+               tal:attributes="href '/cp/application?mode=edit&application_id=%s' % application_id">
+               <input class="button" type="button" value="Edit Application" /></a>
+          </div>
+          <div class="deploy_header_content">
+            <div  class="deploy_header_element" tal:content="app.application_name">Some Application</div>
+            <div  class="deploy_header_element" tal:content="str(app.application_id)">1</div>
+            <div  class="deploy_header_element" tal:content="app.nodegroup">tct</div>
+          </div>
+        </div>
+
+        <table tal:condition="application_id">
+          <tr>
+            <th>Deploy Path</th>
+            <th>Deploy ID</th>
+            <th>Package Name</th>
+            <th>Revision</th>
+            <th>Branch/Tag</th>
+            <th>Repo</th>
+            <th>Artifact Type</th>
+            <th>URL Location</th>
+            <th>Artifact ID</th>
+            <th>Assignment ID</th>
+            <th>Assignment Date</th>
+            <th>Promoted By</th>
+            <th>History</th>
+          </tr>
+
+          <tbody tal:repeat="denv ['prd','qat','dev']" tal:condition="app">
+          <tr tal:attributes="class denv" tal:condition="app">
+            <td tal:attributes="class denv" colspan="13"><b tal:content="denv.upper()">DEV</b></td>
+          </tr>
+          <tr tal:repeat="item app.deploys" tal:attributes="class denv + '_hover'">
+            <?python
+                aa = item.get_assignment(denv, 'current')
+                if ((deploy_id) and int(deploy_id) == item.deploy_id) and (env is not None):
+                    histassignments = item.get_assignments(env, offset, perpage)
+                    histdeploy = item
+                    total = item.get_assignment_count(env)
+            ?>
+            <td tal:content="item.deploy_path" tal:attributes="title 'Deploy ID: ' + str(item.deploy_id)">/app/something</td>
+            <td tal:content="item.deploy_id">0</td>
+            <td tal:content="item.package_name" tal:attributes="title '%s' % item.package_name">PythonPackage</td>
+            <td tal:content="aa.artifact.revision[:8] if aa else 'No Data'">12345</td>
+            <td tal:content="aa.artifact.branch if aa else 'No Data'">trunk</td>
+            <td tal:content="aa.artifact.repo.name if aa else 'No Data'">12345</td>
+            <td tal:content="item.type.name">12345</td>
+            <td tal:condition="not aa">No Data</td>
+            <td tal:condition="aa"><a href="http://code.ctgrd.com/my/awesome/artifact.war"
+                   title="some description"
+                   tal:attributes="href aa.pretty_url; title aa.pretty_url"
+                   tal:content="aa.artifact.location.split('/')[-1]">Artifact Link</a></td>
+            <td tal:content="aa.artifact_id if aa else 'No Data'">12345</td>
+            <td tal:content="aa.artifact_assignment_id if aa else 'No Data'">12345</td>
+            <td tal:content="aa.localize_date_created if aa else 'No Data'">12345</td>
+            <td tal:content="aa.updated_by if aa else 'No Data'">12345</td>
+            <td tal:condition="not aa">No Data</td>
+            <td tal:condition="aa"><a class="button" href="http://twonicorn.ctgrd.com/deploys?history=true"
+                   tal:attributes="href '/deploys?history=true&deploy_id=%s&env=%s&application_id=%s' %
+                                        (item.deploy_id,
+                                         aa.env.name,
+                                         application_id
+                                        )"><input class="button" type="button" value="Show History" /></a></td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div tal:condition="histassignments">
+        <div id="pag_hist_container">
+          <a tal:attributes="class 'pag_buttons disable' if offset == 0 else 'pag_buttons' ; href '?history=%s&deploy_id=%s&env=%s&application_id=%s&start=0' % (history,deploy_id,env,application_id)">
+            <div class="pag_buttons_c"><img src='/static/nav-le.gif' border='0'></div>
+          </a>
+  
+          <a tal:attributes="class 'pag_buttons disable' if offset == 0 else 'pag_buttons' ;href '?history=%s&deploy_id=%s&env=%s&application_id=%s&start=%d' % (history,deploy_id,env,application_id,offset-perpage)">
+            <div class="pag_buttons_c"><img src='/static/nav-l.gif' border='0'></div>
+          </a>
+          <div class="pag_content">
+            <span tal:content="'%d-%d of %d' % (offset+1, min((offset+perpage),total), total)">
+              11-20 of 123
+            </span>
+          </div>
+          <a tal:attributes="class 'pag_buttons disable' if (offset+perpage) &gt;= total else 'pag_buttons' ; href '?history=%s&deploy_id=%s&env=%s&application_id=%s&start=%d' % (history,deploy_id,env,application_id,offset+perpage)">
+            <div class="pag_buttons_c"><img src='/static/nav-r.gif' border='0'></div>
+          </a>
+          <a tal:attributes="class 'pag_buttons disable' if (offset+perpage) &gt;= total else 'pag_buttons'; href '?history=%s&deploy_id=%s&env=%s&application_id=%s&start=%d' % (history,deploy_id,env,application_id,(total-1)/perpage*perpage)">
+            <div class="pag_buttons_c"><img src='/static/nav-re.gif' border='0'></div>
+          </a>
+        </div>
+
+
+        <div id="history_results">
+        <h2>History</h2>
+
+        <div class="history_header">
+          <div class="history_header_title">
+            <div class="history_header_element">Deploy ID </div>
+            <div class="history_header_element">Environment </div>
+          </div>
+          <div tal:attributes="class 'history_header_content %s' % env">
+            <div tal:attributes="class 'history_header_element %s' % env" tal:content="deploy_id">1</div>
+            <div tal:attributes="class 'history_header_element %s' % env" tal:content="env">dev</div>
+          </div>
+        </div>
+
+          <table width="100%">
+            <tr>
+              <th>Deploy Path</th>
+              <th>Package Name</th>
+              <th>Revision</th>
+              <th>Branch/Tag</th>
+              <th>Repo</th>
+              <th>Artifact Type</th>
+              <th>URL Location</th>
+              <th>Artifact ID</th>
+              <th>Assignment ID</th>
+              <th>Assignment Date</th>
+              <th>Promoted By</th>
+              <th></th>
+            </tr>
+      
+            <tbody tal:repeat="item histassignments">
+            <!--! Do some reformatting of the urls to make them useful -->
+            <tr tal:attributes="class '%s' % env + '_hover'">
+              <td tal:content="histdeploy.deploy_path" tal:attributes="title 'Deploy ID: ' + str(item.deploy_id)">/app/something</td>
+              <td tal:content="histdeploy.package_name" tal:attributes="title '%s' % histdeploy.package_name">PythonPackage</td>
+              <td tal:content="item.artifact.revision[:8]">12345</td>
+              <td tal:content="item.artifact.branch">trunk</td>
+              <td tal:content="item.artifact.repo.name">12345</td>
+              <td tal:content="histdeploy.type.name">12345</td>
+              <td><a href="http://code.ctgrd.com/my/awesome/artifact.war"
+                     title="some description"
+                     tal:attributes="href item.pretty_url; title item.pretty_url"
+                     tal:content="item.artifact.location.split('/')[-1]">Artifact Link</a></td>
+              <td tal:content="item.artifact_id">0</td>
+              <td tal:content="item.artifact_assignment_id">12345</td>
+              <td tal:content="item.localize_date_created">12345</td>
+              <td tal:content="item.updated_by">McLovin</td>
+              <td>
+                <ul tal:condition="not (histdeploy.type.name == 'conf' and (repeat.item.start) and (item.lifecycle_id == 2))" tal:attributes="class 'promote'">
+                  <li tal:attributes="class 'promote'">
+                    Promote
+                    <ul tal:attributes="class 'promote %s' % env">
+                      <li tal:condition="(not (env == 'dev' and repeat.item.start and offset == 0)) 
+                                          and (not (histdeploy.type.name == 'conf' and (env == 'qat' or env == 'prd')))"
+                          tal:attributes="class 'promote %s' % env">
+                        <a tal:attributes="href '/promote?deploy_id=%s&artifact_id=%s&to_env=dev&commit=false' %
+                                                (item.deploy_id,
+                                                 item.artifact_id,
+                                                );
+                                           title 'Promote to dev: ' + str(item.artifact_id)"
+                           tal:content="'to dev'">promote to dev</a>
+                      </li>
+                      <li tal:condition="not (env == 'qat' and repeat.item.start and offset == 0) 
+                                         and (not (histdeploy.type.name == 'conf' and (env == 'dev' or env == 'prd')))"
+                          tal:attributes="class 'promote %s' % env">
+                        <a tal:attributes="href '/promote?deploy_id=%s&artifact_id=%s&to_env=qat&commit=false' %
+                                                (item.deploy_id,
+                                                 item.artifact_id,
+                                                );
+                                           title 'Promote to qat: ' + str(item.artifact_id)"
+                           tal:content="'to qat'">promote to qat</a>
+                      </li>
+                      <li tal:condition="(not (env == 'prd' and repeat.item.start and offset == 0 and item.lifecycle_id == 2))
+                                          and (not (histdeploy.type.name == 'conf' and (env == 'dev' or env == 'qat'))) 
+                                          and (user.promote_prd_auth or (user.promote_prd_time_auth and app.time_valid.valid))"
+                          tal:attributes="class 'promote %s' % env">
+                        <a tal:attributes="href '/promote?deploy_id=%s&artifact_id=%s&to_env=prd&commit=false' %
+                                                (item.deploy_id,
+                                                 item.artifact_id,
+                                                );
+                                           title 'Promote to prd: ' + str(item.artifact_id)"
+                           tal:content="'to prd'">promote to prd</a>
+                      </li>
+                    </ul>
+                  </li>
+                </ul>
+              </td>
+            </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <!--! Default Behavior -->
+        <p tal:condition="not: application_id">
+          For now you need to select an application from the applications page in order to see deploys.
+        </p>
+      </div>
+
+    </div>
+
+  </div>
+</div>
