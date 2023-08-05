@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+from __future__ import print_function
+
+from optparse import OptionParser
+import os
+import shelve
+
+from citools.data import TestReport
+from citools.jenkins.report import Report
+
+if __name__ == '__main__':
+
+    parser = OptionParser()
+
+    (options, args) = parser.parse_args()
+
+    report = Report()
+
+    jenkins_url = os.environ['JENKINS_URL']
+
+    if jenkins_url is None:
+        raise RuntimeError("Jenkins Url should be set.")
+
+    job_name = args[0]
+    job_url = jenkins_url + "job/" + job_name
+    test_report = report.get_report(job_url)
+
+    if test_report is not None:
+        db = shelve.open(job_name + ".db")
+
+        previous_report = db.get('report', None)
+
+        print("previous: " + str(previous_report))
+
+        if test_report.is_incremental and previous_report is not None:
+            print("incremental update of " + str(previous_report))
+
+            suites_by_module = previous_report.suites_per_module
+
+            suites_by_module.update(test_report.suites_by_module)
+
+            test_report = TestReport(test_report.name, suites_by_module, test_report.build_number, False)
+
+        db['report'] = test_report
+
+        print(job_name + ": " + str(test_report))
+
+        db.close()
