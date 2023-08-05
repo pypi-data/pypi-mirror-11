@@ -1,0 +1,116 @@
+#!/bin/env python
+from __future__ import print_function, unicode_literals, division
+import os
+import glob
+import argparse
+import re
+import errno
+from datetime import datetime
+import logging
+from PIL import Image
+import six
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(levelname)s] %(asctime)s: %(message)s")
+
+
+def get_file_date(input_file):
+    """Get file creation date"""
+    date = None
+    try:
+        with open(input_file, 'rb') as file:
+            date = str(Image.open(file)._getexif()[36867])  # DateTimeOriginal
+        date = datetime.strptime(date, "%Y:%m:%d %H:%M:%S")
+    except (KeyError, TypeError):
+        msg = "warning! EXIF tag not found "\
+              "for file '{0}'".format(input_file)
+        logging.warn(msg)
+        date = datetime.fromtimestamp(os.path.getctime(input_file))
+    except IOError as e:
+        logging.error(e)
+    return date
+
+
+def find_files(directory, filter, recursive):
+    """Filter files in directory"""
+    directory = six.u(directory)
+    dirs = [directory]
+    if recursive:
+        dirs = (d[0] for d in os.walk(directory))
+    for dir in dirs:
+        for file in glob.iglob(os.path.join(dir, filter)):
+            yield file
+
+
+def safe_file(file, directory):
+    """Generate safe file path into new directory"""
+    new_file = None
+    exist = 0
+    while True:
+        safe_name = os.path.split(file)[-1]
+        if exist > 0:
+            parts = safe_name.split(".")
+            safe_name = "{0}({1}).{2}".format(".".join(parts[:-1]),
+                                              exist, parts[-1])
+        new_file = os.path.join(directory,
+                                safe_name)
+        if os.path.isfile(new_file):
+            exist += 1
+        else:
+            break
+    return new_file
+
+
+def already_moved(file):
+    path_code = ":".join(file.split(os.path.sep)[-4:-1])
+    return re.match("^\d{4}:"
+                    "\d{4}_\d{2}:"
+                    "\d{4}_\d{2}_\d{2}$", path_code)
+
+
+def mkdir(dir):
+    dir = os.path.abspath(dir)
+    try:
+        os.makedirs(dir)
+    except OSError as e:
+        if e.errno == errno.EEXIST and os.path.isdir(dir):
+            pass
+        else:
+            raise
+
+
+def move_file(file, date, directory):
+    """Move file to structured by date directory"""
+    if already_moved(file):
+        return
+    df = date.strftime
+    new_directory = \
+        os.path.join(directory, df("%Y"), df("%Y_%m"), df("%Y_%m_%d"))
+    src = os.path.abspath(file)
+    dst = os.path.abspath(safe_file(file, new_directory))
+    mkdir(new_directory)
+    logging.info("moving to {0} from {1}".format(dst, src))
+    return os.rename(src, dst)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--directory', '-d',
+                        metavar="DIR",
+                        help="Directory to scan files",
+                        required=True)
+    parser.add_argument('--recursive', '-r',
+                        help="Find files in subdirs",
+                        action="store_true")
+    parser.add_argument('--filter', '-f',
+                        metavar="GLOB",
+                        help="Filter files. Default: '*.jpg'",
+                        default="*.jpg")
+    args = vars(parser.parse_args())
+    for file_name in find_files(**args):
+        date = get_file_date(file_name)
+        if not date:
+            logging.warn("can't get date for '{0}' "
+                         "skipping it".format(file_name))
+            continue
+        move_file(file_name, date, args['directory'])
