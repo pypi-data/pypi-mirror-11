@@ -1,0 +1,112 @@
+**pyramid\_peewee**
+===============
+
+Pyramid\_peewee is a module for the Pyramid web application framework
+which allos developers to use Peewee as their ORM.
+
+Requirements:
+
+	 1. Pyramid
+	 2. Peewee
+	 3. Database
+
+Usage:
+------
+
+Typically Pyramid based applications are configured in two locations, at
+the application level within the application \_\_init\_\_.py file and at
+the instance level within an “ini” file, such as production.ini. To configure your applicaiton, first at the instance (eg production.ini) level you must set peewee.urls = "database connection url"
+
+```ini
+    peewee.urls = sqlite:///dbase.db
+    or
+    peewee.urls = 
+	    postgresql://user:pass@localhost:5432/mydatabase
+	    sqlite:///dbase.db
+```
+Note we specifically use database urls as defined in the peewee documentation [Connecting using a Database URL](https://peewee.readthedocs.org/en/latest/peewee/database.html#connecting-using-a-database-url) and that you may specify as many database urls as your application needs within the peewee.urls paramter.
+At the application level, eg within your applications \__init__.py file 
+
+ 1. import your database model
+ 2. include the command config.include('pyramid_peewee') within the config section.
+
+Define your data model:
+To define your data model fist set your database = peewee.Proxy. Note if your database contains a "." in the name, such as with sqlite files replace it with an "_" (underscore).
+
+```python
+from peewee import *
+
+mydatabase = Proxy()
+dbase_db = Proxy()
+
+class People(Model):
+    name = TextField()
+    class Meta:
+        database = mydatabase
+
+class Cars(model):
+    name = TextField()
+        class Meta:
+            database = dbase_db
+``` 
+
+In this example we've defined two tables, each derived from different database Proxies. Peewee allows you to define as many database connections as you need and utilize them seemlessly within an application.
+
+Using your datamodel within a View:
+-----------------------------------
+
+To utilize your datamodel within a view you must first get a datbase connection. This is accomplished by calling the database proxy which is tied to the view request. By doing so database connections are properly closed as the end of the request. 
+
+```python
+from model import *
+def myView(requset):
+    request.mydatabase
+    joe = People.select().where(People.name=='joe').get()
+    return dict(name=joe.name)
+```
+As stated above by calling request.mydatabase two things are accomplished, one a database connection is opened for the request, and two a callback is registered wich will properly close the connection at the end of the request. Trying to use the model without first calling the database method from the request object will result in an DataBaseClosed error. This is a devation from the normal PeeWee behavior which normaly opens a connection as needed. 
+
+
+Supported database urls from the PeeWee documentation:
+------------------------------------------------------
+
+1.  *sqlite:///my\_database.db* will create a SqliteDatabase instance
+    for the file my\_database.db in the current directory.
+
+2.  *sqlite:///:memory:* will create an in-memory SqliteDatabase
+    instance.
+
+3.  *postgresql://postgres:my\_password@localhost:5432/my\_database*
+    will create a PostgresqlDatabase instance. A username and password
+    are provided, as well as the host and port to connect to.
+
+4.  *mysql://user:passwd@ip:port/my\_db* will create a MySQLDatabase
+    instance for the local MySQL database *my\_db*.
+
+Supported schemes:
+
+1.  apsw: APSWDatabase
+
+2.  mysql: MySQLDatabase
+
+3.  mysql+pool: PooledMySQLDatabase
+
+4.  postgres: PostgresqlDatabase
+
+5.  postgres+pool: PooledPostgresqlDatabase
+
+6.  postgresext: PostgresqlExtDatabase
+
+7.  postgresext+pool: PooledPostgresqlExtDatabase
+
+8.  sqlite: SqliteDatabase
+
+9.  sqliteext: SqliteExtDatabase
+
+The most up to date documentation can always be found on their website:
+[Peewee Database URL](https://peewee.readthedocs.org/en/latest/peewee/playhouse.html#database-url)
+
+
+
+
+
