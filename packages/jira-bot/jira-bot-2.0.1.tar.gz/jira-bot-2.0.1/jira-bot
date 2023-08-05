@@ -1,0 +1,269 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#
+# Copyright (c) 2015 Alex Turbov <i.zaufi@gmail.com>
+#
+# JIRA Bot is free software: you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the
+# Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# JIRA Bot is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+# See the GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import argparse
+import configparser
+import jira
+import os
+import sys
+import urllib
+import jira_bot
+
+class Application(object):
+    '''
+        Application class to to the job.
+
+        Each command implemented as a method of this class.
+        Constructor analyze arguments passed via CLI and merge them w/
+        parameters came from configuration file.
+
+        During execution there is a dict member `self.config` containing
+        everything that needed to execute a requested command.
+
+        Config file consists from `[default]` section and possible few
+        sections desribing connection parameters to server(s), so you don't
+        need them to pass via CLI.
+    '''
+
+    COMMANDS_WITHOUT_OPTIONS = [
+        'list-resolutions'
+      , 'list-statuses'
+      , 'list-projects'
+      , 'list-issue-types'
+      , 'list-priorities'
+      ]
+
+    def __init__(self):
+        # Try to parse config file option first
+        config_parser = argparse.ArgumentParser(
+            description='JIRA Issue Manipulation Bot'
+          , add_help=False
+          )
+        config_parser.add_argument(
+            "-c"
+          , "--config-file"
+          , help="specify config file to use"
+          , metavar="FILE"
+          )
+        args, remaining_argv = config_parser.parse_known_args()
+
+        # Collect configuration data from various places:
+        configs = list()
+        #  - is there any config file provided via CLI?
+        if args.config_file:
+            # Ok, lets use it
+            configs.append(self._parse_config_file(args.config_file))
+        else:
+            # Heh, then try to get config data from system-wide and per user config files
+            config_files = ['/etc/jira-bot/jira-bot.conf', os.path.expanduser('~/.jira-botrc')]
+            for config_file in config_files:
+                # TODO Make sure that config file is read only by owner!
+                if os.path.isfile(config_file):
+                    configs.append(self._parse_config_file(config_file))
+
+        # Merge configuration data normalizing URIs in section names
+        self.config = dict()
+        for cfg in configs:
+            for section in cfg.sections():
+                normalized_section = self._normalize_uri(section)
+                if normalized_section not in self.config:
+                    self.config[normalized_section] = dict()
+                self.config[normalized_section].update(dict(cfg[section].items()))
+
+        # Ok, now try to parse rest CLI options
+        parser = argparse.ArgumentParser(
+            # Inherit options from config_parser
+            parents=[config_parser]
+            # print script description with -h/--help
+          , description='Manage JIRA bugs via CLI'
+            # Don't mess with format of description
+          , formatter_class=argparse.RawDescriptionHelpFormatter
+          )
+        parser.add_argument(
+            '-v'
+          , '--verbose'
+          , action='store_true'
+          , help='verbose output'
+          )
+        parser.add_argument(
+            '-s'
+          , '--server'
+          , help='JIRA server URI'
+          )
+        parser.add_argument(
+            '-u'
+          , '--username'
+          , help='JIRA account name'
+          )
+        parser.add_argument(
+            '-p'
+          , '--password'
+          , help='JIRA account password'
+          )
+
+        subparsers = parser.add_subparsers(
+            title='sub-commands'
+          , description='The following command may appear after generic options.\nTo get help use `--help` after command name.'
+          , dest='cmd'
+          , help='Action'
+          )
+        self.create = jira_bot.CreateSubCommand(subparsers)
+        self.update = jira_bot.UpdateSubCommand(subparsers)
+        self.comment = jira_bot.CommentSubCommand(subparsers)
+        self.list_resolutions = jira_bot.ListResolutionsSubCommand(subparsers)
+        self.list_statuses = jira_bot.ListStatusesSubCommand(subparsers)
+        self.list_projects = jira_bot.ListProjectsSubCommand(subparsers)
+        self.list_types = jira_bot.ListIssueTypesSubCommand(subparsers)
+        self.list_priorities = jira_bot.ListPrioritiesSubCommand(subparsers)
+        self.list_transitions = jira_bot.ListTransitionsSubCommand(subparsers)
+
+        args = parser.parse_args()
+
+        # Merge CLI options w/ parsed configuration
+        target_section = 'default'
+
+        # Check if `--server` is provided
+        if args.server is not None:
+            # Override used server section
+            target_section = self._normalize_uri(args.server)
+            self.config['default']['server'] = target_section
+        elif 'server'  in self.config['default']:
+            target_section = self._normalize_uri(self.config['default']['server'])
+            self.config['default']['server'] = target_section
+        else:
+            raise RuntimeError('JIRA server URI is not provided')
+
+        if target_section not in self.config:
+            self.config[target_section] = dict()
+
+        # Checking generic options:
+        # Check if `--username` is provided
+        if args.username is not None:
+            self.config[target_section]['username'] = args.username
+            # ATTENTION Reset password
+            self.config[target_section]['password'] = None
+
+        # Check if `--password` is provided
+        if args.password is not None:
+            self.config[target_section]['password'] = args.password
+
+        # Check if `--verbose` is provided
+        if args.verbose is not None and args.verbose:
+            self.config['default']['verbose'] = 'true'
+
+        # Check command specific options
+        if args.cmd == 'create':
+            self.create.check_options(self.config, target_section, args)
+        elif args.cmd == 'update':
+            self.update.check_options(self.config, target_section, args)
+        elif args.cmd == 'comment':
+            self.comment.check_options(self.config, target_section, args)
+        elif args.cmd == 'list-transitions':
+            self.list_transitions.check_options(self.config, target_section, args)
+        elif args.cmd in self.COMMANDS_WITHOUT_OPTIONS:
+            pass
+        else:
+            raise RuntimeError('Unsupported command: {} [code review required]'.format(args.cmd))
+
+        # Setting `verbose` flag to be a 'shortcut' for corresponding configuration option
+        self.config[target_section]['verbose'] = 'verbose' in self.config['default'] and self._try_get_bool(self.config['default']['verbose']) or False
+
+        # Remember selected `server` as a key in current configurtation section
+        self.config[target_section]['server'] = target_section
+
+        # TODO Validate option values?
+
+        self.config['default']['cmd'] = args.func
+
+        # Args seem Ok, ready to run
+        # TODO Print this on `-vvv`
+        #print('DEBUG args={}'.format(args))
+        #print('DEBUG config={}'.format(self.config))
+        #sys.exit(1)
+
+
+    def _parse_config_file(self, config_file):
+        config = configparser.ConfigParser(allow_no_value=True)
+        config.read([config_file])
+        return config
+
+
+    def _normalize_uri(self, uri):
+        components = urllib.parse.urlparse(uri)
+        if not len(components.path):
+            return  urllib.parse.urljoin(components.geturl(), '/')
+        return uri
+
+
+    def _try_get_bool(self, text):
+        text = text.strip()
+        if text == 'yes' or text == 'true' or text == '1':
+            return True
+        if text == 'no' or text == 'false' or text == '0':
+            return False
+
+        raise RuntimeError('Invalid boolean value: "{}"'.format(text))
+
+
+    def _make_jira_connection(self, config):
+        # Make some SPAM
+        if config['verbose']:
+            print(
+                '[DEBUG] Connecting to {} using {} {}'.format(
+                    config['server']
+                  , 'login "{}"'.format(config['username']) if 'username' in config else 'anonymous login'
+                  , 'and password provided' if config['password'] is not None else 'w/o password'
+                  )
+                , file=sys.stderr
+              )
+        if 'username' in config:
+            auth=(config['username'], config['password'])
+
+        # Connecting...
+        return jira.JIRA(options={'server': config['server']}, basic_auth=auth)
+
+
+    def run(self):
+        server = self.config['default']['server']
+        config = self.config[server]
+
+        # Connecting...
+        conn = self._make_jira_connection(config)
+
+        # Execute requested command
+        self.config['default']['cmd'](conn, config)
+
+        # Set exit code to SUCCESS
+        return os.EX_OK
+
+
+#
+# Main entry point
+#
+if __name__ == "__main__":
+    try:
+        a = Application()
+        sys.exit(a.run())
+    except KeyboardInterrupt:
+        sys.exit(1)
+    except jira.utils.JIRAError as ex:
+        print('Error: {}'.format(ex.text), file=sys.stderr)
+        sys.exit(1)
+    except RuntimeError as ex:
+        print('Error: {}'.format(ex), file=sys.stderr)
+        sys.exit(1)
