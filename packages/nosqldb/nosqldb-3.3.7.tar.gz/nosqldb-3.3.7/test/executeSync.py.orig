@@ -1,0 +1,223 @@
+from nosqldb import Store
+from nosqldb import ConnectionException
+from nosqldb import IllegalArgumentException
+from nosqldb import RequestTimeoutException
+from testSetup import get_store
+from testSetup import add_runtime_params
+from testSetup import table_name
+
+import unittest
+import json
+
+
+class TestGet(unittest.TestCase):
+
+    def setUp(self):
+        self.store = get_store()
+        self.table = table_name + "TableTest"
+
+    def tearDown(self):
+        self.store.close()
+
+    def testExecuteCreateTable(self):
+        res = self.store.execute_sync(
+            "create table if not exists " + self.table + " (" +
+            "id INTEGER, prod_name STRING, days_in_shelf INTEGER, " +
+            "PRIMARY KEY (id), COMMENT \"table created from Python API\" )")
+        self.store.refresh_tables()
+        expected = "{"\
+          "'type' : 'describe',"\
+          "'result' : {"\
+          "'type' : 'table',"\
+          "'name' : '" + self.table + "',"\
+          "'comment' : 'table created from Python API',"\
+          "'shardKey' : [ 'id' ],"\
+          "'primaryKey' : [ 'id' ],"\
+          "'fields' : [ {"\
+          "  'name' : 'id',"\
+          "  'type' : 'INTEGER',"\
+          "  'nullable' : true,"\
+          "  'default' : null"\
+          "}, {"\
+          "  'name' : 'prod_name',"\
+          "  'type' : 'STRING',"\
+          "  'nullable' : true,"\
+          "  'default' : null"\
+          "}, {"\
+          "  'name' : 'days_in_shelf',"\
+          "  'type' : 'INTEGER',"\
+          "  'nullable' : true,"\
+          "  'default' : null"\
+          "} ]"\
+        "}"\
+        "}"
+        res = self.store.execute_sync("desc as json table " + self.table)
+        self.store.execute_sync("drop table if exists " + self.table)
+        self.store.refresh_tables()
+        self.assertEqual(expected.replace("\n", "").replace(" ", ""),
+            str(res['info_as_json']).replace("\n", "").replace(" ", "").
+            replace("\"", "'"))
+
+    def testExecuteAlterTable(self):
+        res = self.store.execute_sync(
+            "create table if not exists " + self.table + " (" +
+            "id INTEGER, prod_name STRING, days_in_shelf INTEGER, " +
+            "PRIMARY KEY (id) )")
+        self.store.refresh_tables()
+        res = self.store.execute_sync(
+            "alter table " + self.table + " (" +
+            " ADD date_of_sale RECORD(day_of_week ENUM( sunday, monday," +
+            " tuesday, wednesday, thursday, friday, saturday)," +
+            " month INTEGER, day INTEGER, year INTEGER)," +
+            " DROP days_in_shelf" +
+            ")")
+        expected = "{"\
+          "'type' : 'describe',"\
+          "'result' : {"\
+          "'type' : 'table',"\
+          "'name' : '" + self.table + "',"\
+          "'comment' : null,"\
+          "'shardKey' : [ 'id' ],"\
+          "'primaryKey' : [ 'id' ],"\
+          "'fields' : [ {"\
+          "  'name' : 'id',"\
+          "  'type' : 'INTEGER',"\
+          "  'nullable' : true,"\
+          "  'default' : null"\
+          "}, {"\
+          "  'name' : 'prod_name',"\
+          "  'type' : 'STRING',"\
+          "  'nullable' : true,"\
+          "  'default' : null"\
+          "}, {"\
+          "  'name' : 'date_of_sale',"\
+          "  'type' : 'RECORD',"\
+          "  'fields' : [ {"\
+          "    'name' : 'day_of_week',"\
+          "    'type' : 'ENUM',"\
+          "    'enum_name': 'day_of_week',"\
+          "    'symbols' : ['sunday','monday','tuesday',"\
+          "'wednesday','thursday','friday','saturday'],"\
+          "    'nullable' : true,"\
+          "    'default' : null"\
+          "  }, { "\
+          "    'name' : 'month',"\
+          "    'type' : 'INTEGER',"\
+          "    'nullable' : true,"\
+          "    'default' : null"\
+          "  }, { "\
+          "    'name' : 'day',"\
+          "    'type' : 'INTEGER',"\
+          "    'nullable' : true,"\
+          "    'default' : null"\
+          "  }, { "\
+          "    'name' : 'year',"\
+          "    'type' : 'INTEGER',"\
+          "    'nullable' : true,"\
+          "    'default' : null"\
+          "  }],"\
+          "  'nullable' : true,"\
+          "  'default' : null"\
+          "} ]"\
+        "}"\
+        "}"
+        res = self.store.execute_sync("desc as json table " + self.table)
+        self.store.execute_sync("drop table if exists " + self.table)
+        self.store.refresh_tables()
+        self.assertEqual(expected.replace("\n", "").replace(" ", ""),
+            str(res['info_as_json']).replace("\n", "").replace(" ", "").
+            replace("\"", "'"))
+
+    def testExecuteSyncDesc(self):
+        self.store.execute_sync(
+            "CREATE TABLE IF NOT EXISTS " + self.table + " (" +
+            "shardKey INTEGER, id INTEGER, s STRING, " +
+            "PRIMARY KEY (SHARD(shardKey), id) )")
+        self.store.refresh_tables()
+        self.store.execute_sync(
+            "CREATE TABLE IF NOT EXISTS " + self.table + ".c1 (" +
+            "idc1 INTEGER, s STRING, PRIMARY KEY (idc1) )")
+        self.store.refresh_tables()
+        self.store.execute_sync(
+            "CREATE TABLE IF NOT EXISTS " + self.table + ".c2 (" +
+            "idc2 INTEGER, s STRING, PRIMARY KEY (idc2) )")
+        self.store.refresh_tables()
+        res = self.store.execute_sync("Desc as json table " + self.table)
+        expected = "{"\
+          "'type' : 'describe',"\
+          "'result' : {"\
+          "'type' : 'table',"\
+          "'name' : '" + self.table + "',"\
+          "'comment' : null,"\
+          "'shardKey' : [ 'shardKey' ],"\
+          "'primaryKey' : [ 'shardKey', 'id' ],"\
+          "'children' : [ 'c1', 'c2' ],"\
+          "'fields' : [ {"\
+          "  'name' : 'shardKey',"\
+          "  'type' : 'INTEGER',"\
+          "  'nullable' : true,"\
+          "  'default' : null"\
+          "}, {"\
+          "  'name' : 'id',"\
+          "  'type' : 'INTEGER',"\
+          "  'nullable' : true,"\
+          "  'default' : null"\
+          "}, {"\
+          "  'name' : 's',"\
+          "  'type' : 'STRING',"\
+          "  'nullable' : true,"\
+          "  'default' : null"\
+          "} ]"\
+        "}"\
+        "}"
+        self.store.execute_sync("DROP TABLE IF EXISTS " + self.table + ".c1")
+        self.store.execute_sync("DROP TABLE IF EXISTS " + self.table + ".c2")
+        self.store.execute_sync("DROP TABLE IF EXISTS " + self.table)
+        self.store.refresh_tables()
+        self.assertEqual(expected.replace("\n", "").replace(" ", ""),
+            str(res['info_as_json']).replace("\n", "").replace("\"", "'").
+            replace(" ", ""))
+
+    def testExecuteSyncShowTables(self):
+        self.store.execute_sync(
+            "CREATE TABLE IF NOT EXISTS " + self.table + " (" +
+            "shardKey INTEGER, id INTEGER, s STRING, " +
+            "PRIMARY KEY (SHARD(shardKey), id) )")
+        self.store.refresh_tables()
+        self.store.execute_sync(
+            "CREATE TABLE IF NOT EXISTS " + self.table + ".c1 (" +
+            "idc1 INTEGER, s STRING, PRIMARY KEY (idc1) )")
+        self.store.refresh_tables()
+        self.store.execute_sync(
+            "CREATE TABLE IF NOT EXISTS " + self.table + ".c2 (" +
+            "idc2 INTEGER, s STRING, PRIMARY KEY (idc2) )")
+        self.store.refresh_tables()
+        res = self.store.execute_sync("show as json tables")
+        res = self.store.execute("show as json tables")
+        json_res = json.loads(str(res['info_as_json']))
+        tables_res = set(json_res['result']['tables'])
+        expected_set = set([self.table, self.table + ".c1", self.table + ".c2"])
+        self.store.execute_sync("DROP TABLE IF EXISTS " + self.table + ".c1")
+        self.store.execute_sync("DROP TABLE IF EXISTS " + self.table + ".c2")
+        self.store.execute_sync("DROP TABLE IF EXISTS " + self.table)
+        self.store.refresh_tables()
+        self.assertTrue(expected_set.issubset(tables_res))
+
+    def testExecuteSyncNoCommand(self):
+        # test execute() with a empty command
+        # expects an IllegalArgumentException
+        self.assertRaises(IllegalArgumentException,
+            self.store.execute_sync,
+            "")
+
+    def testExecuteSyncNoneCommand(self):
+        # test execute_future_get() with an invalid
+        # planId
+        self.assertRaises(IllegalArgumentException,
+            self.store.execute_sync,
+            None)
+
+
+if __name__ == '__main__':
+    add_runtime_params()
+    unittest.main()

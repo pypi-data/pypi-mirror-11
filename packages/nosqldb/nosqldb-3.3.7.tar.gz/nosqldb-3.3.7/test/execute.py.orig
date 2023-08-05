@@ -1,0 +1,239 @@
+from nosqldb import Store
+from nosqldb import Row
+from nosqldb import ConnectionException
+from nosqldb import IllegalArgumentException
+from nosqldb import RequestTimeoutException
+from nosqldb import TimeoutException
+from testSetup import get_store
+from testSetup import add_runtime_params
+from testSetup import table_name
+
+import unittest
+import json
+import time
+
+
+class TestExecute(unittest.TestCase):
+
+    def setUp(self):
+        self.store = get_store()
+        self.table = table_name + "testTable"
+
+    def tearDown(self):
+        self.store.execute_sync("drop table if exists " + self.table + ".c1")
+        self.store.execute_sync("drop table if exists " + self.table + ".c2")
+        self.store.execute_sync("drop table if exists " + self.table)
+        self.store.refresh_tables()
+
+    def testExecuteDesc(self):
+        self.store.execute_sync(
+            "CREATE TABLE IF NOT EXISTS " + self.table + " (" +
+            "shardKey INTEGER, id INTEGER, s STRING, " +
+            "PRIMARY KEY (SHARD(shardKey), id) )")
+        self.store.execute_sync(
+            "CREATE TABLE IF NOT EXISTS " + self.table + ".c1 (" +
+            "idc1 INTEGER, s STRING, PRIMARY KEY (idc1) )")
+        self.store.execute_sync(
+            "CREATE TABLE IF NOT EXISTS " + self.table + ".c2 (" +
+            "idc2 INTEGER, s STRING, PRIMARY KEY (idc2) )")
+        self.store.refresh_tables()
+        res = self.store.execute("desc as json table " + self.table)
+        expected = "{"\
+          "'type' : 'describe',"\
+          "'result' : {"\
+          "'type' : 'table',"\
+          "'name' : '" + self.table + "',"\
+          "'comment' : null,"\
+          "'shardKey' : [ 'shardKey' ],"\
+          "'primaryKey' : [ 'shardKey', 'id' ],"\
+          "'children' : [ 'c1', 'c2' ],"\
+          "'fields' : [ {"\
+          "  'name' : 'shardKey',"\
+          "  'type' : 'INTEGER',"\
+          "  'nullable' : true,"\
+          "  'default' : null"\
+          "}, {"\
+          "  'name' : 'id',"\
+          "  'type' : 'INTEGER',"\
+          "  'nullable' : true,"\
+          "  'default' : null"\
+          "}, {"\
+          "  'name' : 's',"\
+          "  'type' : 'STRING',"\
+          "  'nullable' : true,"\
+          "  'default' : null"\
+          "} ]"\
+        "}"\
+        "}"
+        self.store.execute_sync("DROP TABLE IF EXISTS " + self.table + ".c1")
+        self.store.execute_sync("DROP TABLE IF EXISTS " + self.table + ".c2")
+        self.store.execute_sync("DROP TABLE IF EXISTS " + self.table)
+        self.store.refresh_tables()
+        self.assertEqual(expected.replace("\n", "").replace(" ", ""),
+            str(res['info_as_json']).replace("\n", "").replace("\"", "'").
+            replace(" ", ""))
+
+    def testExecuteStatusShowTables(self):
+        self.store.execute_sync(
+            "CREATE TABLE IF NOT EXISTS " + self.table + " (" +
+            "shardKey INTEGER, id INTEGER, s STRING, " +
+            "PRIMARY KEY (SHARD(shardKey), id) )")
+        self.store.refresh_tables()
+        self.store.execute_sync(
+            "CREATE TABLE IF NOT EXISTS " + self.table + ".c1 (" +
+            "idc1 INTEGER, s STRING, PRIMARY KEY (idc1) )")
+        self.store.refresh_tables()
+        self.store.execute_sync(
+            "CREATE TABLE IF NOT EXISTS " + self.table + ".c2 (" +
+            "idc2 INTEGER, s STRING, PRIMARY KEY (idc2) )")
+        self.store.refresh_tables()
+        res = self.store.execute("show as json tables")
+        count = 0
+        while (res['is_done'] is False and count < 10):
+            try:
+                res = self.store.execution_future_update_status(res['plan_id'])
+                time.sleep(1)
+                count += 1
+            except Exception, e:
+                pass
+        self.assertTrue(res['is_done'] and res['is_successful'])
+        json_res = json.loads(str(res['info_as_json']))
+        tables_res = set(json_res['result']['tables'])
+        expected_set = set([self.table, self.table + ".c1", self.table + ".c2"])
+        self.store.execute_sync("DROP TABLE IF EXISTS " + self.table + ".c1")
+        self.store.execute_sync("DROP TABLE IF EXISTS " + self.table + ".c2")
+        self.store.execute_sync("DROP TABLE IF EXISTS " + self.table)
+        self.store.refresh_tables()
+        self.assertTrue(expected_set.issubset(tables_res))
+
+    def testExecuteFutureTimeoutCreateTable(self):
+        res = self.store.execute(
+            "create table if not exists " + self.table + " ( " +
+            "id INTEGER, prod_name STRING, days_in_shelf INTEGER, " +
+            "PRIMARY KEY (id), COMMENT \"table created from Python API\" )")
+        while (res['is_done'] is False):
+            # wait 10 milliseconds before check again
+            try:
+                res = self.store.execution_future_get_timeout(
+                    res['plan_id'], 10)
+            except TimeoutException, te:
+                # not yet ready
+                pass
+            except Exception, e:
+                # something went wrong
+                print(str(e))
+        self.store.refresh_tables()
+        expected = "{"\
+          "'type' : 'describe',"\
+          "'result' : {"\
+          "'type' : 'table',"\
+          "'name' : '" + self.table + "',"\
+          "'comment' : 'table created from Python API',"\
+          "'shardKey' : [ 'id' ],"\
+          "'primaryKey' : [ 'id' ],"\
+          "'fields' : [ {"\
+          "  'name' : 'id',"\
+          "  'type' : 'INTEGER',"\
+          "  'nullable' : true,"\
+          "  'default' : null"\
+          "}, {"\
+          "  'name' : 'prod_name',"\
+          "  'type' : 'STRING',"\
+          "  'nullable' : true,"\
+          "  'default' : null"\
+          "}, {"\
+          "  'name' : 'days_in_shelf',"\
+          "  'type' : 'INTEGER',"\
+          "  'nullable' : true,"\
+          "  'default' : null"\
+          "} ]"\
+        "}"\
+        "}"
+        res = self.store.execute("DESC AS JSON TABLE " + self.table)
+        self.store.execute_sync("DROP TABLE IF EXISTS " + self.table)
+        self.store.refresh_tables()
+        self.assertEqual(expected.replace("\n", "").replace(" ", ""),
+            str(res['info_as_json']).replace("\n", "").replace(" ", "").
+            replace("\"", "'"))
+
+    def testExecuteFutureCreateTableMap(self):
+        stmt = "CREATE TABLE IF NOT EXISTS " + self.table + " ( "\
+            "id INTEGER, myMap MAP(INTEGER), PRIMARY KEY (id) )"
+        res = self.store.execute(stmt)
+        while (res['is_done'] is not True):
+            try:
+                res = self.store.execution_future_get(res['plan_id'])
+            except Exception, e:
+                print e
+        self.assertTrue(res['is_successful'])
+        self.store.refresh_tables()
+        row = Row({'id': 0, 'myMap': {'key1': 1, 'key2': 2}})
+        self.store.put(self.table, row)
+        p_key = Row({'id': 0})
+        r_row = self.store.get(self.table, p_key)
+        self.store.execute_sync("DROP TABLE IF EXISTS " + self.table)
+        self.store.refresh_tables()
+        self.assertEquals(r_row['myMap']['key1'], 1)
+        self.assertEquals(r_row['myMap']['key2'], 2)
+
+    def testExecuteFutureCancel(self):
+        res = self.store.execute(
+            "CREATE TABLE IF NOT EXISTS " + self.table + " (" +
+            "shardKey INTEGER, id INTEGER, s STRING, " +
+            "PRIMARY KEY (SHARD(shardKey), id) )")
+        res = self.store.execution_future_cancel(res['plan_id'], True)
+        self.assertTrue(res)
+
+    def testExecuteEmptyCommand(self):
+        # test execute() with a empty command
+        # expects an IllegalArgumentException
+        self.assertRaises(IllegalArgumentException,
+            self.store.execute,
+            "")
+
+    def testExecuteInvalidPlanId(self):
+        # test execute() with a empty command
+        # expects an IllegalArgumentException
+        self.assertRaises(IllegalArgumentException,
+            self.store.execute,
+            -1)
+
+    def testExecuteNoneCommand(self):
+        # test execute() with a empty command
+        # expects an IllegalArgumentException
+        self.assertRaises(IllegalArgumentException,
+            self.store.execute,
+            None)
+
+    def testExecuteFutureInvalidPlanId(self):
+        # test execute_future_get() with an invalid
+        # planId
+        self.assertRaises(IllegalArgumentException,
+            self.store.execution_future_get,
+            -1)
+
+    def testExecuteFutureNoneCommand(self):
+        # test execute_future_get() with an invalid
+        # planId
+        self.assertRaises(IllegalArgumentException,
+            self.store.execution_future_get,
+            None)
+
+    def testExecuteFutureTimeoutInvalidPlanId(self):
+        # test execute_future_get() with an invalid
+        # planId
+        self.assertRaises(IllegalArgumentException,
+            self.store.execution_future_get_timeout,
+            -1, 100)
+
+    def testExecuteFutureTimeoutNoneCommand(self):
+        # test execute_future_get() with an invalid
+        # planId
+        self.assertRaises(IllegalArgumentException,
+            self.store.execution_future_get_timeout,
+            None, 100)
+
+
+if __name__ == '__main__':
+    add_runtime_params()
+    unittest.main()

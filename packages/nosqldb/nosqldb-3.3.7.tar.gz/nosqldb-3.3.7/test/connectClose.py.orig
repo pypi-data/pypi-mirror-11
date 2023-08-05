@@ -1,0 +1,94 @@
+# Note that since Factory.connect() was replaced by Factory.open() with only
+# two parameters, this testcase is going to use such call instead.
+
+from nosqldb import Factory
+from nosqldb import Store
+from nosqldb import ConnectionException
+from nosqldb import IllegalArgumentException
+from nosqldb import RequestTimeoutException
+from testSetup import get_store
+from testSetup import get_store2
+from testSetup import add_runtime_params
+from testSetup import get_kvstore_config
+from testSetup import get_kvproxy_config
+from testSetup import host_port
+from testSetup import host_port2
+from testSetup import helper_host
+from testSetup import helper_host2
+from testSetup import user
+from testSetup import password
+
+import unittest
+import time
+
+
+class TestConnectClose(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        kvstore_config = get_kvstore_config()
+        kvproxy_config = get_kvproxy_config()
+        cls._store1 = Factory.open(host_port, kvstore_config,
+            kvproxy_config)
+        time.sleep(5)
+
+    @classmethod
+    def tearDownClass(cls):
+        if (cls._store1 is not None):
+            cls._store1.close()
+
+    def setUp(self):
+        pass
+
+    def tearDown(self):
+        pass
+
+    def testConnectNormalStartup(self):
+        # check that connect cannot start the proxy
+        kvstore_config = get_kvstore_config()
+        try:
+            store = Factory.open(host_port2, kvstore_config)
+        except ConnectionException, ce:
+            store = None
+        if (store is not None):
+            store.shutdown()
+            store.close()
+            time.sleep(5)
+        self.assertRaises(ConnectionException, Factory.open,
+                          host_port2, kvstore_config)
+
+    def testConnectNormalAlreadyUp(self):
+        # check that connect can connect to an already started proxy
+        kvstore_config = get_kvstore_config()
+        store = Factory.open(host_port, kvstore_config)
+        self.assertTrue(store is not None)
+
+    def testConnectProxyAddress(self):
+        # check that connect cannot start another proxy with a different address
+        kvstore_config = get_kvstore_config()
+        self.assertRaises(ConnectionException, Factory.open,
+                          host_port2, kvstore_config)
+
+    def testConnectHelperHostKVStoreConfig(self):
+        # check connect with specific Helper Host
+        # it should not actually work since it doesn't start a new proxy
+        # using a KVStoreConfig object
+        kvstore_config = get_kvstore_config()
+        kvstore_config.set_helper_hosts((helper_host2,))
+        self.assertRaises(ConnectionException, Factory.open,
+                          host_port2, kvstore_config)
+
+    def testConnectCredentialsParam(self):
+        # check connect with good credentials
+        kvstore_config = get_kvstore_config()
+        credentials = {'user': user,
+                       'password': password}
+        kvstore_config.set_security_properties(credentials)
+        kvstore_config.set_helper_hosts((helper_host,))
+        self.store = Factory.open(host_port,
+            kvstore_config)
+        self.assertTrue(self.store is not None)
+
+
+if __name__ == '__main__':
+    add_runtime_params()
+    unittest.main()
