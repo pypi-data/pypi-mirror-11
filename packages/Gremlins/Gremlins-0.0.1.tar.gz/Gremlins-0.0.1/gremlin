@@ -1,0 +1,241 @@
+#!/usr/bin/env python2
+
+# Copyright (c) 2015, Robert Escriva
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of this project nor the names of its contributors may
+#       be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+import argparse
+import errno
+import os
+import os.path
+import pipes
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+class GremlinError(Exception): pass
+
+def sanitized_shell(cmd):
+    return ' '.join([pipes.quote(c) for c in cmd])
+
+class Parser(object):
+
+    def __init__(self, path):
+        self.path = path
+        self.init = False
+        self.cmds = None
+
+    def parse(self, reparse=False):
+        def gen(cmds):
+            for cmd in cmds:
+                yield cmd
+        if self.init and not reparse:
+            assert self.cmds is not None
+            return gen(self.cmds)
+        if not os.path.exists(self.path):
+            raise GremlinError('no such file %r' % self.path)
+        s = shlex.shlex(open(self.path, 'r'), posix=True)
+        s.whitespace = ' \t\r'
+        s.wordchars += '-$()=.'
+        s.source = 'include'
+        cmds = []
+        cmd = []
+        while True:
+            x = s.get_token()
+            if x is s.eof:
+                cmds.append(cmd)
+                break
+            if x in (';', '\n'):
+                cmds.append(cmd)
+                cmd = []
+            else:
+                cmd.append(x)
+        cmds = [tuple(cmd) for cmd in cmds if cmd]
+        return cmds
+
+class Playground(object):
+
+    def __init__(self, path):
+        self.parser = Parser(path)
+        self.environment = {}
+        self.base = tempfile.mkdtemp(prefix='gremlin-')
+        self.crash_is_nop = False
+        self.daemons = []
+        self.failed = False
+        self.execed = 0
+        os.mkdir(os.path.join(self.base, '.gremlin'))
+
+    def run(self):
+        for cmd in self.parser.parse():
+            assert cmd
+            self.get_cmd(cmd[0])
+        try:
+            for cmd in self.parser.parse():
+                f = self.get_cmd(cmd[0])
+                f(cmd[1:])
+            self.clean()
+        finally:
+            self.crash()
+
+    def daemons_all_dead(self):
+        return not any([d.poll() is None for d in self.daemons])
+
+    def clean(self):
+        self.crash_is_nop = True
+        count = 0
+        while count < 16 and not self.daemons_all_dead():
+            for proc in reversed(self.daemons):
+                if proc.poll() is None:
+                    proc.terminate()
+            count += 1
+            time.sleep(0.1 * count)
+        if not self.daemons_all_dead():
+            self.crash_is_nop = True
+            raise GremlinError("could not clean up all daemons")
+        dump_logs = self.failed
+        for proc in self.daemons:
+            proc.wait()
+            if proc.returncode != 0:
+                dump_logs = True
+        if dump_logs:
+            print 'the gremlins were kind enough to provide log files'
+            print 'playground: %s' % self.base
+            if self.daemons:
+                print
+            for idx, proc in enumerate(self.daemons):
+                print 'daemon[%d]: %s' % (idx, sanitized_shell(proc.cmd))
+                print 'exited %d' % proc.returncode
+                output = open(self.daemon_logfile(idx), 'r').read()
+                output = output.strip()
+                if output:
+                    print 'stdout/stderr (merged):'
+                    print output
+                if idx + 1 < len(self.daemons):
+                    print
+        else:
+            shutil.rmtree(self.base)
+
+    def crash(self):
+        if self.crash_is_nop:
+            return
+        for proc in reversed(self.daemons):
+            proc.kill()
+            proc.kill()
+            proc.wait()
+
+    def get_cmd(self, cmd):
+        cmd = 'cmd_' + cmd.replace('-', '_')
+        if not hasattr(self, cmd):
+            raise GremlinError('unkown command: %r' % cmd)
+        return getattr(self, cmd)
+
+    def cmd_env(self, cmd):
+        if len(cmd) == 1:
+            self.environment[cmd[0]] = ''
+        elif len(cmd) == 2:
+            self.environment[cmd[0]] = cmd[1]
+        else:
+            raise GremlinError('invalid environment: %s' % sanitized_shell(cmd))
+
+    def cmd_run(self, cmd):
+        try:
+            p = subprocess.Popen(cmd, cwd=self.base,
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT)
+            stdout, stderr = p.communicate()
+            if p.returncode != 0:
+                self.failed = True
+                print 'exited %d: %s' % (p.returncode, sanitized_shell(cmd))
+                stdout = stdout.strip()
+                if stdout:
+                    print 'stdout/stderr (merged):'
+                    print output
+                print
+        except OSError as e:
+            if e.errno == errno.ENOENT:
+                raise GremlinError('ENOENT: %s' % sanitized_shell(cmd))
+            raise e
+
+    def cmd_tcp_port(self, cmd):
+        ports = set()
+        for p in cmd:
+            try:
+                p = int(p, 10)
+                ports.add(p)
+            except ValueError:
+                raise GremlinError('invalid port: %s' % p)
+        states = {}
+        wait = True
+        while wait:
+            wait = False
+            stdout = subprocess.check_output(('netstat', '-an'))
+            for x in re.findall('^tcp.*$', stdout, flags=re.MULTILINE):
+                x = re.sub('\s+', ' ', x).split(' ')
+                port = x[3].rsplit(':', 1)[-1]
+                try:
+                    port = int(port, 10)
+                except ValueError:
+                    raise GremlinError('error parsing netstat output')
+                state = x[5]
+                states[port] = state
+                if port in ports and state != 'TIME_WAIT':
+                    print 'waiting on', port, state
+                    wait = True
+            if wait and all([x in ('LISTEN', 'ESTABLISHED')
+                             for x in states.values()]):
+                raise GremlinError('ports in use by other processes')
+            if wait:
+                time.sleep(0.1)
+
+    def daemon_logfile(self, idx):
+        return os.path.join(self.base, '.gremlin', 'daemon %d.log' % idx)
+
+    def cmd_daemon(self, cmd):
+        env = dict(os.environ)
+        env.update(self.environment)
+        stdout = open(self.daemon_logfile(len(self.daemons)), 'w')
+        proc = subprocess.Popen(cmd, stdout=stdout, stderr=subprocess.STDOUT,
+                                env=env, cwd=self.base)
+        proc.cmd = cmd
+        self.daemons.append(proc)
+
+def main(todo):
+    try:
+        p = Playground(todo)
+        p.run()
+        sys.exit(0)
+    except GremlinError as e:
+        print >>sys.stderr, str(e)
+        sys.exit(1)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('file', help='instructions for the gremlin')
+    args = parser.parse_args()
+    main(args.file)
