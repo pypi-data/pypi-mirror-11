@@ -1,0 +1,13 @@
+// Options configured by CMake
+
+#ifndef _REKALL_TOOL_LMAP_LMAP_CONFIG_H_
+#define _REKALL_TOOL_LMAP_LMAP_CONFIG_H_
+
+#define LMAP_VERSION_MAJOR 0
+#define LMAP_VERSION_MINOR 6
+
+#define MINPMEM_START _binary__home_scudette_rekall_tools_linux_lmap_build_modules_pmem_pte_ko_start
+#define MINPMEM_END _binary__home_scudette_rekall_tools_linux_lmap_build_modules_pmem_pte_ko_end
+#define MINPMEM_SIZE _binary__home_scudette_rekall_tools_linux_lmap_build_modules_pmem_pte_ko_size
+
+#endif // _REKALL_TOOL_LMAP_LMAP_CONFIG_H_

@@ -1,0 +1,1 @@
+cmd_/home/scudette/rekall/tools/linux/module.ko := ld -r -m elf_x86_64 -T /usr/src/linux-headers-3.13.0-45-generic/scripts/module-common.lds --build-id  -o /home/scudette/rekall/tools/linux/module.ko /home/scudette/rekall/tools/linux/module.o /home/scudette/rekall/tools/linux/module.mod.o
