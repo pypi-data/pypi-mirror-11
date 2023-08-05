@@ -1,0 +1,100 @@
+Sample lines from a file that has already been written.
+
+Install
+----------
+Install like so. ::
+
+    pip install sample-lines
+
+How to
+----------
+See the help for documentation. ::
+
+    sample-lines -h
+    usage: Randomly select lines from a file. [-h] [--sample-size N]
+                                              [--method {simple-random,systematic}]
+                                              [--repeat REPEAT]
+                                              file
+
+    positional arguments:
+      file
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      --sample-size N, -n N
+                            Number of lines to emit
+      --method {simple-random,systematic}, -m {simple-random,systematic}
+                            Sampling method
+      --repeat REPEAT, -r REPEAT
+                            Number of repetitions for systematic sampling
+
+Samples are with replacement and weighted by line length. The probability
+of selecting a line is proportional to its line length. This allows us to
+sample very quickly, but it makes this approach appropriate only if your
+file has reasonably consistent line lengths or if you don't care about
+short lines.
+
+How fast
+----------
+Consider this 1-gigabyte CSV file. ::
+
+    $ wc big-file.csv
+     2388430 27673790 1071895374 big-file.csv
+
+Running `wc` took three seconds. ::
+
+    time wc big-file.csv
+     2388430 27673790 1071895374 big-file.csv
+
+    real    0m3.789s
+    user    0m3.560s
+    sys     0m0.190s
+
+``sample-lines`` is much faster. Here's a simple random sample of 40 lines, ::
+
+    $ time sample-lines -n 40 -m simple-random big-file.csv > /dev/null
+
+    real    0m0.136s
+    user    0m0.113s
+    sys     0m0.018s
+
+a systematic sample of 40 lines, ::
+
+    $ time sample-lines -n 40 -m systematic -r 4 big-file.csv > /dev/null
+
+    real    0m0.148s
+    user    0m0.122s
+    sys     0m0.019s
+
+and repeated systematic sample, with 4 repeats and 10 lines each, for
+a total of 40 lines. ::
+
+    $ time sample-lines -n 10 -m systematic -r 4 big-file.csv > /dev/null
+
+    real    0m0.175s
+    user    0m0.140s
+    sys     0m0.025s
+
+Most of the time in the above examples was spent loading Python and the
+various modules; printing the help takes almost as long as running the sample.
+
+::
+
+    $ time sample-lines -h > /dev/null
+
+    real    0m0.157s
+    user    0m0.129s
+    sys     0m0.021s
+
+So even a pretty big sample is still fast to run. ::
+
+    $ time sample-lines -n 2000 -m systematic -r 50 big-file.csv > /dev/null
+
+    real    0m2.695s
+    user    0m2.435s
+    sys     0m0.231s
+
+Alternatives
+--------------
+Use `sample <https://github.com/jeroenjanssens/data-science-at-the-command-line/blob/master/tools/sample>`_
+if you want to sample from a stream.
