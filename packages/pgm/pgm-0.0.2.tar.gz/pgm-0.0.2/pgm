@@ -1,0 +1,599 @@
+#!/usr/bin/env python
+#   Copyright 2015 Dan Brooks
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+
+""" pgm - process group manager
+
+pgm is used for managing simple groups of processes. Groups of processeses can 
+be started and stopped together. Individual processes are assigned simple names
+that can be used to view output, connect to stdio, or stop the process. When
+processes stop running, their output remains available for debugging until the
+processes is 'closed' using pgm. Processes are managed inside tmux sessions.
+
+For command examples, see README.
+
+Features Wishlist:
+    - list group resource (cpu+mem) usage (both individual and total) 
+    - Allow the setting of shell variables?
+    - prefix pgm sessions with 'pgm-' to seperate them from regular tmux sessions
+    - add an "order" value to help order the launching of processes from config files
+    - Make python script equally useful as a library api
+"""
+__author__ = "Dan Brooks"
+__copyright__ = "Copyright 2015, Dan Brooks"
+__email__ = "mrdanbrooks@gmail.com"
+__license__ = "Apache License v2.0"
+__version__ = "0.0.2"
+import subprocess as sp
+import argparse
+import os
+import sys
+import re
+import ConfigParser, os
+import uuid
+import getpass
+import time
+
+
+TMUX = "tmux"
+TMUX_VERSION = 1.9
+
+#BUG: if a dead process is around for long enough, we loose its data even though we still have the window. This prevents us from making a new window correctly
+def run_cmd(cmd):
+    """ Run a command and return True or False """
+    try:
+        sp.check_call(cmd.split(), stdout=open('/dev/null'))
+        return True
+    except sp.CalledProcessError as e:
+            return False
+
+def tmux_has_session(session_name):
+    """ Checks to see if the tmux session exists """
+    # NOTE: This is the same as run_cmd, but it supresses stderr as well.
+    # Probably we should rewrite run_cmd() to be more flexible with its output?
+    try:
+        cmd = "%s has-session -t %s" % (TMUX, session_name)
+        sp.check_call(cmd.split(), stdout=open('/dev/null'), stderr=open('/dev/null'))
+        return True
+    except sp.CalledProcessError as e:
+            return False
+
+def tmux_list_session_windows(session_name):
+    """ Generates a list of dictionary objects containing process information for each window.
+        Returns: {ame:(str), pid:(int), running:(bool), exit_code:(str), cmd:(str)} 
+    """
+    check_session_exists(session_name)
+    fmtcmd = "#{window_name}\t#{pane_start_command}\t#{pane_pid}\t#{pane_dead}\t(#{pane_dead_status})"
+    output = sp.check_output([TMUX, 'list-windows', '-t', session_name, "-F", fmtcmd])
+    output = output.strip().split("\n")
+    output = [{"name": l[0], "cmd":l[1], "pid":int(l[2]), "running":True if l[3] == "0" else False, "exit_code":l[4]} for l in [line.split("\t") for line in output]]
+    return output
+ 
+
+def check_session_exists(session_name):
+    """ Checks to make sure session exists, otherwise exits """
+    if not tmux_has_session(session_name):
+        print "Session '%s' does not exist. Run 'init' first to create it." % session_name
+        sys.exit(2)
+
+def check_window_exists(session_name, window_name):
+    """ Checks that the window name exists in the session """
+    processes = tmux_list_session_windows(session_name)
+    processes = [p["name"] for p in processes]
+    if window_name not in processes:
+        print "Process '%s' not found in group '%s'" % (window_name, session_name)
+        exit(1)
+
+
+def get_sudo_password():
+    """ Asks for the user password. Twice. Throws exception if they don't match. """
+    # Don't ask for the password if you are already root
+    if getpass.getuser() == "root":
+        return None
+    passwd = getpass.getpass()
+    if not passwd == getpass.getpass(prompt="Confirm:"):
+        raise AssertionError()
+    return passwd
+
+class configcmd(object):
+    def __init__(self, name, command, enabled=None, sudo=None, shell=None, cmddir=None):
+        self.name = name
+        self.command = command
+        self.enabled = enabled
+        self.sudo = sudo
+        self.shell = shell
+        self.cmddir = cmddir
+
+def parse_config(conf_file):
+    """ Parses config file into dictionary of configcmds"""
+    config = ConfigParser.ConfigParser()
+    try:
+        config.readfp(open(conf_file))
+    except IOError as e:
+        print e
+        exit(1)
+    commands = dict()
+    for section in config.sections():
+        name = section
+        if name in commands.keys():
+            raise Exception("Duplicate name entry found for '%s'" % name)
+        if not config.has_option(section, 'cmd'):
+            raise Exception("config file section '%s' has no 'cmd' defined" % section)
+        command = config.get(section, 'cmd')
+        enabled = True
+        if config.has_option(section, 'enabled') and config.getboolean(section, 'enabled') == False:
+            enabled = False
+        sudo = False
+        if config.has_option(section, 'sudo') and config.getboolean(section, 'sudo'):
+            sudo = True
+        cmddir = None
+        if config.has_option(section, 'dir'):
+            cmddir = config.get(section, 'dir')
+        shell = False
+        if config.has_option(section, 'shell') and config.getboolean(section, 'shell'):
+            shell = True
+        commands[name] = configcmd(name, command, enabled, sudo, shell, cmddir)
+    return commands
+
+
+def command_init(group_name, config=None):
+    """ initializes a new pgm session in tmux """
+    if tmux_has_session(group_name):
+        print "Group '%s' already exists. Aborting" % group_name
+        sys.exit(1)
+    if config:
+        print "Using config file '%s'" % config
+        commands = parse_config(config)
+        # see if we need sudo for anything
+        sudopasswd = None
+        if (True, True) in [(c.sudo, c.enabled) for c in commands.values()]:
+            try:
+                sudopasswd = get_sudo_password()
+            except AssertionError:
+                print "Passwords do not match. Aborting."
+                exit(1)
+
+    # Initialize Session - do this after potentially asking for password
+    run_cmd("%s new-session -s %s -d" % (TMUX, group_name))
+    run_cmd("%s set-option -t %s set-remain-on-exit on" % (TMUX, group_name))
+
+    if config:
+        for command in commands.values():
+            if not command.enabled:
+                print "Skipping disabled command '%s'" % command.name
+            else:
+                try:
+                    command_run(group_name, command.name, command.command, command.sudo, command.shell, command.cmddir, sudopasswd=sudopasswd)
+                except Exception as e:
+                    print "Exception while executing command '%s':" % command.name
+                    print e
+                    print e.message
+    sys.exit(0)
+
+def command_destroy(group_name, force):
+    """ destroy the tmux session """
+    check_session_exists(group_name)
+    if not force:
+        processes = tmux_list_session_windows(group_name)
+        processes = processes[1:]  # Remove the first "bash" window
+        if True in [l["running"] for l in processes]:
+            print "Group contains running processes. Aborting."
+            exit(1)
+    run_cmd("%s kill-session -t %s" % (TMUX, group_name))
+    return
+
+def command_groups():
+    """ Lists all pgm tmux sessions """
+    try:
+        output = sp.check_output([TMUX, 'list-sessions', '-F', "#{session_name}"], stderr=open('/dev/null'))
+    except sp.CalledProcessError as e:
+        print "No groups found"
+    else:
+        output = output.strip().split("\n")
+        print "%d Group(s):" % len(output)
+        for s in output:
+            print " %s" % s
+
+def command_list(group_name):
+    """ List commands from the pgm group """
+    output = tmux_list_session_windows(group_name)
+    output = output[1:]  # Remove the first item (0) - it is always an empty shell
+    print "%d Processes" % len(output)
+    print "%-16s%-10s%-16s%s" % ("PGM Name", "PID", "Status", "Command")
+    for line in output:
+        print "%-16s%-10s%-16s%s" % (line["name"], line["pid"], "Running" if line["running"] else "Exited%s" % line["exit_code"] , line["cmd"])
+
+def command_run(group_name, proc_name, command, sudo=False, shell=False, dirpath=None, sudopasswd=None):
+    """ """
+    # SUDO: We will manually append the sudo command to the command the user passed in.
+    # This is necessary as the normal 'sudo' is not really sufficient to reliably 
+    # run the command. First, normally sudo has a timeout period during which you
+    # don't need to re-enter the password. This makes it non-deterministic whether
+    # or not we need to send the password to sudo. Second, we want sudo to read
+    # from stdin. Normally sudo reads from the terminal program, but we use tmux's
+    # 'send-keys' command to send the password through stdin. 
+    check_session_exists(group_name)
+    if shell:
+        print "Running command in shell"
+
+    # Check name is not is use already
+    cmd = "%s list-windows -t %s -F #{window_name}" % (TMUX, group_name)
+    output = sp.check_output(cmd.split()).strip().split("\n")
+    if proc_name in output:
+        print "Process name '%s' is already used in group '%s'" % (proc_name, group_name)
+        exit(1)
+
+    # Get first available window index for the sessions
+    cmd = "%s list-windows -t %s -F #{window_index}" % (TMUX, group_name)
+    output = sp.check_output(cmd.split()).strip().split("\n")
+    index = None
+    for i in range(len(output)):
+        if not i == int(output[i]):
+            index = i
+            break
+    if not index:
+        index = len(output)
+
+    # Change directory if necessary. Remember where we are so that we can come back.
+    # This is necessary for if we are executing multiple calls in a row.
+    if dirpath:
+        print "Changing directory to ", dirpath
+        runpath = os.getcwd()
+        try:
+            os.chdir(os.path.normpath(os.path.expanduser(dirpath)))
+        except OSError:
+            print "Invalid directory. Aborting."
+            exit(1)
+    
+    # Modify the given command if we are running as sudo. -k clears the timeout. -S reads from stdin
+    # Also, grab the password now so that if it is fumbled, we have not already executed the command.
+    if re.match("^sudo", command, re.IGNORECASE):
+        print "Please use the --sudo switch in place of including the word 'sudo' in your command"
+        exit(1)
+    if sudo and not getpass.getuser() == "root":
+        command = "sudo -k; sudo -p 'passwd' -S " + command
+        if not isinstance(sudopasswd,str):
+            raise Exception("Password not provided.")
+
+    print "Running '%s'" % command
+    # Call Command. The command needs to be sent as a single parameter so tmux receives the entire
+    # thing. Otherwise, python subprocess may attempt to process it as multiple commands
+    if not shell:
+        try:
+            cmd = "%s new-window -t %s:%d -n %s" % (TMUX, group_name, index, proc_name)
+            sp.check_call(cmd.split() + [command]) 
+        except sp.CalledProcessError as e:
+            # TODO: Probably this should throw an error? Probably I should make
+            # some specific errors?
+            return False
+    else:
+        try:
+            cmd = "%s new-window -t %s:%d -n %s" % (TMUX, group_name, index, proc_name)
+            sp.check_call(cmd.split()) 
+            cmd = "%s send-keys -t %s:%d -l" % (TMUX, group_name, index)
+            sp.check_call(cmd.split() + [command])
+            cmd = "%s send-keys -t %s:%d Enter" %(TMUX, group_name, index)
+            run_cmd(cmd)
+        except sp.CalledProcessError as e:
+            # TODO: Probably this should throw an error? Probably I should make
+            # some specific errors?
+            return False
+
+
+    # Set window parameters. Specifically:
+    # aggressive-resize on: This allows windows to immediately change size when unconstrained
+    run_cmd("%s setw -t %s:%d -g aggressive-resize on" % (TMUX, group_name, index))
+
+    if sudo and not getpass.getuser() == "root":
+        # Before we can send the password, we need to make sure tmux has had a
+        # chance to execute the commands and be waiting at the prompt. 
+        timeout = 5
+        cmd = "%s capture-pane -t %s:%s -p" % (TMUX, group_name, index)
+        while timeout > 0 and not sp.check_output(cmd.split()).strip().split("\n")[-1] == "passwd":
+            timeout -= 1
+            print "waiting:", sp.check_output(cmd.split()).strip()
+            time.sleep(1)
+
+        # Pass the password to the sudo command. Make sure it is sent as a single parameter
+        # Then, seperately send the enter key after it.
+        cmd = "%s send-keys -t %s:%d -l" % (TMUX, group_name, index)
+        sp.check_call(cmd.split() + [sudopasswd])
+        cmd = "%s send-keys -t %s:%d Enter" %(TMUX, group_name, index)
+        run_cmd(cmd)
+
+    if dirpath:
+        os.chdir(runpath)
+
+    return True
+
+
+def command_tmux(group_name):
+    """ Enters into the tmux session """
+    check_session_exists(group_name)
+    # Create grouped session with target. Allows this particular client to 
+    # change windows independently of other connections
+    tmp_session_name = uuid.uuid4()
+    cmd = "%s new-session -s %s -t %s" % (TMUX, tmp_session_name, group_name)
+    sp.call(cmd.split())
+    # Destroy temp session if user detached and left tmp session running. 
+    if tmux_has_session(tmp_session_name):
+        cmd = "%s kill-session -t %s" % (TMUX, tmp_session_name)
+        sp.call(cmd.split())
+    exit(0)
+
+def command_tail(group_name, proc_name):
+    """ Captures the latest output from the processes """
+    #TODO: This captures the pane at the width it was last displayed (or default 80)
+    check_session_exists(group_name)
+    # Capture size of the current terminal
+    term_size = sp.check_output(["stty","size"]).strip().split(" ")
+    print term_size
+    cmd = "%s capture-pane -t %s:%s -p" % (TMUX, group_name,  proc_name)
+    output = sp.check_output(cmd.split())
+    print output
+
+
+
+def command_connect(group_name, proc_name):
+    """ Creates a tmux session connected to a single process """
+    check_session_exists(group_name)
+    check_window_exists(group_name, proc_name)
+    # We first create a new background tmux session with a default window.
+    # Next we link the target process window to the established default window,
+    # killing it in the process. Finally, we remove the status bar so it looks good.
+    # http://unix.stackexchange.com/q/24274
+    tmp_session_name = uuid.uuid4()
+    run_cmd("%s new-session -s %s -d" % (TMUX, tmp_session_name))
+    run_cmd("%s link-window -s %s:%s -t %s:0 -k" % (TMUX, group_name, proc_name, tmp_session_name))
+    run_cmd("%s set-option -t %s status off" % (TMUX, tmp_session_name))
+    print "Press 'ctrl-b d' to exit connection. Press Enter to continue."
+    raw_input()
+    cmd = "%s attach -t %s" % (TMUX, tmp_session_name)
+    # Connect the user to the session. This blocks until the user exists.
+    sp.call(cmd.split())
+    # Destroy temp session if user detached and left tmp session running. 
+    if tmux_has_session(tmp_session_name):
+        cmd = "%s kill-session -t %s" % (TMUX, tmp_session_name)
+        sp.call(cmd.split())
+    exit(0)
+
+
+def tmux_kill_proc_in_window(session_name, window_name):
+    """ Kills a window from a session """
+    cmd = "%s send-keys -t %s:%s" % (TMUX, session_name, window_name)
+    sp.check_call(cmd.split() + ["C-c"])
+    #TODO: We should confirm that the process was killed
+
+def command_kill(group_name, proc_name):
+    """ Kills a process """
+    check_session_exists(group_name)
+    processes = tmux_list_session_windows(group_name)
+    # Convert to dictionary for easy reading
+    processes = {l["name"]: l for l in processes}
+    if proc_name not in processes.keys():
+        print "Process '%s' not found in group '%s'" % (proc_name, group_name)
+        exit(1)
+    if not processes[proc_name]["running"]:
+        print "Process '%s' in group '%s' has already terminated." % (proc_name, group_name)
+        exit(1)
+    print "killing pid",processes[proc_name]["pid"]
+    tmux_kill_proc_in_window(group_name, proc_name)
+    return
+
+def command_kill_all(group_name):
+    """ Kills all processes in the group """
+    check_session_exists(group_name)
+    processes = tmux_list_session_windows(group_name)
+    processes = processes[1:]  # Remove the first "bash" processes
+    # Convert to dictionary for easy reading
+    for p in processes:
+        tmux_kill_proc_in_window(group_name, p["name"])
+    return
+ 
+def tmux_remove_window(session_name, window_name):
+    """ removes the window from the session """
+    cmd = "%s kill-window -t %s:%s" % (TMUX, session_name, window_name)
+    run_cmd(cmd)
+
+def command_rm(group_name, proc_name):
+    """ sends a kill signal to a process """
+    check_session_exists(group_name)
+    # Get list of tmux window names and associated indexes
+    processes = tmux_list_session_windows(group_name)
+    processes = {l["name"]: l for l in processes}
+    if proc_name not in processes.keys():
+        print "Process '%s' not found in group '%s'" % (proc_name, group_name)
+        exit(1)
+    if processes[proc_name]["running"]:
+        print "Unable to remove, process '%s' in group '%s' is still running. Please remove using pgm kill first." % (proc_name, group_name)
+        exit(1)
+    tmux_remove_window(group_name, proc_name)
+    exit(0)
+
+def command_rm_all(group_name):
+    """ sends a kill signal to all processes """
+    check_session_exists(group_name)
+    # Get list of tmux window names and associated indexes
+    processes = tmux_list_session_windows(group_name)
+    processes = processes[1:]  # Remove the first "bash" processes
+    skipped = False
+    for p in processes:
+        if not p["running"]:
+            tmux_remove_window(group_name, p["name"])
+        else:
+            skipped = True
+    if skipped:
+        print "Was not able to remove all processes."
+    return
+ 
+
+
+
+def check_for_tmux(tmux_cmd):
+    """ Checks to see if the tmux command is present. Will cause the program to
+    exit early if it is not found. Will raise an exception if the command 
+    returns an error. """
+    try:
+        output = sp.check_output([tmux_cmd, '-V']).strip()
+        version = re.match("^tmux\s(\d+\.\d+)\w*$", output).groups()[0]
+        if float(version) < TMUX_VERSION:
+            print "Error: Requires tmux %s or better" % TMUX_VERSION
+            exit(2)
+    except OSError as e:
+        print "'%s' is either not installed, or is not on the path. Please install tmux." % tmux_cmd
+        sys.exit(1)
+    except sp.CalledProcessError as e:
+        print "There was a problem running '%s'" % tmux_cmd
+        raise e
+
+
+if __name__ == "__main__":
+    check_for_tmux(TMUX)
+
+    parser = argparse.ArgumentParser("pgm")
+    cmd_subparser = parser.add_subparsers(dest="command")
+
+    # Init command
+    cmd_init = cmd_subparser.add_parser("init", help="Starts a new process group")
+    cmd_init.add_argument("group", type=str, help="name of group")
+    cmd_init.add_argument("--config", type=str, default=None, help="Configuration file")
+
+    # destroy command
+    cmd_destroy = cmd_subparser.add_parser("destroy", help="Destroys a process group")
+    cmd_destroy.add_argument("group", type=str, help="name of group")
+    cmd_destroy.add_argument("--force", action="store_true", help="force")
+
+    # Groups command
+    cmd_groups = cmd_subparser.add_parser("groups", help="Lists process groups")
+
+    # List Command
+    cmd_list = cmd_subparser.add_parser("list", help="Lists processes in group")
+    cmd_list.add_argument("group", type=str, help="group to list processes from")
+
+    # Add Command
+    cmd_add_epilog = "Either --config or --cmd must be used to specify the command to be run."
+    cmd_add_epilog += " When --config is used, the --sudo, --dir, and --shell arguments are ignored."
+    cmd_add = cmd_subparser.add_parser("add", help="Add a process to a group", epilog=cmd_add_epilog)
+    cmd_add.add_argument("group", type=str, help="group name")
+    cmd_add.add_argument("name", type=str, help="name to assign process")
+    cmd_add.add_argument("--sudo", action="store_true", help="run the process as sudo")
+    cmd_add.add_argument("--dir", type=str, default=None, help="directory path from which to execute the command")
+    cmd_add.add_argument("--shell", action="store_true", help="run the command in a shell")
+    cmd_add.add_argument("--connect", action="store_true", help="after running command, connect to it")
+    cmd_add.add_argument("--config", type=str, help="Find command in specified config file")
+    cmd_add.add_argument("--cmd", type=str, nargs=argparse.REMAINDER, help="command to run")
+
+    # Connect Command
+    cmd_connect = cmd_subparser.add_parser("connect", help="Connects terminal to process")
+    cmd_connect.add_argument("group", type=str, help="group name")
+    cmd_connect.add_argument("process", type=str, help="process name")
+
+    # TMux Command
+    cmd_tmux = cmd_subparser.add_parser("tmux", help="Connects to the pgm group as tmux session")
+    cmd_tmux.add_argument("group", type=str, help="group name")
+
+    # Tail Command
+    cmd_tail = cmd_subparser.add_parser("tail", help="get last output of command")
+    cmd_tail.add_argument("group", type=str, help="group name")
+    cmd_tail.add_argument("process", type=str, help="process name")
+
+    # Kill Command
+    cmd_stop = cmd_subparser.add_parser("kill", help="stops a running process")
+    cmd_stop.add_argument("group", type=str, help="group name")
+    cmd_stop.add_argument("--name", type=str, help="command name to kill")
+    cmd_stop.add_argument("--all", action="store_true", help="kills all commands")
+    cmd_stop.add_argument("-r", action="store_true", help="Removes the exited process")
+
+    # RM Command
+    cmd_rm = cmd_subparser.add_parser("rm", help="Removes an exited process")
+    cmd_rm.add_argument("group", type=str, help="group name")
+    cmd_rm.add_argument("--name", type=str, help="command name to kill")
+    cmd_rm.add_argument("--all", action="store_true", help="kills all commands")
+
+    cmd_version = cmd_subparser.add_parser("version", help="Prints version information")
+    args = parser.parse_args()
+
+  
+    if args.command == 'init':
+        command_init(args.group, args.config)
+    elif args.command == "destroy":
+        command_destroy(args.group, args.force)
+    elif args.command == "groups":
+        command_groups()
+    elif args.command == "list":
+        command_list(args.group)
+    elif args.command == "add":
+        _group = args.group
+        _name = args.name
+        if args.config and not args.cmd:
+            command_list = parse_config(args.config)
+            if args.name not in command_list.keys():
+                print "Command '%s' not found in config file" % args.name
+                exit(1)
+            c = command_list[args.name]
+            _cmd = c.command
+            _sudo = c.sudo
+            _shell = c.shell
+            _cmddir = c.cmddir
+            # override values if command line args specified
+            if args.sudo:
+                _sudo = args.sudo
+            if args.shell:
+                _shell = args.shell
+            if args.dir:
+                _cmddir = args.dir
+        elif args.cmd and not args.config:
+            _cmd = " ".join(args.cmd)
+            _sudo = args.sudo
+            _shell = args.shell
+            _cmddir = args.dir
+        else:
+            cmd_add.print_help()
+            exit(1)
+        if _sudo:
+            try:
+                sudopasswd = get_sudo_password()
+            except AssertionError:
+                print "Passwords do not match. Aborting."
+                exit(1)
+        else:
+            sudopasswd = None
+        command_run(_group, _name, _cmd, _sudo, _shell, _cmddir, sudopasswd)
+        if args.connect:
+            command_connect(_group, _name)
+    elif args.command == "connect":
+        command_connect(args.group, args.process)
+    elif args.command == "tmux":
+        command_tmux(args.group)
+    elif args.command == "tail":
+        command_tail(args.group, args.process)
+    elif args.command == "kill":
+        if args.name:
+            command_kill(args.group, args.name)
+            if args.r:
+                command_rm(args.group, args.name)
+        elif args.all:
+            command_kill_all(args.group)
+            if args.r:
+                command_rm_all(args.group)
+    elif args.command == "rm":
+        if args.name:
+            command_rm(args.group, args.name)
+        elif args.all:
+            command_rm_all(args.group)
+    elif args.command == "version":
+        print __version__
+    else:
+        raise Exception("Command '%s' is not defined!" % args.command)
+    sys.exit(0)
