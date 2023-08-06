@@ -1,0 +1,36 @@
+Changelog
+=========
+
+0.1.1 (2015-03-24)
+------------------
+
+- Pkg: Update pypi package for first release. [Nicolas Grasset]
+
+0.1.0 (2015-03-24)
+------------------
+
+New
+~~~
+
+- Support for Python 3. [Nicolas Grasset]
+
+- Packaging the app separately. [Nicolas Grasset]
+
+- Packaging the app separately. [Nicolas Grasset]
+
+Other
+~~~~~
+
+- Pkg: Version 0.1.0. [Nicolas Grasset]
+
+- Pkg: Documentation for 0.1.0. [Nicolas Grasset]
+
+- Pkg: Fix travis command to run tests. [Nicolas Grasset]
+
+- Pkg: Travis configuration file. [Nicolas Grasset]
+
+
+
+
+
+
