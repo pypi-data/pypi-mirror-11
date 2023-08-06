@@ -1,0 +1,3 @@
+Descrição longa do nosso projeto, que está no arquivo DESCRIPTION.rst.
+
+
