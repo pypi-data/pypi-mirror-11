@@ -1,0 +1,101 @@
+===================
+Performance checks
+===================
+
+  >>> import os.path
+  >>> import p01.geo.locator
+
+  >>> path = os.path.join(os.path.dirname(p01.geo.__file__), 'data')
+  >>> db = os.path.join(path, 'GeoLite2-City.mmdb')
+
+  >>> locator = p01.geo.locator.GeoLocator(db)
+
+  >>> import time
+  >>> import random
+  >>> r = random.Random(42)
+
+  >>> def genIP():
+  ...     ip = "%s.%s.%s.%s" % (r.randint(1,254), r.randint(0,254), r.randint(0,254), r.randint(0,254))
+  ...     return ip
+
+First measure the time needed for random IP generation
+
+  >>> start = time.time()
+  >>> count = 10000
+  >>> for i in xrange(count):
+  ...    ip = genIP()
+
+  >>> end = time.time()
+  >>> duration = end-start
+  >>> oneRandomIP = duration/(count*1.0)
+
+Then the lookups:
+
+  >>> start = time.time()
+  >>> for i in xrange(count):
+  ...    ip = genIP()
+  ...    d = locator.getData(ip)
+
+  >>> end = time.time()
+  >>> duration = end-start
+  >>> one = (duration/(count*1.0)) - oneRandomIP
+  >>> print "%03.10f" % one
+  0.000...
+
+
+  >>> start = time.time()
+  >>> for i in xrange(count):
+  ...    ip = genIP()
+  ...    d = locator.getTimeZone(ip)
+
+  >>> end = time.time()
+  >>> duration = end-start
+  >>> one = (duration/(count*1.0)) - oneRandomIP
+  >>> print "%03.10f" % one
+  0.000...
+
+And cached lookups are:
+
+  >>> ip = '86.101.28.131'
+  >>> start = time.time()
+  >>> for i in xrange(count):
+  ...    d = locator.getTimeZone(ip)
+
+  >>> end = time.time()
+  >>> duration = end-start
+  >>> one = (duration/(count*1.0))
+
+just hell fast:
+
+  >>> print "%03.10f" % one
+  0.00000...
+
+
+MaxItemCache
+------------
+
+Our thread local storage with max size invalidation is not much slower:
+
+  >>> cache = p01.geo.locator.MaxItemCache(maxitems=100000)
+  >>> locator = p01.geo.locator.GeoLocator(db, cache=cache)
+
+  >>> start = time.time()
+  >>> for i in xrange(count):
+  ...    ip = genIP()
+  ...    d = locator.getTimeZone(ip)
+
+Cached lookups are:
+
+  >>> ip = '86.101.28.131'
+  >>> start = time.time()
+  >>> for i in xrange(count):
+  ...    d = locator.getTimeZone(ip)
+
+  >>> end = time.time()
+  >>> duration = end-start
+  >>> one = (duration/(count*1.0))
+
+also hell fast:
+
+  >>> print "%03.10f" % one
+  0.00000...
