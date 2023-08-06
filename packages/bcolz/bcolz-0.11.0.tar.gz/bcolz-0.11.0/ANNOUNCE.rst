@@ -1,0 +1,119 @@
+=======================
+Announcing bcolz 0.11.0
+=======================
+
+What's new
+==========
+
+Although this is mostly a maintenance release that fixes some bugs, the
+setup.py is enterily based now in setuptools and has been greatly
+modernized to use a new versioning system.  Just this deserves a bump in
+the minor version.  Thanks to Gabi Davar (@mindw) for such a nice
+improvement.
+
+Also, many improvements in the Continuous Integration part (and hence
+not directly visible to users) have been made by Francesc Elies
+(@FrancescElies).  Thanks for his quiet but effective work.
+
+And last but not least, I would like to announce that Valentin Haenel
+(@esc) just stepped down as release manager.  Thanks Valentin for all
+the hard work that you put in making bcolz a better piece of software!
+
+
+What it is
+==========
+
+*bcolz* provides columnar and compressed data containers that can live
+either on-disk or in-memory.  Column storage allows for efficiently
+querying tables with a large number of columns.  It also allows for
+cheap addition and removal of column.  In addition, bcolz objects are
+compressed by default for reducing memory/disk I/O needs. The
+compression process is carried out internally by Blosc, an
+extremely fast meta-compressor that is optimized for binary data. Lastly,
+high-performance iterators (like ``iter()``, ``where()``) for querying
+the objects are provided.
+
+bcolz can use numexpr internally so as to accelerate many vector and
+query operations (although it can use pure NumPy for doing so too).
+numexpr optimizes the memory usage and use several cores for doing the
+computations, so it is blazing fast.  Moreover, since the carray/ctable
+containers can be disk-based, and it is possible to use them for
+seamlessly performing out-of-memory computations.
+
+bcolz has minimal dependencies (NumPy), comes with an exhaustive test
+suite and fully supports both 32-bit and 64-bit platforms.  Also, it is
+typically tested on both UNIX and Windows operating systems.
+
+Together, bcolz and the Blosc compressor, are finally fulfilling the
+promise of accelerating memory I/O, at least for some real scenarios:
+
+http://nbviewer.ipython.org/github/Blosc/movielens-bench/blob/master/querying-ep14.ipynb#Plots
+
+Other users of bcolz are Visualfabriq (http://www.visualfabriq.com/) the
+Blaze project (http://blaze.pydata.org/), Quantopian
+(https://www.quantopian.com/) and Scikit-Allel
+(https://github.com/cggh/scikit-allel) which you can read more about by
+pointing your browser at the links below.
+
+* Visualfabriq:
+
+  * *bquery*, A query and aggregation framework for Bcolz:
+  * https://github.com/visualfabriq/bquery
+
+* Blaze:
+
+  * Notebooks showing Blaze + Pandas + BColz interaction: 
+  * http://nbviewer.ipython.org/url/blaze.pydata.org/notebooks/timings-csv.ipynb
+  * http://nbviewer.ipython.org/url/blaze.pydata.org/notebooks/timings-bcolz.ipynb
+
+* Quantopian:
+
+  * Using compressed data containers for faster backtesting at scale:
+  * https://quantopian.github.io/talks/NeedForSpeed/slides.html
+
+* Scikit-Allel
+
+  * Provides an alternative backend to work with compressed arrays
+  * https://scikit-allel.readthedocs.org/en/latest/bcolz.html
+
+Installing
+==========
+
+bcolz is in the PyPI repository, so installing it is easy::
+
+    $ pip install -U bcolz
+
+
+Resources
+=========
+
+Visit the main bcolz site repository at:
+http://github.com/Blosc/bcolz
+
+Manual:
+http://bcolz.blosc.org
+
+Home of Blosc compressor:
+http://blosc.org
+
+User's mail list:
+bcolz@googlegroups.com
+http://groups.google.com/group/bcolz
+
+License is the new BSD:
+https://github.com/Blosc/bcolz/blob/master/LICENSES/BCOLZ.txt
+
+Release notes can be found in the Git repository:
+https://github.com/Blosc/bcolz/blob/master/RELEASE_NOTES.rst
+
+----
+
+  **Enjoy data!**
+
+
+.. Local Variables:
+.. mode: rst
+.. coding: utf-8
+.. fill-column: 72
+.. End:
+.. vim: set textwidth=72:
