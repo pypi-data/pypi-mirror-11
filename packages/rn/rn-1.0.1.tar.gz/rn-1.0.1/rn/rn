@@ -1,0 +1,850 @@
+#!/usr/bin/env python3
+"""
+rn - rename multiple files, directories or file extensions
+
+Copyright (C) 2015 Jose M. Casarejos
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+You may contact the author of the program at: <rn-program@mundo-r.com>
+
+usage: rn option [--dir | --ext] [-q] target
+
+OPTIONS
+       -d <:n | -n | n:m | n:>
+          Delete the first n characters of the target names if n is a pos-
+          itive  number  preceded by a colon, delete the last n characters
+          if n is a negative number, delete all characters    from  the  nth
+          position to the mth position when n and m are both positive num-
+          bers separated by a colon, and delete from the nth character  to
+          the end of the target names when a positive number n is followed
+          by a colon.
+
+          Character positions are counted from one, so n  must  be    a  non
+          zero positive number.
+
+          In the first option (:n), the colon can be omitted.
+
+       -x <text | text: | :text | text1:text2>
+
+          Delete  all  the appearances of text in the target names for any
+          given text, delete from text to the end of the target names when
+          text  is    followed  by a colon, delete from the beginning of the
+          target names to text when text  is  preceded  by    a  colon,  and
+          delete from text1 to text2 when text1 and text2 are separated by
+          a colon.
+
+       -r old new
+          Replace all the appearances of old in the target names with new.
+
+       -u     Change all the target names to upper case.
+
+       -l     Change all the target names to lower case.
+
+       -t     Change all  the   target names to title case (all words starting
+          with an upper case letter).
+
+       -p prefix
+          Add prefix at the beginning of the target names.
+
+       -s suffix
+          Add suffix at the end of the target names.
+
+       -h     Help. Show a short summary of options.
+
+       --dir  Rename directories.
+
+       --ext  Rename extensions.
+
+       -q     Quiet option. Will not show the new names and will not  not  ask
+          for  confirmation  before renaming. Error messages will still be
+          shown, though.
+
+       target The names or paths of the files or directories  to  rename.  For
+          file  extensions,  the  names or paths of the files whose exten-
+          sions will be renamed.
+
+          As default, rn will rename files. To rename directories or  file
+          extensions  use  the  option --dir or --ext, repectively, before
+          target.
+
+          All the wild-cards admitted by the shell, like "*" or  "?",  are
+          allowed.
+"""
+import sys
+import os
+import glob
+
+VERSION = ' v1.0 '
+COPYRIGHT = 'Copyright (C) 2015 Jose M. Casarejos'
+USAGE = 'usage: rn option [--dir | --ext] [-q] target'
+HELP = 'rn' + VERSION + COPYRIGHT + """
+
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it
+under certain conditions.
+For details, read the COPYING.txt file that comes with the program.
+
+""" + USAGE + """
+
+OPTIONS
+       -d <:n | -n | n:m | n:>                  delete a number of characters
+       -x <text | text: | :text | text1:text2>  crop text
+       -r old new                               replace text
+       -u                                       upper case
+       -l                                       lower case
+       -t                                       title case
+       -p prefix                                add prefix
+       -s suffix                                add suffix
+       -h                                       this help message
+       --dir                                    rename directories
+       --ext                                    rename extensions
+       -q                                       quiet mode
+       target                                   files/dirs/ext to rename"""
+
+
+def delete_first(n, string):
+    """
+    Delete the first n characters of string.
+    Return a new string. Original doesn't change.
+    If n is higher than the length of string, delete string completely.
+
+    input
+    n: positive integer
+    string: string
+
+    output
+    new_string: string
+    """
+    new_string = string[n:]
+    return new_string
+
+
+def delete_middle(n, m, string):
+    """
+    Delete from the nth to the mth character of string, both included.
+    Return a new string. Original doesn't change.
+    If n = m, delete the nth character.
+    If m is higher than the length of string, delete from the nth
+    character to the end of string.
+    If n and m are both higher than the length of string, return the
+    same string.
+
+    input
+    n: positive integer (n > 0)
+    m: positive integer (m >= n > 0)
+    string: string
+
+    output
+    new_string: string
+    """
+    beginning = string[:n-1]
+    ending = string[m:]
+    new_string = beginning + ending
+    return new_string
+
+
+def delete_last(n, string):
+    """
+    Delete the last n characters of string.
+    Return a new string. Original doesn't change.
+    If n > length of string, delete string completely.
+
+    input
+    n: positive integer
+    string: string
+
+    output
+    new_string: string
+    """
+    new_string = string[:-n]
+    return new_string
+
+
+def delete_from(n, string):
+    """
+    Delete from the nth character to the end of string, both included.
+    Return a new string. Original doesn't change.
+    If n > length of string, return the same string.
+
+    input
+    n: positive integer
+    string: string
+
+    output
+    new_string: string
+    """
+    new_string = string[:n-1]
+    return new_string
+
+
+def delete(option, list):
+    """
+    Delete the part of the strings in list indicated by option.
+    Option is a valid delete argument, i.e. '-n', ':n', 'n:m'
+    Return a new list. Original doesn't change.
+    Raise ValueError if option doesn't content a valid
+    delete argument, i.e. n=0, n=text...
+
+    input
+    option: string
+    list: list of strings
+
+    output
+    new_list: list of strings
+    """
+    if option.startswith('-'):
+        n = int(option[1:])
+        if n > 0:     # 0 deletes all
+            new_list = [delete_last(n, string) for string in list]
+            return new_list
+    elif option.startswith(':'):
+        n = int(option[1:])
+        if n > 0:
+            new_list = [delete_first(n, string) for string in list]
+            return new_list
+    elif option.endswith(':'):
+        n = int(option[:-1])
+        if n > 0:
+            new_list = [delete_from(n, string) for string in list]
+            return new_list
+    elif ':' in option:
+        # if one part is missing or just ':' a ValueError will raise
+        begin, end = option.split(':')
+        n = int(begin)
+        m = int(end)
+        if n > 0 and m > 0 and m >= n:
+            new_list = [delete_middle(n, m, string) for string in list]
+            return new_list
+    elif option.isnumeric():
+        n = int(option)
+        if n > 0:
+            new_list = [delete_first(n, string) for string in list]
+            return new_list
+    raise ValueError
+
+
+def crop_text(text, string):
+    """
+    Delete all the appearances of text in string.
+    Return a new string. Original doesn't change.
+    If text is not found, return the same string.
+
+    input
+    text: string
+    string: string
+
+    output
+    new_string: string
+    """
+    new_string = string.replace(text, '')
+    return new_string
+
+
+def crop_to(text, string):
+    """
+    Delete from the beginning of string to the end of text in string.
+    Return a new string. Original doesn't change.
+    If text is not found, return the same string.
+    If text appears in string more than once, delete to the first only.
+
+    input
+    text: string
+    string: string
+
+    output
+    new_string: string
+    """
+    position = string.find(text)
+    if position == -1:  # find returns -1 when a text is not found
+        return string
+    else:
+        new_string = delete_first((position + len(text)), string)
+        return new_string
+
+
+def crop_middle(text1, text2, string):
+    """
+    Delete from the beginning of text1 to the end of text2 in string.
+    Return a new string. Original doesn't change.
+    Return the same string if text1 or text2 are not found, or if text2
+    appears before text1.
+    If text1 or text2 appear in string more than once, delete from the
+    first text1 found to the text2 found after it.
+
+    input
+    begin: string
+    end: string
+    string: string
+
+    output
+    new_string: string
+    """
+    position1 = string.find(text1)
+    if position1 == -1:  # find returns -1 when the text is not found
+        return string
+    # look for text2 AFTER the first appearance of text1
+    position2 = string.find(text2, position1 + len(text1))
+    if position2 == -1:
+        return string
+    new_string = delete_middle(position1 + 1, position2 + len(text2), string)
+    return new_string
+
+
+def crop_from(text, string):
+    """
+    Delete from the beginning of text in string to the end of string.
+    Return a new string. Original doesn't change.
+    Return the same string if text is not found,
+
+    input
+    text: string
+    string: string
+
+    output
+    new_string: string
+    """
+    position = string.find(text)
+    if position == -1:  # find returns -1 when the text is not found
+        return string
+    else:
+        new_string = delete_from(position + 1, string)
+        return new_string
+
+
+def crop(option, list):
+    """
+    Delete the part of the strings in list indicated by option.
+    Option is a valid crop argument, i.e. 'text', ':text', 'tex1:text2'
+    Return a new list. Original doesn't change.
+
+    input
+    option: string
+    list: list of strings
+
+    output
+    new_list: list of strings
+    """
+    if option.startswith(':') and len(option) > 1:   # not just the colon
+        text = option[1:]
+        new_list = [crop_to(text, string) for string in list]
+    elif option.endswith(':') and len(option) > 1:
+        text = option[:-1]
+        new_list = [crop_from(text, string) for string in list]
+    elif ':' in option and len(option) > 1:  # if not, treat as a char
+        text1, text2 = option.split(':')
+        new_list = [crop_middle(text1, text2, string) for string in list]
+    else:
+        new_list = [crop_text(option, string) for string in list]
+    return new_list
+
+
+def replace(old, new, list):
+    """
+    Replace old text with new text for all the strings in list.
+    Return a new list. Original doesn't change.
+    Replace all the appearances of old.
+    Raise ValueError if arguments are empty
+
+    input
+    old: string
+    new: string
+    list: list of strings
+
+    output
+    new_list: list of strings
+    """
+    if old != '' and new != '':
+        new_list = [string.replace(old, new) for string in list]
+        return new_list
+    else:
+        raise ValueError
+
+
+def upper(list):
+    """
+    Change all the strings in list to uppercase.
+    Return a new list. Original doesn't change.
+
+    input
+    list: list of strings
+
+    output
+    new_list: list of strings
+    """
+    new_list = [string.upper() for string in list]
+    return new_list
+
+
+def lower(list):
+    """
+    Change all the strings in list to lowercase.
+    Return a new list. Original doesn't change.
+
+    input
+    list: list of strings
+
+    output
+    new_list: list of strings
+    """
+    new_list = [string.lower() for string in list]
+    return new_list
+
+
+def title(list):
+    """
+    Change all the strings in list to titlecase.
+    Return a new list. Original doesn't change.
+
+    input
+    list: list of strings
+
+    output
+    new_list: list of strings
+    """
+    new_list = [string.title() for string in list]
+    return new_list
+
+
+def add_prefix(prefix, list):
+    """
+    Add prefix at the beginning of all the strings in list.
+    Return a new list. Original doesn't change.
+
+    input
+    prefix: string
+    list: list of strings
+
+    output
+    new_list: list of strings
+    """
+    new_list = [prefix + string for string in list]
+    return new_list
+
+
+def add_suffix(suffix, list):
+    """
+    Add suffix at the end of all the strings in list.
+    Return a new list. Original doesn't change.
+
+    input
+    suffix: string
+    list: list of strings
+
+    output
+    new_list: list of strings
+    """
+    new_list = [string + suffix for string in list]
+    return new_list
+
+
+def split_file(list):
+    """
+    Consider each string in list as the path to a file and split that
+    string into path name, file name and extension.
+    Return three lists.
+    The order of the elements in the returned lists will be the same
+    of the input list, i.e., path[0], file[0] and ext[0] will
+    contain the pathname, file name and extension for file[0].
+    Any element of any of the lists can be empty if the path is to the
+    current working directory or it has no extension.
+
+    input
+    list: list of strings
+
+    output
+    path, file, ext: lists of strings
+    """
+    path = []
+    file = []
+    ext = []
+    for string in list:
+        head, tail = os.path.split(string)
+        path.append(head)
+        name, type = os.path.splitext(tail)
+        file.append(name)
+        ext.append(type[1:])     # exclude de leading dot
+    return path, file, ext
+
+
+def split_dir(list):
+    """
+    Consider each string in list as the path to a directory and split
+    that string into path name and directory name.
+    Return two lists.
+    The order of the elements in the returned lists will be the same
+    of the input list so that, i.e., path[0], dir[0] will contain the
+    pathname, and directory name for file[0].
+    Elements of any of the lists can be empty.
+
+    input
+    list: list of strings
+
+    output
+    path, dir: lists of strings
+    """
+    path = [os.path.dirname(pathname) for pathname in list]
+    dir_name = [os.path.basename(pathname) for pathname in list]
+    return path, dir_name
+
+
+def select_directories(list):
+    """
+    Consider each string in list as the path to a directory and found
+    out if that directory exists.
+    Return a list with the existing directories.
+
+    output
+    dirs: list of strings
+    """
+    dirs = [name for name in list if os.path.isdir(name)]
+    dirs.sort()
+    return dirs
+
+
+def select_files(list):
+    """
+    Consider each string in list as the path to a file and found
+    out if that file exists.
+    Return a list with the existing files.
+
+    output
+    files: list of strings
+    """
+    files = [name for name in list if os.path.isfile(name)]
+    files.sort()
+    return files
+
+
+def select_extensions(list):
+    """
+    Consider each string in list as the path to a file and found
+    out if that file exists.
+    Return a list with the extensions of the existing files.
+
+    output
+    ext: list of strings
+    """
+    files = select_files(list)
+    (*__, ext) = split_file(files)
+    return ext
+
+
+def check_unique(list):
+    """
+    Return True if there are no repeated elements in list.
+    Return False otherwise.
+    Check before renaming or it won't be apparent until one of the repeated
+    names has changed.
+    """
+    return(len(list) == len(set(list)))
+
+
+def show_changes(old_names, new_names):
+    """
+    Compare the elements of old_names and new_names in order and show
+    the ones that are different.
+    Consider each string in old_names and new_names as the path to the
+    old and new name of a file.
+    Show the directory name if it's different than the current directory
+    followed by the old and new name of each file.
+
+    input
+    old_names, new_names: list
+
+    """
+    previous_dir = os.path.dirname(old_names[0])  # first file directory
+    print(previous_dir)
+    for old, new in zip(old_names, new_names):
+        if new != old:
+            dir = os.path.dirname(new)
+            # whenever directory name changes, print its name
+            if dir != previous_dir:
+                print()
+                print(dir)
+                previous_dir = dir
+            print(os.path.basename(old), '->', os.path.basename(new))
+    print()
+
+
+def confirm():
+    """
+    Ask for confirmation.
+    Return True if the answer is affirmative.
+    Return False otherwise.
+    """
+    proceed = input('Rename [y]/n: ? ')
+    if proceed.lower() in ['y', 'yes']:
+        return True
+    else:
+        return False
+
+
+def rename(old, new):
+    """
+    Rename all the files or directories in old list with the names in new list
+    if they are different and the new file/directory doesn't exist yet.
+    Raise FileExistsError if a file or directory already exists.
+    OSError will raise by itself if renaming fails (permissions or I/O error).
+    In case of any of the above errors, no file is renamed.
+    """
+    # check before starting to rename so no file is changed before checking
+    for (old_name, new_name) in zip(old, new):
+        if new_name != old_name:
+            if os.path.isfile(new_name) or os.path.isdir(new_name):
+                # FileExistsError won't raise by itself
+                # rename silently will rename the file removing the old one
+                raise FileExistsError
+    for (old_name, new_name) in zip(old, new):
+        if new_name != old_name:
+            os.rename(old_name, new_name)
+        # in windows two files with different case will check a equals
+        # having different cases, if that's the case, proceed to rename
+        # anyway because being case aware (though case insensitive) case
+        # transformatios are still possible
+        # the existence checked at the beginning is valid for the same reasons
+        elif (os.path.normcase(new_name) == os.path.normcase(old_name) and
+              sys.platform.startswith('win')):
+            os.rename(old_name, new_name)
+
+
+def parse(arg):
+    """
+    Extract all program options from arg.
+    Return a dictionary with all the possible program options as keys
+    and its associated parameters, if any, as the key values.
+    Raise a ValueError if the options are missing or incorrect.
+
+    input
+    arg: list
+
+    output
+    option: dictionary in the form:
+            {'help': True / False,
+             'delete': string / '',
+             'crop': string / '',
+             'replace': [string, string] / ''
+             'prefix': string / False
+             'suffix': string / False
+             'upper': True / False
+             'lower': True / False
+             'title': True / False
+             'dir': True / False
+             'ext': True / False
+             'files': list / False}
+                          List of files and directories that match the
+                          target option.
+                          Empty list if nothing matches.
+                          False if no selection is given.
+    """
+    option = {'help': False,
+              'delete': '', 'crop': '', 'replace': '',
+              'upper': False, 'lower': False, 'title': False,
+              'prefix': False, 'suffix': False,
+              'dir': False, 'ext': False, 'quiet': False,
+              'files': False}
+    try:
+        # look for required argument: -h, -d, -x, etc.
+        if arg[0] == '-h':
+            option['help'] = True
+        elif arg[0] == '-d':
+            option['delete'] = arg[1]
+            arg = arg[2:]
+        elif arg[0] == '-x':
+            option['crop'] = arg[1]
+            arg = arg[2:]
+        elif arg[0] == '-r':
+            option['replace'] = [arg[1], arg[2]]
+            arg = arg[3:]
+        elif arg[0] == '-u':
+            option['upper'] = True
+            arg = arg[1:]
+        elif arg[0] == '-l':
+            option['lower'] = True
+            arg = arg[1:]
+        elif arg[0] == '-t':
+            option['title'] = True
+            arg = arg[1:]
+        elif arg[0] == '-p':
+            option['prefix'] = arg[1]
+            arg = arg[2:]
+        elif arg[0] == '-s':
+            option['suffix'] = arg[1]
+            arg = arg[2:]
+        else:
+            raise ValueError
+        # look for optional arguments in any order
+        while arg:
+            if arg[0] == '--dir':
+                option['dir'] = True
+                option['ext'] = False
+                arg = arg[1:]
+            elif arg[0] == '--ext':
+                option['ext'] = True
+                option['dir'] = False
+                arg = arg[1:]
+            elif arg[0] == '-q':
+                option['quiet'] = True
+                arg = arg[1:]
+            else:
+                break
+        # the rest is the target
+        if arg:     # have to check. ValueError won't raise with 'if'
+            if sys.platform.startswith('win'):
+                files = []
+                for expression in arg:
+                    expand = glob.glob(expression)
+                    for name in expand:
+                        files.append(name)
+            else:
+                # can't use glob
+                # example:
+                #   directory with a file named name[brackets]
+                #   due to wildcard expansion in POSIX systems:
+                #       rn -t * <==> rn -t file1 file2 name[brackets]
+                #       glob.glob('file1') = ['file1']
+                #       glob.glob('file1') = ['file2']
+                #       glob.glob('name[brackets]') = []
+                files = arg
+            files.sort()    # to ensure tests behavior in all O.S.
+            option['files'] = files
+        else:
+            raise ValueError     # missing files
+    except IndexError:
+        raise ValueError    # arguments missing
+    return option
+
+
+def main(arguments=sys.argv[1:]):
+    """
+    Main program function.
+    Raise ValueError after printing an error message in the next cases:
+    - options are not valid
+    - not matching files or dirs are found
+    - delete or crop argument is not valid
+    - the renaming would create repeated files
+    - name already exists in that directory
+    - user doesn't confirm action
+
+    By default the options list is given by sys.argv but it can also be
+    passed as an argument to this function (i.e. for testing purposes)
+
+    input
+    arguments: list of arguments
+    """
+    if not arguments:
+        raise ValueError
+    try:
+        arg = parse(arguments)
+    except ValueError:
+        print ('Wrong arguments!')
+        raise ValueError
+    if arg['help']:
+        print(HELP)
+        return
+    if arg['dir']:
+        dir_selection = select_directories(arg['files'])
+        dir_path, dir_name = split_dir(dir_selection)
+        target = dir_name
+    else:
+        file_selection = select_files(arg['files'])
+        file_path, file_name, ext_name = split_file(file_selection)
+        if arg['ext']:
+            target = ext_name
+        else:
+            target = file_name
+    if not target:
+        print('Not matching target!')
+        raise ValueError
+    if arg['delete']:
+        try:
+            result = delete(arg['delete'], target)
+        except ValueError:
+            print('Wrong arguments for delete!')
+            raise ValueError
+    elif arg['crop']:
+        try:
+            result = crop(arg['crop'], target)
+        except ValueError:
+            print('Wrong arguments for crop!')
+            raise ValueError
+    elif arg['replace']:
+        old, new = arg['replace'][0], arg['replace'][1]
+        if old != '' and new != '':
+            result = replace(old, new, target)
+        else:
+            print('Wrong arguments for replace!')
+            raise ValueError
+    elif arg['upper']:
+        result = upper(target)
+    elif arg['lower']:
+        result = lower(target)
+    elif arg['title']:
+        result = title(target)
+    elif arg['prefix']:
+        result = add_prefix(arg['prefix'], target)
+    elif arg['suffix']:
+        result = add_suffix(arg['suffix'], target)
+    else:
+        print('Wrong arguments!')
+        raise ValueError    # missing mandatory option
+    # rebuild paths
+    if arg['dir']:
+        old_name = dir_selection
+        new_name = [os.path.join(path, dir) for
+                    path, dir in zip(dir_path, result)]
+    else:
+        if arg['ext']:
+            new_ext = result
+            new_file = file_name
+        else:
+            new_file = result
+            new_ext = ext_name
+        old_name = file_selection
+        # avoid adding a dot after names without extension
+        new_file = ['.'.join([name, ext]) if ext else name for
+                    name, ext in zip(new_file, new_ext)]
+        new_name = [os.path.join(path, file) for path, file in
+                    zip(file_path, new_file)]
+
+    # check and rename
+    if new_name == old_name:
+        print('No changes!')
+        raise ValueError
+    if check_unique(new_name) is False:
+        print('Repeated name(s)!')
+        raise ValueError
+    if not arg['quiet']:
+        show_changes(old_name, new_name)
+        if not confirm():
+            print('Aborted by user!')
+            raise ValueError
+    try:
+        rename(old_name, new_name)
+    except FileExistsError:
+        print('Repeated name(s)!')
+        raise ValueError
+    except OSError:
+        print('I/O error! Check permissions.')
+        raise ValueError
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except ValueError:
+        print(USAGE)
+        sys.exit(-1)
+    else:
+        sys.exit()
