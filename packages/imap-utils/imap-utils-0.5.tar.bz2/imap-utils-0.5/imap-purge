@@ -1,0 +1,131 @@
+#!/usr/bin/python
+# -*- coding: UTF-8 -*-
+# vim: expandtab sw=4 ts=4 sts=4:
+'''
+Purges old mails on IMAP.
+'''
+__author__ = 'Michal Čihař'
+__email__ = 'michal@cihar.com'
+__license__ = '''
+Copyright (c) 2003 - 2014 Michal Čihař
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'''
+import sys
+import time
+import IMAPUtils
+
+class PurgeIMAP(IMAPUtils.IMAPUtil):
+    '''
+    Class for purging old mails.
+    '''
+    def purge_step(self, age, flag):
+        '''
+        Purges messages with flag older than age from current folder.
+
+        @param age: Timestamp where older messages will be deleted.
+        @type age: time.time
+
+        @param flag: Flag which messages are searched.
+        @type flag: string
+        '''
+        lst = self._imap.search(
+                None, 
+                flag, 
+                'UNFLAGGED', 
+                'UNDELETED', 
+                'BEFORE', 
+                time.strftime('%d-%b-%Y', age))
+        for ids in lst[1]:
+            if ids:
+                id_list = ids.split()
+                while id_list:
+                    self._imap.store(
+                            ','.join(id_list[:1000]), 
+                            '+FLAGS.SILENT', 
+                            '\deleted')
+                    del id_list[:1000]
+
+    def purge_folder(self, ts_read, ts_unread, folder):
+        '''
+        Purges single folder.
+
+        @param ts_read: Timestamp where older read messages will be deleted.
+        @type ts_read: time.time
+
+        @param ts_unread: Timestamp where older unread messages will be deleted.
+        @type ts_unread: time.time
+
+        @param folder: Folder to purge.
+        @type folder: string
+
+        '''
+        res = self._imap.select(folder)
+        if res[0] != 'OK':
+            sys.stderr.write("select: %s\n" % str(res)) 
+            sys.exit(2)
+
+        if self._verbose:
+            print 'Purging %s (%s, %s)' % (folder, ts_read, ts_unread)
+
+        if self._simulate:
+            return
+
+        self.purge_step(ts_read, 'SEEN')
+        self.purge_step(ts_unread, 'UNSEEN')
+
+        self._imap.expunge()
+
+    def purge_normal(self):
+        '''
+        Purges non-recursively folders as defined in config.
+        '''
+        for folder in self._config.options('purge'):
+            timestamps = self.get_timestamps('purge', folder)
+            self.purge_folder(timestamps[0], timestamps[1], folder)
+
+    def purge_recursive(self):
+        '''
+        Purges recursively folders as defined in config.
+        '''
+        for folder in self._config.options('purge-recursive'):
+            timestamps = self.get_timestamps('purge-recursive', folder)
+            self.purge_folder(timestamps[0], timestamps[1], folder)
+            typ, lst = self._imap.list(folder)   
+            if typ != 'OK':
+                sys.stderr.write("list: %s\n" % str((typ, lst)))
+                sys.exit(2)
+
+            for item in lst:
+                vals = item.split('"')
+                name = vals[-2]
+                if name != 'INBOX':
+                    self.purge_folder(timestamps[0], timestamps[1], name)
+
+    def purge_all(self):
+        '''
+        Purges all folders as defined in config.
+        '''
+        self.purge_normal()
+        self.purge_recursive()
+
+    def run(self):
+        '''
+        Executes all actions.
+        '''
+        self.login()
+        self.purge_all()
+
+if __name__ == '__main__':
+    PurgeIMAP().run()
