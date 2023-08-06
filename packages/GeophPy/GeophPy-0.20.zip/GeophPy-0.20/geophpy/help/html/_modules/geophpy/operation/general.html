@@ -1,0 +1,447 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>geophpy.operation.general &mdash; GeophPy 0.20 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.20',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="GeophPy 0.20 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">GeophPy 0.20 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for geophpy.operation.general</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   geophpy.operation.general</span>
+<span class="sd">   -------------------------</span>
+
+<span class="sd">   DataSet Object general operations routines.</span>
+
+<span class="sd">   :copyright: Copyright 2014 Lionel Darras, Philippe Marty and contributors, see AUTHORS.</span>
+<span class="sd">   :license: GNU GPL v3.</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="c">### USER DEFINED PARAMETERS ##########################################</span>
+
+<span class="c"># list of &quot;griddata&quot; interpolation methods available for wumappy interface</span>
+<span class="n">gridding_interpolation_list</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;none&#39;</span><span class="p">,</span> <span class="s">&#39;nearest&#39;</span><span class="p">,</span> <span class="s">&#39;linear&#39;</span><span class="p">,</span> <span class="s">&#39;cubic&#39;</span><span class="p">]</span>
+
+<span class="c">######################################################################</span>
+
+
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy.interpolate</span> <span class="kn">import</span> <span class="n">griddata</span><span class="p">,</span> <span class="n">RectBivariateSpline</span>
+<span class="kn">from</span> <span class="nn">copy</span> <span class="kn">import</span> <span class="n">deepcopy</span>
+<span class="kn">from</span> <span class="nn">geophpy.misc.utils</span> <span class="kn">import</span> <span class="o">*</span>
+
+
+
+<span class="k">def</span> <span class="nf">copy</span><span class="p">(</span><span class="n">dataset</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   cf. dataset.py</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+<span class="c">###ORIGINAL CODE having some flaws:</span>
+<span class="c">###- newdataset was a parameter instead of a &quot;return&quot;</span>
+<span class="c">###- values were correctly handled but the code was sequential</span>
+<span class="c">###- zimage was duplicated as a tuple instead of an np.array</span>
+<span class="c">###- fields and info were not duplicated but &quot;referenced&quot;</span>
+<span class="c">###- georef was missing ...</span>
+   <span class="c">#newdataset.data.values = []</span>
+   <span class="c">#for l in range(len(dataset.data.values)):</span>
+      <span class="c">## for each line adds a value in the column</span>
+      <span class="c">#newdataset.data.values.append(dataset.data.values[l])</span>
+   <span class="c">#newdataset.data.values = np.array(newdataset.data.values)</span>
+   <span class="c">#newdataset.data.z_image = []</span>
+   <span class="c">#for l in range(len(dataset.data.z_image)):</span>
+      <span class="c">#newdataset.data.z_image.append(dataset.data.z_image[l])</span>
+   <span class="c">#newdataset.data.fields = dataset.data.fields</span>
+   <span class="c">#newdataset.info = dataset.info</span>
+<span class="c">###SECOND CODE somewhat better:</span>
+   <span class="c">## initialisation of the duplicate DataSet Object</span>
+   <span class="c">#newdataset = DataSet._new()</span>
+   <span class="c">## duplication of the raw values</span>
+   <span class="c">#newdataset.data.values = dataset.data.values.copy()</span>
+   <span class="c">## duplication of the zimage</span>
+   <span class="c">#newdataset.data.z_image = dataset.data.z_image.copy()</span>
+   <span class="c">## duplication of the fieldnames</span>
+   <span class="c">#newdataset.data.fields = dataset.data.fields.copy()</span>
+   <span class="c">## duplication of the dataset meta data</span>
+   <span class="c">#newdataset.info = deepcopy(dataset.info)</span>
+   <span class="c">## duplication of the georeferencing meta data</span>
+   <span class="c">#newdataset.georef.active = (dataset.georef.active &amp; True)</span>
+   <span class="c">#newdataset.georef.points_list = dataset.georef.points_list.copy()</span>
+   <span class="c">#return newdataset</span>
+<span class="c">###THIRD CODE straightforward:</span>
+   <span class="k">return</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
+
+
+
+<span class="k">def</span> <span class="nf">getgriddinginterpolationlist</span><span class="p">():</span>
+   <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">   cf. dataset.py</span>
+
+<span class="sd">   &quot;&quot;&quot;</span>
+   <span class="k">return</span> <span class="n">gridding_interpolation_list</span>
+
+
+
+<span class="k">def</span> <span class="nf">interpolate</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">interpolation</span><span class="o">=</span><span class="s">&quot;none&quot;</span><span class="p">,</span> <span class="n">x_delta</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">y_delta</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">x_decimal_maxnb</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">y_decimal_maxnb</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">x_frame_factor</span><span class="o">=</span><span class="mf">0.</span><span class="p">,</span> <span class="n">y_frame_factor</span><span class="o">=</span><span class="mf">0.</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   cf. dataset.py</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="n">T</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">T</span>
+   <span class="n">x_array</span> <span class="o">=</span> <span class="n">T</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+   <span class="n">y_array</span> <span class="o">=</span> <span class="n">T</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+   <span class="n">z_array</span> <span class="o">=</span> <span class="n">T</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+
+   <span class="c"># Get distinct x values ###########################################</span>
+   <span class="n">x_list</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">x_array</span><span class="p">)</span>
+
+   <span class="c"># Get the median delta between two distinct x values ##############</span>
+   <span class="k">if</span> <span class="p">(</span><span class="n">x_delta</span> <span class="o">==</span> <span class="bp">None</span><span class="p">):</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">x_decimal_maxnb</span> <span class="o">==</span> <span class="bp">None</span><span class="p">):</span>
+         <span class="c"># Undefined x rounding precision ############################</span>
+         <span class="c"># ...TBD... raise an error here !</span>
+         <span class="k">pass</span>
+      <span class="n">x_delta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">around</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">x_list</span><span class="p">),</span> <span class="n">x_decimal_maxnb</span><span class="p">))</span>
+      <span class="c"># ...TBD... why not take the min diff value instead of the median ?</span>
+      <span class="c">#x_delta = np.nanmin(np.around(np.diff(x_list), x_decimal_maxnb))</span>
+   <span class="k">else</span><span class="p">:</span>
+      <span class="n">x_decimal_maxnb</span> <span class="o">=</span> <span class="n">getdecimalsnb</span><span class="p">(</span><span class="n">x_delta</span><span class="p">)</span>
+
+   <span class="c"># Determinate min and max x coordinates and number of x pixels ####</span>
+   <span class="n">xmin</span> <span class="o">=</span> <span class="n">x_array</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
+   <span class="n">xmax</span> <span class="o">=</span> <span class="n">x_array</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+   <span class="n">xmin</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.</span><span class="o">+</span><span class="n">x_frame_factor</span><span class="p">)</span><span class="o">*</span><span class="n">xmin</span> <span class="o">-</span> <span class="n">x_frame_factor</span><span class="o">*</span><span class="n">xmax</span>
+   <span class="n">xmax</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.</span><span class="o">+</span><span class="n">x_frame_factor</span><span class="p">)</span><span class="o">*</span><span class="n">xmax</span> <span class="o">-</span> <span class="n">x_frame_factor</span><span class="o">*</span><span class="n">xmin</span>
+   <span class="n">xmin</span> <span class="o">=</span> <span class="nb">round</span><span class="p">(</span><span class="n">xmin</span><span class="p">,</span> <span class="n">x_decimal_maxnb</span><span class="p">)</span>
+   <span class="n">xmax</span> <span class="o">=</span> <span class="nb">round</span><span class="p">(</span><span class="n">xmax</span><span class="p">,</span> <span class="n">x_decimal_maxnb</span><span class="p">)</span>
+   <span class="c"># Don&#39;t forget the &quot;+1&quot; (éternel pb poteaux et intervalles !) #####</span>
+   <span class="n">nx</span>   <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">around</span><span class="p">((</span><span class="n">xmax</span><span class="o">-</span><span class="n">xmin</span><span class="p">)</span><span class="o">/</span><span class="n">x_delta</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+
+   <span class="c"># Get the median delta between two distinct y values ##############</span>
+   <span class="k">if</span> <span class="p">(</span><span class="n">y_delta</span> <span class="o">==</span> <span class="bp">None</span><span class="p">):</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">y_decimal_maxnb</span> <span class="o">==</span> <span class="bp">None</span><span class="p">):</span>
+         <span class="c"># Undefined y rounding precision ############################</span>
+         <span class="c"># ...TBD... raise an error here !</span>
+         <span class="k">pass</span>
+      <span class="c"># Get median value for each profile ############################</span>
+      <span class="n">deltamedianlist</span> <span class="o">=</span> <span class="p">[]</span>
+      <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">x_list</span><span class="p">:</span>
+         <span class="c"># Extract the y profile at x coordinate #####################</span>
+         <span class="n">profile</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">y_array</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">x_array</span> <span class="o">==</span> <span class="n">x</span><span class="p">)])</span>
+         <span class="c"># Append the median of this y profile #######################</span>
+         <span class="n">deltamedianlist</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">around</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">profile</span><span class="p">),</span> <span class="n">y_decimal_maxnb</span><span class="p">)))</span>
+         <span class="c"># ...TBD... why not take the min diff value instead of the median ?</span>
+         <span class="c">#deltamedianlist.append(np.nanmin(np.around(np.diff(profile), y_decimal_maxnb)))</span>
+      <span class="c"># Get median value of all median values ########################</span>
+      <span class="n">y_delta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">deltamedianlist</span><span class="p">))</span>
+      <span class="c"># ...TBD... why not take the min diff value instead of the median ?</span>
+      <span class="c">#y_delta = np.nanmin(np.array(deltamedianlist))</span>
+   <span class="k">else</span><span class="p">:</span>
+      <span class="n">y_decimal_maxnb</span> <span class="o">=</span> <span class="n">getdecimalsnb</span><span class="p">(</span><span class="n">y_delta</span><span class="p">)</span>
+
+   <span class="c"># Determinate min and max y coordinates and number of y pixels ####</span>
+   <span class="n">ymin</span> <span class="o">=</span> <span class="n">y_array</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
+   <span class="n">ymax</span> <span class="o">=</span> <span class="n">y_array</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+   <span class="n">ymin</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.</span><span class="o">+</span><span class="n">y_frame_factor</span><span class="p">)</span><span class="o">*</span><span class="n">ymin</span> <span class="o">-</span> <span class="n">y_frame_factor</span><span class="o">*</span><span class="n">ymax</span>
+   <span class="n">ymax</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.</span><span class="o">+</span><span class="n">y_frame_factor</span><span class="p">)</span><span class="o">*</span><span class="n">ymax</span> <span class="o">-</span> <span class="n">y_frame_factor</span><span class="o">*</span><span class="n">ymin</span>
+   <span class="n">ymin</span> <span class="o">=</span> <span class="nb">round</span><span class="p">(</span><span class="n">ymin</span><span class="p">,</span> <span class="n">y_decimal_maxnb</span><span class="p">)</span>
+   <span class="n">ymax</span> <span class="o">=</span> <span class="nb">round</span><span class="p">(</span><span class="n">ymax</span><span class="p">,</span> <span class="n">y_decimal_maxnb</span><span class="p">)</span>
+   <span class="c"># Don&#39;t forget the &quot;+1&quot; (éternel pb poteaux et intervalles !) #####</span>
+   <span class="n">ny</span>   <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">around</span><span class="p">((</span><span class="n">ymax</span> <span class="o">-</span> <span class="n">ymin</span><span class="p">)</span><span class="o">/</span><span class="n">y_delta</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+
+   <span class="c"># Build the (xi, yi) regular vector coordinates ###################</span>
+   <span class="n">xi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">xmin</span><span class="p">,</span> <span class="n">xmax</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+   <span class="n">yi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">ymin</span><span class="p">,</span> <span class="n">ymax</span><span class="p">,</span> <span class="n">ny</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+   <span class="c"># Build the (X, Y) regular grid coordinates #######################</span>
+   <span class="n">X</span><span class="p">,</span> <span class="n">Y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">meshgrid</span><span class="p">(</span><span class="n">xi</span><span class="p">,</span> <span class="n">yi</span><span class="p">)</span>
+
+   <span class="c"># Build the Zimage regularly gridded matrix #######################</span>
+   <span class="k">if</span> <span class="p">(</span><span class="n">interpolation</span> <span class="o">==</span> <span class="s">&quot;none&quot;</span><span class="p">):</span>
+      <span class="c">## just project data into the grid</span>
+      <span class="c">## if several data points fall into the same pixel, they are averaged</span>
+      <span class="c">## don&#39;t forget to &quot;peakfilt&quot; the rawvalues beforehand to avoid averaging bad data points</span>
+      <span class="n">Z</span> <span class="o">=</span> <span class="n">X</span> <span class="o">*</span> <span class="mf">0.</span>
+      <span class="n">P</span> <span class="o">=</span> <span class="n">Z</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+      <span class="k">for</span> <span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">,</span><span class="n">z</span> <span class="ow">in</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">values</span><span class="p">:</span>
+         <span class="n">indx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">xi</span><span class="o">+</span><span class="n">x_delta</span><span class="o">/</span><span class="mf">2.</span> <span class="o">&gt;</span> <span class="n">x</span><span class="p">)</span>
+         <span class="n">indy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">yi</span><span class="o">+</span><span class="n">y_delta</span><span class="o">/</span><span class="mf">2.</span> <span class="o">&gt;</span> <span class="n">y</span><span class="p">)</span>
+         <span class="n">Z</span><span class="p">[</span><span class="n">indy</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span><span class="n">indx</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]]</span> <span class="o">+=</span> <span class="n">z</span>
+         <span class="n">P</span><span class="p">[</span><span class="n">indy</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span><span class="n">indx</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]]</span> <span class="o">+=</span> <span class="mi">1</span>
+      <span class="n">Z</span> <span class="o">=</span> <span class="n">Z</span><span class="o">/</span><span class="n">P</span>
+   <span class="k">elif</span> <span class="p">(</span><span class="n">interpolation</span> <span class="ow">in</span> <span class="n">getgriddinginterpolationlist</span><span class="p">())</span> <span class="p">:</span>
+      <span class="c">## perform data interpolation onto the grid</span>
+      <span class="c">## the interpolation algorithm will deal with overlapping data points</span>
+      <span class="c">## nevertheless don&#39;t forget to &quot;peakfilt&quot; the rawvalues beforehand to avoid interpolation being too much influenced by bad data points</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      # Fill holes in each profiles with &quot;nan&quot; #######################</span>
+<span class="sd">      ## this is to avoid filling holes with interpolated values</span>
+<span class="sd">      nan_array = []</span>
+<span class="sd">      for x in x_list:</span>
+<span class="sd">         profile = np.unique(y_array[np.where(x_array == x)])</span>
+<span class="sd">         nan_array = profile_completewithnan(x, profile, nan_array, y_delta, factor=2, ymin=ymin, ymax=ymax)</span>
+<span class="sd">      if (len(nan_array) != 0):</span>
+<span class="sd">         completed_array = np.append(dataset.data.values, np.array(nan_array), axis=0)</span>
+<span class="sd">         T = completed_array.T</span>
+<span class="sd">         x_array = T[0]</span>
+<span class="sd">         y_array = T[1]</span>
+<span class="sd">         z_array = T[2]</span>
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="c"># Interpolate the Zimage #######################################</span>
+      <span class="n">Z</span> <span class="o">=</span> <span class="n">griddata</span><span class="p">((</span><span class="n">x_array</span><span class="p">,</span> <span class="n">y_array</span><span class="p">),</span> <span class="n">z_array</span><span class="p">,</span> <span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">),</span> <span class="n">method</span><span class="o">=</span><span class="n">interpolation</span><span class="p">)</span>
+   <span class="k">else</span><span class="p">:</span>
+      <span class="c"># Undefined interpolation method ###############################</span>
+      <span class="c"># ...TBD... raise an error here !</span>
+      <span class="k">pass</span>
+
+   <span class="c"># Fill the DataSet Object #########################################</span>
+   <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span> <span class="o">=</span> <span class="n">Z</span>
+   <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_min</span> <span class="o">=</span> <span class="n">xmin</span>
+   <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_max</span> <span class="o">=</span> <span class="n">xmax</span>
+   <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_min</span> <span class="o">=</span> <span class="n">ymin</span>
+   <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_max</span> <span class="o">=</span> <span class="n">ymax</span>
+   <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">z_min</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmin</span><span class="p">(</span><span class="n">Z</span><span class="p">)</span>
+   <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">z_max</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">Z</span><span class="p">)</span>
+   <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_gridding_delta</span> <span class="o">=</span> <span class="n">x_delta</span>
+   <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_gridding_delta</span> <span class="o">=</span> <span class="n">y_delta</span>
+   <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">gridding_interpolation</span> <span class="o">=</span> <span class="n">interpolation</span>
+
+
+
+<span class="c">#def apodisation2d(val, apodisation_factor):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   2D apodisation, to reduce side effects</span>
+
+<span class="sd">   Parameters :</span>
+
+<span class="sd">   :val: 2-Dimension array</span>
+
+<span class="sd">   :apodisation_factor: apodisation factor in percent (0-25)</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+<span class="c">#   if (apodisation_factor &gt; 0):</span>
+<span class="c">#      # apodisation in the x direction</span>
+<span class="c">#      for profile in val.T:</span>
+<span class="c">#         _apodisation1d(profile, apodisation_factor)</span>
+
+      <span class="c"># apodisation in the y direction</span>
+<span class="c">#      for profile in val:</span>
+<span class="c">#         _apodisation1d(profile, apodisation_factor)</span>
+
+
+
+<span class="c">#def _apodisation1d(array1D, apodisation_factor):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   1D apodisation, to reduce side effects</span>
+
+<span class="sd">   Parameters :</span>
+
+<span class="sd">   :array1D: 1-Dimension array</span>
+
+<span class="sd">   :apodisation_factor: apodisation factor in percent (0-25)</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+<span class="c">#   na = len(array1D)                                  # n is the number of array elements</span>
+<span class="c">#   napod = int(np.around((na * apodisation_factor)/100))     # napod is the number of array elements to treat</span>
+<span class="c">#   if (napod &lt;= 1):                                   # one element at least must be treated</span>
+<span class="c">#      napod = 1</span>
+<span class="c">#   pi2 = np.pi/2.</span>
+<span class="c">#   for n in range(napod):                             # for napod first data</span>
+<span class="c">#      array1D[n] = array1D[n]*np.cos((napod-n)*pi2/napod)</span>
+
+<span class="c">#   for n in range(na-napod, na):                      # for napod last data</span>
+<span class="c">#      array1D[n] = array1D[n]*np.cos((n+1-na+napod)*pi2/napod)</span>
+
+
+
+<div class="viewcode-block" id="apodisation2d"><a class="viewcode-back" href="../../../index.html#geophpy.operation.general.apodisation2d">[docs]</a><span class="k">def</span> <span class="nf">apodisation2d</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">apodisation_factor</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   2D apodisation, to reduce side effects</span>
+
+<span class="sd">   Parameters :</span>
+
+<span class="sd">   :val: 2-Dimension array</span>
+
+<span class="sd">   :apodisation_factor: apodisation factor in percent (0-25)</span>
+
+<span class="sd">   Returns :</span>
+<span class="sd">      - apodisation pixels number in x direction</span>
+<span class="sd">      - apodisation pixels number in y direction</span>
+<span class="sd">      - enlarged array after apodisation</span>
+<span class="sd">   &#39;&#39;&#39;</span>
+
+   <span class="n">array2DTemp</span> <span class="o">=</span> <span class="p">[]</span>
+   <span class="n">array2D</span> <span class="o">=</span> <span class="p">[]</span>
+   
+   <span class="k">if</span> <span class="p">(</span><span class="n">apodisation_factor</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+      <span class="c"># apodisation in the x direction</span>
+      <span class="n">nx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>                                       <span class="c"># n is the number of array elements</span>
+      <span class="n">napodx</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">around</span><span class="p">((</span><span class="n">nx</span> <span class="o">*</span> <span class="n">apodisation_factor</span><span class="p">)</span><span class="o">/</span><span class="mi">100</span><span class="p">))</span>   <span class="c"># napod is the number of array elements to treat</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">napodx</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">):</span>                                        <span class="c"># one element at least must be treated</span>
+         <span class="n">napodx</span> <span class="o">=</span> <span class="mi">1</span>
+      <span class="k">for</span> <span class="n">profile</span> <span class="ow">in</span> <span class="n">val</span><span class="o">.</span><span class="n">T</span><span class="p">:</span>
+         <span class="n">array2DTemp</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_apodisation1d</span><span class="p">(</span><span class="n">profile</span><span class="p">,</span> <span class="n">napodx</span><span class="p">))</span>
+      <span class="n">array2DTemp</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">array2DTemp</span><span class="p">))</span><span class="o">.</span><span class="n">T</span>
+
+      <span class="c"># apodisation in the y direction</span>
+      <span class="n">ny</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">array2DTemp</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>                                 <span class="c"># n is the number of array elements</span>
+      <span class="n">napody</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">around</span><span class="p">((</span><span class="n">ny</span> <span class="o">*</span> <span class="n">apodisation_factor</span><span class="p">)</span><span class="o">/</span><span class="mi">100</span><span class="p">))</span>   <span class="c"># napod is the number of array elements to treat</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">napody</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">):</span>                                        <span class="c"># one element at least must be treated</span>
+         <span class="n">napody</span> <span class="o">=</span> <span class="mi">1</span>
+      <span class="k">for</span> <span class="n">profile</span> <span class="ow">in</span> <span class="n">array2DTemp</span><span class="p">:</span>
+         <span class="n">array2D</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_apodisation1d</span><span class="p">(</span><span class="n">profile</span><span class="p">,</span> <span class="n">napody</span><span class="p">))</span>
+   <span class="k">else</span><span class="p">:</span>                                                       <span class="c"># apodisation factor = 0</span>
+      <span class="n">array2D</span> <span class="o">=</span> <span class="n">val</span>
+
+<span class="c">#   return napodx, napody, np.array(array2D)</span>
+   <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">array2D</span><span class="p">)</span>
+
+
+</div>
+<span class="k">def</span> <span class="nf">_apodisation1d</span><span class="p">(</span><span class="n">array1D</span><span class="p">,</span> <span class="n">napod</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   1D apodisation, to reduce side effects</span>
+
+<span class="sd">   Parameters :</span>
+
+<span class="sd">   :array1D: 1-Dimension array</span>
+
+<span class="sd">   :napod: apodisation pixels number</span>
+
+<span class="sd">   Returns : 1-Dimension array of len(array1D) + napod elements</span>
+<span class="sd">   </span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="n">pi2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">/</span><span class="mf">2.</span>
+
+   <span class="n">na</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">array1D</span><span class="p">)</span>                                 <span class="c"># n is the number of array elements</span>
+   <span class="n">nresult</span> <span class="o">=</span> <span class="n">na</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">napod</span>
+   <span class="n">array1Dresult</span> <span class="o">=</span> <span class="p">[]</span>
+   <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">napod</span><span class="p">):</span>
+      <span class="n">array1Dresult</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">array1D</span><span class="p">[</span><span class="n">n</span><span class="p">]</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">((</span><span class="n">napod</span><span class="o">-</span><span class="n">n</span><span class="p">)</span><span class="o">*</span><span class="n">pi2</span><span class="o">/</span><span class="n">napod</span><span class="p">))</span>
+   <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">na</span><span class="p">):</span>
+      <span class="n">array1Dresult</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">array1D</span><span class="p">[</span><span class="n">n</span><span class="p">])</span>
+   <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">na</span><span class="o">-</span><span class="n">napod</span><span class="p">,</span> <span class="n">na</span><span class="p">):</span>                      <span class="c"># for napod last data</span>
+      <span class="n">array1Dresult</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">array1D</span><span class="p">[</span><span class="n">n</span><span class="p">]</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">((</span><span class="n">n</span><span class="o">+</span><span class="mi">1</span><span class="o">-</span><span class="n">na</span><span class="o">+</span><span class="n">napod</span><span class="p">)</span><span class="o">*</span><span class="n">pi2</span><span class="o">/</span><span class="n">napod</span><span class="p">))</span>
+
+   <span class="k">return</span> <span class="n">array1Dresult</span>   
+
+
+
+<span class="k">def</span> <span class="nf">apodisation2Dreverse</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">valwithapod</span><span class="p">,</span> <span class="n">napodx</span><span class="p">,</span> <span class="n">napody</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   To do the reverse apodisation</span>
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="n">na</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+   <span class="n">nb</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+   <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">na</span><span class="p">):</span>
+      <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nb</span><span class="p">):</span>
+         <span class="n">val</span><span class="p">[</span><span class="n">n</span><span class="p">][</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="n">valwithapod</span><span class="p">[</span><span class="n">n</span><span class="o">+</span><span class="n">napody</span><span class="p">][</span><span class="n">m</span><span class="o">+</span><span class="n">napodx</span><span class="p">]</span>
+
+
+<span class="k">def</span> <span class="nf">sample</span><span class="p">(</span><span class="n">dataset</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   To rebuild the Values from a Z_image</span>
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="n">X</span> <span class="o">=</span> <span class="n">zimage_xcoord</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
+   <span class="n">Y</span> <span class="o">=</span> <span class="n">zimage_ycoord</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
+   <span class="n">Z</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+   <span class="n">xi</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">values</span><span class="p">[:,</span><span class="mi">0</span><span class="p">]</span>
+   <span class="n">yi</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">values</span><span class="p">[:,</span><span class="mi">1</span><span class="p">]</span>
+   <span class="n">zi</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">values</span><span class="p">[:,</span><span class="mi">2</span><span class="p">]</span>
+   <span class="n">zCubSpl</span> <span class="o">=</span> <span class="n">RectBivariateSpline</span><span class="p">(</span><span class="n">Y</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">kx</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ky</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>   <span class="c"># why Y,X ?</span>
+   <span class="n">zj</span> <span class="o">=</span> <span class="n">zCubSpl</span><span class="o">.</span><span class="n">ev</span><span class="p">(</span><span class="n">xi</span><span class="p">,</span> <span class="n">yi</span><span class="p">,</span> <span class="n">dx</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">dy</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+   <span class="n">zi</span> <span class="o">*=</span> <span class="mf">0.</span>
+   <span class="n">zi</span> <span class="o">+=</span> <span class="n">zj</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../../../index.html">
+              <img class="logo" src="../../../_static/geophpy-square.png" alt="Logo"/>
+            </a></p><h3>Useful Links</h3>
+<ul>
+  <li><a href="http://pypi.python.org/pypi/GeophPy">
+    GeophPy @ PyPI</a></li>
+  <li><a href="http://134.157.44.234/GeophPy.pdf">
+    PDF Manual</a></li>
+</ul>
+
+<h3 style="margin-top: 1.5em;">Search</h3>
+<form class="search" action="search.html" method="get">
+  <input type="text" name="q">
+  <input type="submit" value="Go">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<p class="searchtip" style="font-size: 90%">
+Enter search terms or a module, class or function name.
+</p>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">GeophPy 0.20 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2014, Lionel Darras &amp; Philippe Marty.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3b2.
+    </div>
+  </body>
+</html>

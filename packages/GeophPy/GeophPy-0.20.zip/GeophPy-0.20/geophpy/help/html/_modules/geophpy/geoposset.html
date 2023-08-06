@@ -1,0 +1,456 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>geophpy.geoposset &mdash; GeophPy 0.16 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.16',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="GeophPy 0.16 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">GeophPy 0.16 documentation</a> &raquo;</li>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for geophpy.geoposset</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    GeophPy.geoposset</span>
+<span class="sd">    -----------------</span>
+
+<span class="sd">    Geographics Positioning Set management.</span>
+
+<span class="sd">    :copyright: Copyright 2014 Lionel Darras, Philippe Marty and contributors, see AUTHORS.</span>
+<span class="sd">    :license: GNU GPL v3.</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">absolute_import</span>
+<span class="kn">import</span> <span class="nn">shapefile</span>   <span class="c"># pyshp for reading and writing shapefiles</span>
+<span class="kn">import</span> <span class="nn">geophpy.geopositioning.kml</span> <span class="kn">as</span> <span class="nn">kml</span>
+<span class="kn">import</span> <span class="nn">matplotlib</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="kn">as</span> <span class="nn">plt</span>
+<span class="kn">import</span> <span class="nn">glob</span>                         <span class="c"># for managing severals files thanks to &quot;*.&quot; extension</span>
+<span class="kn">import</span> <span class="nn">utm</span>                          <span class="c"># to convert utm and wgs84 coordinates</span>
+<span class="kn">import</span> <span class="nn">os</span>
+
+<span class="c"># definitions</span>
+<span class="n">POINT_PARAMS</span> <span class="o">=</span> <span class="s">&#39;bo&#39;</span>
+<span class="n">MULTIPOINT_PARAMS</span> <span class="o">=</span> <span class="s">&#39;bo--&#39;</span>
+<span class="n">LINE_PARAMS</span> <span class="o">=</span> <span class="s">&#39;r&#39;</span>
+<span class="n">SURFACE_PARAMS</span> <span class="o">=</span> <span class="s">&#39;g&#39;</span>
+
+<span class="n">refsystem_list</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;UTM&#39;</span><span class="p">,</span> <span class="s">&#39;WGS84&#39;</span><span class="p">]</span>           <span class="c"># list of reference systems availables</span>
+<span class="n">type_list</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;point&#39;</span><span class="p">,</span> <span class="s">&#39;shapefile&#39;</span><span class="p">]</span>          <span class="c"># list of element types availables</span>
+<span class="n">utm_minletter</span> <span class="o">=</span> <span class="s">&#39;E&#39;</span>
+<span class="n">utm_minnumber</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="n">utm_maxletter</span> <span class="o">=</span> <span class="s">&#39;X&#39;</span>
+<span class="n">utm_maxnumber</span> <span class="o">=</span> <span class="mi">60</span>
+
+
+<span class="c">#---------------------------------------------------------------------------#</span>
+<span class="c"># Geographics Positioning Set Object                                        #</span>
+<span class="c">#---------------------------------------------------------------------------#</span>
+<div class="viewcode-block" id="GeoPosSet"><a class="viewcode-back" href="../../index.html#geophpy.geoposset.GeoPosSet">[docs]</a><span class="k">class</span> <span class="nc">GeoPosSet</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Builds a geographic positioning set to display or use to georeferencing data set.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="n">refsystem</span> <span class="o">=</span> <span class="bp">None</span>                <span class="c"># Geographic positioning Reference System (None, &#39;UTM&#39;, &#39;WGS84&#39;, ...)        </span>
+    <span class="nb">type</span> <span class="o">=</span> <span class="bp">None</span>                     <span class="c"># Type of elements contained in the array (&#39;point&#39;, &#39;shapefile&#39;, ...)</span>
+    <span class="nb">list</span> <span class="o">=</span> <span class="p">[]</span>                       <span class="c"># List of elements (points, shapefiles, ...)</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span>    
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="GeoPosSet.from_file"><a class="viewcode-back" href="../../index.html#geophpy.geoposset.GeoPosSet.from_file">[docs]</a>    <span class="k">def</span> <span class="nf">from_file</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">refsystem</span><span class="p">,</span> <span class="nb">type</span><span class="p">,</span> <span class="n">filenameslist</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Builds a geographic positioning set from a list of files.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters :</span>
+
+<span class="sd">        :refsystem: geographic positioning reference system, None, &#39;UTM&#39;, &#39;WGS84&#39;, ...</span>
+<span class="sd">        </span>
+<span class="sd">        :type: type of elements contained in the files, &#39;point&#39;, &#39;shapefile&#39;, ...</span>
+<span class="sd">        </span>
+<span class="sd">        :filenameslist: list of files to open,</span>
+<span class="sd">        </span>
+<span class="sd">        [&#39;shapefile1&#39;, &#39;shapefile2&#39;, ...] or,</span>
+<span class="sd">        [&#39;shapefile*&#39;] to open all files with a filename beginning by &quot;shapefile&quot; (without extensions).</span>
+
+<span class="sd">        Returns :</span>
+<span class="sd">        :success: true if geoposset built, fals if not.</span>
+<span class="sd">        </span>
+<span class="sd">        :geoposset: geographics positioning set built with file(s).</span>
+<span class="sd">        </span>
+<span class="sd">        Example :</span>
+<span class="sd">        success, geoposset = GeoPosSet.from_file(&#39;UTM&#39;, &#39;shapefile&#39;, &quot;shapefile1&quot;)</span>
+<span class="sd">        </span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        
+        <span class="n">geoposset</span> <span class="o">=</span> <span class="n">cls</span><span class="p">()</span>
+        <span class="n">geoposset</span><span class="o">.</span><span class="n">type</span> <span class="o">=</span> <span class="nb">type</span>
+        <span class="n">geoposset</span><span class="o">.</span><span class="n">refsystem</span> <span class="o">=</span> <span class="n">refsystem</span>
+        <span class="n">geoposset</span><span class="o">.</span><span class="n">list</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="n">success</span> <span class="o">=</span> <span class="bp">True</span>                                                      <span class="c"># by default</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nb">type</span> <span class="o">==</span> <span class="s">&#39;shapefile&#39;</span><span class="p">)</span> <span class="p">:</span>
+            <span class="k">for</span> <span class="n">filenames</span> <span class="ow">in</span> <span class="n">filenameslist</span> <span class="p">:</span>                                <span class="c"># for each file in the list</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">filenamewithoutextension</span><span class="p">,</span> <span class="n">extension</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">filenames</span><span class="p">)</span>
+                    <span class="n">filenamesextended</span> <span class="o">=</span> <span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">filenamewithoutextension</span><span class="o">+</span><span class="s">&quot;.shp&quot;</span><span class="p">)</span>         <span class="c"># extension if the filenames if &#39;*&#39; is contained</span>
+                    <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">filenamesextended</span> <span class="p">:</span>
+                        <span class="n">geoposset</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">shapefile</span><span class="o">.</span><span class="n">Reader</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>   <span class="c"># adds shapefile in the list</span>
+                <span class="k">except</span> <span class="ne">IOError</span><span class="p">:</span>
+                    <span class="k">print</span><span class="p">(</span><span class="s">&quot;File Read Error (&quot;</span><span class="p">,</span><span class="n">filename</span><span class="p">,</span><span class="s">&quot;)&quot;</span><span class="p">)</span>
+                    <span class="n">success</span> <span class="o">=</span> <span class="bp">False</span>
+                    <span class="k">break</span>                                                   <span class="c"># exits the loop</span>
+        <span class="k">else</span> <span class="p">:</span>
+            <span class="n">success</span> <span class="o">=</span> <span class="bp">False</span>
+                
+        <span class="k">return</span> <span class="n">success</span><span class="p">,</span> <span class="n">geoposset</span>
+
+
+</div>
+<div class="viewcode-block" id="GeoPosSet.points_getlist"><a class="viewcode-back" href="../../index.html#geophpy.geoposset.GeoPosSet.points_getlist">[docs]</a>    <span class="k">def</span> <span class="nf">points_getlist</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        get list of points</span>
+
+<span class="sd">        Returns: list of points</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="n">point_num</span> <span class="o">=</span> <span class="mi">0</span>                               <span class="c"># initialisation of the point number</span>
+        <span class="n">points_list</span> <span class="o">=</span> <span class="p">[]</span>                            <span class="c"># initialisation of the points list      </span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s">&#39;shapefile&#39;</span><span class="p">):</span>
+            <span class="n">firstpoint</span> <span class="o">=</span> <span class="bp">True</span>
+   
+            <span class="k">for</span> <span class="n">sf</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">list</span> <span class="p">:</span>                    <span class="c"># for each shape file in the list</span>
+                <span class="n">shapes</span> <span class="o">=</span> <span class="n">sf</span><span class="o">.</span><span class="n">shapes</span><span class="p">()</span>
+
+                <span class="k">for</span> <span class="n">shape</span> <span class="ow">in</span> <span class="n">shapes</span> <span class="p">:</span>                <span class="c"># for each shape in the file</span>
+                    <span class="c"># if point type :</span>
+                    <span class="k">if</span> <span class="p">((</span><span class="n">shape</span><span class="o">.</span><span class="n">shapeType</span> <span class="o">==</span> <span class="n">shapefile</span><span class="o">.</span><span class="n">POINT</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">shape</span><span class="o">.</span><span class="n">shapeType</span> <span class="o">==</span> <span class="n">shapefile</span><span class="o">.</span><span class="n">POINTZ</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">shape</span><span class="o">.</span><span class="n">shapeType</span> <span class="o">==</span> <span class="n">shapefile</span><span class="o">.</span><span class="n">POINTM</span><span class="p">))</span> <span class="p">:</span>
+                        <span class="n">points_list</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">point_num</span><span class="p">,</span> <span class="n">shape</span><span class="o">.</span><span class="n">points</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">shape</span><span class="o">.</span><span class="n">points</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]])</span>
+                        <span class="n">point_num</span> <span class="o">=</span> <span class="n">point_num</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="k">else</span> <span class="p">:</span>
+            <span class="n">points_list</span> <span class="o">=</span> <span class="p">[]</span>     
+            
+        <span class="k">return</span> <span class="n">points_list</span>
+
+
+</div>
+<div class="viewcode-block" id="GeoPosSet.plot"><a class="viewcode-back" href="../../index.html#geophpy.geoposset.GeoPosSet.plot">[docs]</a>    <span class="k">def</span> <span class="nf">plot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">picturefilename</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">transparent</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">i_xmin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">i_xmax</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">i_ymin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">i_ymax</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        display map of points, lines, and surfaces described in geographic positioning list</span>
+
+<span class="sd">        Parameters :</span>
+<span class="sd">        </span>
+<span class="sd">        :picturefilename: name of the file to save the picture. If None, no picture saved in a file</span>
+<span class="sd">        </span>
+<span class="sd">        :dpi:</span>
+<span class="sd">        </span>
+<span class="sd">        :transparent: if True, picture display points not plotted as transparents</span>
+<span class="sd">        </span>
+<span class="sd">        :i_xmin: x minimal value to display, None by default</span>
+<span class="sd">        </span>
+<span class="sd">        :i_xmax: x maximal value to display, None by default</span>
+<span class="sd">        </span>
+<span class="sd">        :i_ymin: y minimal value to display, None by default</span>
+<span class="sd">        </span>
+<span class="sd">        :i_ymax: y maximal value to display, None by default</span>
+
+<span class="sd">        Returns :</span>
+
+<span class="sd">        :success: True if no error</span>
+
+<span class="sd">        :fig: figure object</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>                       <span class="c"># creation of the empty figure</span>
+        <span class="n">point_num</span> <span class="o">=</span> <span class="mi">0</span>                            <span class="c"># initialisation of the point number</span>
+        <span class="n">points_list</span> <span class="o">=</span> <span class="p">[[</span><span class="s">&quot;Num&quot;</span><span class="p">,</span> <span class="s">&quot;Lon&quot;</span><span class="p">,</span> <span class="s">&quot;Lat&quot;</span><span class="p">]]</span>    <span class="c"># initialisation of the points list      </span>
+        <span class="n">firstpoint</span> <span class="o">=</span> <span class="bp">True</span>
+
+        <span class="n">success</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s">&#39;shapefile&#39;</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">sf</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">list</span> <span class="p">:</span>                    <span class="c"># for each shape file in the list</span>
+                <span class="n">shapes</span> <span class="o">=</span> <span class="n">sf</span><span class="o">.</span><span class="n">shapes</span><span class="p">()</span>
+
+                <span class="k">for</span> <span class="n">shape</span> <span class="ow">in</span> <span class="n">shapes</span> <span class="p">:</span>                     <span class="c"># for each shape in the file</span>
+                    <span class="c"># if point type :</span>
+                    <span class="k">if</span> <span class="p">((</span><span class="n">shape</span><span class="o">.</span><span class="n">shapeType</span> <span class="o">==</span> <span class="n">shapefile</span><span class="o">.</span><span class="n">POINT</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">shape</span><span class="o">.</span><span class="n">shapeType</span> <span class="o">==</span> <span class="n">shapefile</span><span class="o">.</span><span class="n">POINTZ</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">shape</span><span class="o">.</span><span class="n">shapeType</span> <span class="o">==</span> <span class="n">shapefile</span><span class="o">.</span><span class="n">POINTM</span><span class="p">))</span> <span class="p">:</span>
+                        <span class="n">plot_params</span> <span class="o">=</span> <span class="n">MULTIPOINT_PARAMS</span>
+                        <span class="n">points_list</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">point_num</span><span class="p">,</span> <span class="n">shape</span><span class="o">.</span><span class="n">points</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">shape</span><span class="o">.</span><span class="n">points</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]])</span> 
+                        <span class="n">plt</span><span class="o">.</span><span class="n">text</span><span class="p">(</span><span class="n">shape</span><span class="o">.</span><span class="n">points</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">shape</span><span class="o">.</span><span class="n">points</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">],</span><span class="nb">str</span><span class="p">(</span><span class="n">point_num</span><span class="p">))</span>
+                        <span class="n">point_num</span> <span class="o">=</span> <span class="n">point_num</span> <span class="o">+</span> <span class="mi">1</span>
+                    <span class="c"># if multipoint type :</span>
+                    <span class="k">elif</span> <span class="p">((</span><span class="n">shape</span><span class="o">.</span><span class="n">shapeType</span> <span class="o">==</span> <span class="n">shapefile</span><span class="o">.</span><span class="n">MULTIPOINT</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">shape</span><span class="o">.</span><span class="n">shapeType</span> <span class="o">==</span> <span class="n">shapefile</span><span class="o">.</span><span class="n">MULTIPOINTZ</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">shape</span><span class="o">.</span><span class="n">shapeType</span> <span class="o">==</span> <span class="n">shapefile</span><span class="o">.</span><span class="n">MULTIPOINTM</span><span class="p">))</span> <span class="p">:</span>
+                        <span class="n">plot_params</span> <span class="o">=</span> <span class="n">MULTIPOINT_PARAMS</span>
+                    <span class="c"># if line type :</span>
+                    <span class="k">elif</span> <span class="p">((</span><span class="n">shape</span><span class="o">.</span><span class="n">shapeType</span> <span class="o">==</span> <span class="n">shapefile</span><span class="o">.</span><span class="n">POLYLINE</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">shape</span><span class="o">.</span><span class="n">shapeType</span> <span class="o">==</span> <span class="n">shapefile</span><span class="o">.</span><span class="n">POLYLINEZ</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">shape</span><span class="o">.</span><span class="n">shapeType</span> <span class="o">==</span> <span class="n">shapefile</span><span class="o">.</span><span class="n">POLYLINEM</span><span class="p">))</span> <span class="p">:</span>
+                        <span class="n">plot_params</span> <span class="o">=</span> <span class="n">LINE_PARAMS</span>
+                    <span class="c"># if surface type :</span>
+                    <span class="k">else</span> <span class="p">:</span>
+                        <span class="n">plot_params</span> <span class="o">=</span> <span class="n">SURFACE_PARAMS</span>
+
+                    <span class="n">points</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">shape</span><span class="o">.</span><span class="n">points</span><span class="p">)</span>        
+                    <span class="k">if</span> <span class="p">(</span><span class="n">firstpoint</span> <span class="o">==</span> <span class="bp">True</span><span class="p">)</span> <span class="p">:</span>              <span class="c"># if first point to display, initialises the x and y limits values</span>
+                        <span class="n">xmin</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                        <span class="n">xmax</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                        <span class="n">ymin</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                        <span class="n">ymax</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                        <span class="n">firstpoint</span> <span class="o">=</span> <span class="bp">False</span>
+                    <span class="k">else</span> <span class="p">:</span>                                 <span class="c"># else compares with the x and y limits established</span>
+                        <span class="k">if</span> <span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&lt;</span> <span class="n">xmin</span><span class="p">)</span> <span class="p">:</span>
+                             <span class="n">xmin</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                        <span class="k">if</span> <span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&gt;</span> <span class="n">xmax</span><span class="p">)</span> <span class="p">:</span>
+                            <span class="n">xmax</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                        <span class="k">if</span> <span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">&lt;</span> <span class="n">ymin</span><span class="p">)</span> <span class="p">:</span>
+                            <span class="n">ymin</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                        <span class="k">if</span> <span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">&gt;</span> <span class="n">ymax</span><span class="p">)</span> <span class="p">:</span>
+                            <span class="n">ymax</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                                                        <span class="c"># displays the point, the line, or the surface</span>
+                    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">points</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">plot_params</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">success</span> <span class="o">=</span> <span class="bp">False</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">success</span> <span class="o">==</span> <span class="bp">True</span><span class="p">):</span>
+            <span class="c"># for each x or y limit not configured in input, initialisation of the value with the limits of points displayed</span>
+            <span class="n">nolimits</span> <span class="o">=</span> <span class="bp">True</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">i_xmin</span> <span class="o">==</span> <span class="bp">None</span><span class="p">)</span> <span class="p">:</span>
+                <span class="n">i_xmin</span> <span class="o">=</span> <span class="n">xmin</span>
+            <span class="k">else</span> <span class="p">:</span>
+                <span class="n">nolimits</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">i_xmax</span> <span class="o">==</span> <span class="bp">None</span><span class="p">)</span> <span class="p">:</span>
+                <span class="n">i_xmax</span> <span class="o">=</span> <span class="n">xmax</span>
+            <span class="k">else</span> <span class="p">:</span>
+                <span class="n">nolimits</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">i_ymin</span> <span class="o">==</span> <span class="bp">None</span><span class="p">)</span> <span class="p">:</span>
+                <span class="n">i_ymin</span> <span class="o">=</span> <span class="n">ymin</span>
+            <span class="k">else</span> <span class="p">:</span>
+                <span class="n">nolimits</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">i_ymax</span> <span class="o">==</span> <span class="bp">None</span><span class="p">)</span> <span class="p">:</span>
+                <span class="n">i_ymax</span> <span class="o">=</span> <span class="n">ymax</span>
+            <span class="k">else</span> <span class="p">:</span>
+                <span class="n">nolimits</span> <span class="o">=</span> <span class="bp">False</span>
+
+            <span class="k">if</span> <span class="p">(</span><span class="n">nolimits</span> <span class="o">==</span> <span class="bp">False</span><span class="p">)</span> <span class="p">:</span>                    <span class="c"># sets the axis limits                                </span>
+                <span class="n">xmin</span><span class="p">,</span> <span class="n">xmax</span><span class="p">,</span> <span class="n">ymin</span><span class="p">,</span> <span class="n">ymax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">axis</span><span class="p">([</span><span class="n">i_xmin</span><span class="p">,</span> <span class="n">i_xmax</span><span class="p">,</span> <span class="n">i_ymin</span><span class="p">,</span> <span class="n">i_ymax</span><span class="p">])</span>
+            <span class="k">else</span> <span class="p">:</span>                                      <span class="c"># gets the axis limits</span>
+                <span class="n">xmin</span><span class="p">,</span> <span class="n">xmax</span><span class="p">,</span> <span class="n">ymin</span><span class="p">,</span> <span class="n">ymax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">axis</span><span class="p">()</span>
+
+            <span class="c"># to have the same scale in X and Y axis</span>
+            <span class="n">dy</span> <span class="o">=</span> <span class="n">ymax</span> <span class="o">-</span> <span class="n">ymin</span>
+            <span class="n">dx</span> <span class="o">=</span> <span class="n">xmax</span> <span class="o">-</span> <span class="n">xmin</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">dy</span> <span class="o">&gt;</span> <span class="n">dx</span><span class="p">):</span>
+                <span class="n">xmax</span> <span class="o">=</span> <span class="n">xmin</span> <span class="o">+</span> <span class="n">dy</span>
+            <span class="k">elif</span> <span class="p">(</span><span class="n">dx</span> <span class="o">&gt;</span> <span class="n">dy</span><span class="p">):</span>
+                <span class="n">ymax</span> <span class="o">=</span> <span class="n">ymin</span> <span class="o">+</span> <span class="n">dx</span>
+            <span class="n">plt</span><span class="o">.</span><span class="n">axis</span><span class="p">([</span><span class="n">xmin</span><span class="p">,</span> <span class="n">xmax</span><span class="p">,</span> <span class="n">ymin</span><span class="p">,</span> <span class="n">ymax</span><span class="p">])</span>
+  
+            <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">()</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">ticklabel_format</span><span class="p">(</span><span class="n">useOffset</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="p">(</span><span class="n">picturefilename</span> <span class="o">!=</span> <span class="bp">None</span><span class="p">)</span> <span class="p">:</span>               <span class="c"># if picturefilename in input, saves in a picture file</span>
+                <span class="n">plt</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">picturefilename</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="n">dpi</span><span class="p">,</span> <span class="n">transparent</span><span class="o">=</span><span class="n">transparent</span><span class="p">)</span>
+            
+        <span class="k">return</span> <span class="n">success</span><span class="p">,</span> <span class="n">fig</span>
+
+
+</div>
+<div class="viewcode-block" id="GeoPosSet.to_kml"><a class="viewcode-back" href="../../index.html#geophpy.geoposset.GeoPosSet.to_kml">[docs]</a>    <span class="k">def</span> <span class="nf">to_kml</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kmlfilename</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Builds a kml file with points, lines, and surfaces described in a list of geographic positioning set</span>
+
+<span class="sd">        Parameters :</span>
+
+<span class="sd">        :kmlfilename: Name of the kml file to save</span>
+
+<span class="sd">        Returns :</span>
+
+<span class="sd">        :success: True if operation done</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">success</span> <span class="o">=</span> <span class="bp">True</span>                                      <span class="c"># by default</span>
+        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s">&#39;shapefile&#39;</span><span class="p">):</span>            
+            <span class="n">kml</span><span class="o">.</span><span class="n">shapefile_to_kmlfile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">list</span><span class="p">,</span> <span class="n">kmlfilename</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">success</span> <span class="o">=</span> <span class="bp">False</span>
+
+        <span class="k">return</span> <span class="n">success</span>
+
+
+
+<span class="c">#===========================================================================#</span>
+
+<span class="c">#---------------------------------------------------------------------------#</span>
+<span class="c"># General Geographic Positioning Set Environments functions                 #</span>
+<span class="c">#---------------------------------------------------------------------------#</span>
+</div></div>
+<div class="viewcode-block" id="refsys_getlist"><a class="viewcode-back" href="../../index.html#geophpy.geoposset.refsys_getlist">[docs]</a><span class="k">def</span> <span class="nf">refsys_getlist</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns list of reference systems availables, &#39;UTM&#39;, &#39;WGS84&#39;, ...</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">refsystem_list</span>
+
+</div>
+<div class="viewcode-block" id="type_getlist"><a class="viewcode-back" href="../../index.html#geophpy.geoposset.type_getlist">[docs]</a><span class="k">def</span> <span class="nf">type_getlist</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns list of geographic positioning type, &#39;point&#39;, &#39;shapefile&#39;, ...</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">type_list</span>
+
+</div>
+<div class="viewcode-block" id="utm_to_wgs84"><a class="viewcode-back" href="../../index.html#geophpy.geoposset.utm_to_wgs84">[docs]</a><span class="k">def</span> <span class="nf">utm_to_wgs84</span><span class="p">(</span><span class="n">easting</span><span class="p">,</span> <span class="n">northing</span><span class="p">,</span> <span class="n">zonenumber</span><span class="p">,</span> <span class="n">zoneletter</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Converts UTM to WGS84 coordinates</span>
+
+<span class="sd">    Parameters :</span>
+
+<span class="sd">    :easting: east UTM coordinate</span>
+
+<span class="sd">    :northing: north UTM coordinate</span>
+
+<span class="sd">    :zonenumber: zone number</span>
+
+<span class="sd">    :zone letter: zone letter</span>
+
+<span class="sd">    Returns :</span>
+
+<span class="sd">    :latitude: WGS84 latitude coordinate</span>
+
+<span class="sd">    :longitude: WGS84 longitude coordinate</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">utm</span><span class="o">.</span><span class="n">to_latlon</span><span class="p">(</span><span class="n">easting</span><span class="p">,</span> <span class="n">northing</span><span class="p">,</span> <span class="n">zonenumber</span><span class="p">,</span> <span class="n">zoneletter</span><span class="p">)</span>
+
+
+</div>
+<div class="viewcode-block" id="wgs84_to_utm"><a class="viewcode-back" href="../../index.html#geophpy.geoposset.wgs84_to_utm">[docs]</a><span class="k">def</span> <span class="nf">wgs84_to_utm</span><span class="p">(</span><span class="n">latitude</span><span class="p">,</span> <span class="n">longitude</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Converts WGS84 to UTM coordinates</span>
+
+<span class="sd">    Parameters :</span>
+
+<span class="sd">    :latitude: WGS84 latitude coordinate</span>
+
+<span class="sd">    :longitude: WGS84 longitude coordinate</span>
+
+<span class="sd">    Returns :</span>
+
+<span class="sd">    :easting: east UTM coordinate</span>
+
+<span class="sd">    :northing: north UTM coordinate</span>
+
+<span class="sd">    :zonenumber: zone number</span>
+
+<span class="sd">    :zone letter: zone letter</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">utm</span><span class="o">.</span><span class="n">from_latlon</span><span class="p">(</span><span class="n">latitude</span><span class="p">,</span> <span class="n">longitude</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="utm_getzonelimits"><a class="viewcode-back" href="../../index.html#geophpy.geoposset.utm_getzonelimits">[docs]</a><span class="k">def</span> <span class="nf">utm_getzonelimits</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Gets the min and max numbers and letters of the UTM coordinates system</span>
+
+<span class="sd">    Returns:</span>
+
+<span class="sd">    :min_number: minimal number of the UTM zone, 1.</span>
+
+<span class="sd">    :min_letter: minimal letter of the UTM zone, E.</span>
+
+<span class="sd">    :max_numbre: maximal number of the UTM zone, 60.</span>
+
+<span class="sd">    :max letter: maximal letter of the UTM zone, X.</span>
+<span class="sd">    </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">utm_minnumber</span><span class="p">,</span> <span class="n">utm_minletter</span><span class="p">,</span> <span class="n">utm_maxnumber</span><span class="p">,</span> <span class="n">utm_maxletter</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../../index.html">
+              <img class="logo" src="../../_static/geophpy-square.png" alt="Logo"/>
+            </a></p><h3>Useful Links</h3>
+<ul>
+  <li><a href="http://pypi.python.org/pypi/WuGeoPy">
+    WuGeoPy @ PyPI</a></li>
+  <li><a href="http://github.com/LionelDarras/WuGeoPy">
+    WuGeoPy @ github</a></li>
+  <li><a href="http://github.com/LionelDarras/WuGeoPy/issues">
+    Issue Tracker</a></li>
+  <li><a href="http://media.readthedocs.org/pdf/wugeopy/latest/wugeopy.pdf">
+    PDF Manual</a></li>
+</ul>
+
+<h3 style="margin-top: 1.5em;">Search</h3>
+<form class="search" action="search.html" method="get">
+  <input type="text" name="q">
+  <input type="submit" value="Go">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<p class="searchtip" style="font-size: 90%">
+Enter search terms or a module, class or function name.
+</p>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">GeophPy 0.16 documentation</a> &raquo;</li>
+          <li><a href="../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2014, Lionel Darras &amp; Philippe Marty.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3b2.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,817 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>geophpy.processing.magnetism &mdash; GeophPy 0.20 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.20',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="GeophPy 0.20 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">GeophPy 0.20 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for geophpy.processing.magnetism</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    geophpy.processing.magnetism</span>
+<span class="sd">    ----------------------------</span>
+
+<span class="sd">    DataSet Object general magnetism processing routines.</span>
+
+<span class="sd">    :copyright: Copyright 2014 Lionel Darras, Philippe Marty and contributors, see AUTHORS.</span>
+<span class="sd">    :license: GNU GPL v3.</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy.linalg</span> <span class="kn">import</span> <span class="n">lu_solve</span><span class="p">,</span> <span class="n">lu_factor</span>
+<span class="kn">from</span> <span class="nn">geophpy.operation.general</span> <span class="kn">import</span> <span class="o">*</span>
+
+<div class="viewcode-block" id="logtransform"><a class="viewcode-back" href="../../../index.html#geophpy.processing.magnetism.logtransform">[docs]</a><span class="k">def</span> <span class="nf">logtransform</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">multfactor</span><span class="o">=</span><span class="mi">5</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   To transform the data in logarihtmics values</span>
+
+<span class="sd">   Parameters :</span>
+
+<span class="sd">   :dataset: DataSet Object to do the treatment</span>
+<span class="sd">   </span>
+<span class="sd">   :multfactor: multiplying factor</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+
+   <span class="n">val</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+
+   <span class="c"># Calculation of lines and columns numbers</span>
+   <span class="n">ny</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+   <span class="n">nx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+   
+   <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nx</span><span class="p">):</span>                                        <span class="c"># for each column</span>
+      <span class="k">for</span> <span class="n">iy</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ny</span><span class="p">):</span>                                     <span class="c"># for each line</span>
+         <span class="k">if</span> <span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">!=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span> <span class="p">:</span>                          <span class="c"># if valid value</span>
+            <span class="n">val</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">*</span> <span class="n">multfactor</span>             <span class="c"># multiplying</span>
+
+   <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nx</span><span class="p">):</span>                                        <span class="c"># for each column</span>
+      <span class="k">for</span> <span class="n">iy</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ny</span><span class="p">):</span>                                     <span class="c"># for each line</span>
+         <span class="k">if</span> <span class="p">((</span><span class="n">val</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">!=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">&lt;</span> <span class="o">-</span><span class="mi">1</span><span class="p">)):</span>
+            <span class="n">val</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="o">-</span><span class="n">val</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">])</span>
+
+   <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nx</span><span class="p">):</span>                                        <span class="c"># for each column</span>
+      <span class="k">for</span> <span class="n">iy</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ny</span><span class="p">):</span>                                     <span class="c"># for each line</span>
+         <span class="k">if</span> <span class="p">((</span><span class="n">val</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">!=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">)):</span>
+            <span class="n">val</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">])</span>
+
+   <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nx</span><span class="p">):</span>                                        <span class="c"># for each column</span>
+      <span class="k">for</span> <span class="n">iy</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ny</span><span class="p">):</span>                                     <span class="c"># for each line</span>
+         <span class="k">if</span> <span class="p">((</span><span class="n">val</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">!=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">&gt;</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">))</span> <span class="p">:</span>
+            <span class="n">val</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+   <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span> <span class="o">=</span> <span class="n">val</span>
+
+
+</div>
+<div class="viewcode-block" id="polereduction"><a class="viewcode-back" href="../../../index.html#geophpy.processing.magnetism.polereduction">[docs]</a><span class="k">def</span> <span class="nf">polereduction</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">inclineangle</span> <span class="o">=</span> <span class="mi">65</span><span class="p">,</span> <span class="n">alphaangle</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   To reduce at the magnetic pôle from a DataSet Object.</span>
+
+<span class="sd">   Parameters:</span>
+
+<span class="sd">   :dataset: DataSet Object to do the treatment</span>
+<span class="sd">   </span>
+<span class="sd">   :apod: apodisation factor (%), to reduce bord effects</span>
+
+<span class="sd">   :inclinangle: incline angle of the magnetic field</span>
+
+<span class="sd">   :alphaangle: angle of magnetic field and y axe</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+
+   <span class="n">val</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+   
+   <span class="c"># Calculation of lines and columns numbers</span>
+   <span class="n">ny</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+   <span class="n">nx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+   <span class="c"># Calculation of total values number</span>
+   <span class="n">nt</span> <span class="o">=</span> <span class="n">nx</span> <span class="o">*</span> <span class="n">ny</span>
+
+   <span class="n">nan_indexes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>                                 <span class="c"># searches the &#39;nan&#39; indexes in the initial array</span>
+   <span class="k">if</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">val</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">()):</span>                                    <span class="c"># if at least 1 &#39;nan&#39; is detected in the array,</span>
+      
+      <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_min</span><span class="p">,</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_max</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+      <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_min</span><span class="p">,</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_max</span><span class="p">,</span> <span class="n">ny</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+      <span class="n">_fillnanvalues</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">val</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>                              <span class="c"># fills the &#39;nan&#39; values by interpolated values</span>
+
+   <span class="k">if</span> <span class="p">(</span><span class="n">apod</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+      <span class="n">apodisation2d</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">apod</span><span class="p">)</span>
+
+   <span class="c"># Meaning calculation</span>
+   <span class="n">mean</span> <span class="o">=</span> <span class="n">val</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+
+   <span class="c"># complex conversion, val[][] -&gt; cval[][]</span>
+   <span class="n">cval</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span>
+
+   <span class="c"># fast fourier series calculation</span>
+   <span class="n">cvalfft</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">fft2</span><span class="p">(</span><span class="n">cval</span><span class="p">)</span>
+
+   <span class="c"># filter application</span>
+   <span class="c"># deg-&gt;rad angle conversions</span>
+   <span class="n">rinc</span> <span class="o">=</span> <span class="p">(</span><span class="n">inclineangle</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span><span class="o">/</span><span class="mi">180</span> <span class="c"># inclination in radians</span>
+   <span class="n">ralpha</span> <span class="o">=</span> <span class="p">(</span><span class="n">alphaangle</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span><span class="o">/</span><span class="mi">180</span>  <span class="c"># alpha angle in radians</span>
+
+   <span class="n">cosu</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">absolute</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">rinc</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">ralpha</span><span class="p">))</span>
+   <span class="n">cosv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">absolute</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">rinc</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">ralpha</span><span class="p">))</span>
+   <span class="n">cosz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">rinc</span><span class="p">)</span>
+
+   <span class="n">deltax</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_gridding_delta</span>
+   <span class="n">deltay</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_gridding_delta</span>
+   
+   <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nx</span><span class="p">):</span>                                        <span class="c"># for each column</span>
+      <span class="k">for</span> <span class="n">iy</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ny</span><span class="p">):</span>                                     <span class="c"># for each line</span>
+         <span class="k">if</span> <span class="p">((</span><span class="n">ix</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">iy</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)):</span>                          <span class="c"># if not first point of array</span>
+            <span class="n">cu</span><span class="p">,</span> <span class="n">cv</span> <span class="o">=</span> <span class="n">_freq</span><span class="p">(</span><span class="n">ix</span><span class="p">,</span> <span class="n">iy</span><span class="p">,</span> <span class="n">deltax</span><span class="p">,</span> <span class="n">deltay</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">)</span>     <span class="c"># complex u and v calculation</span>
+            <span class="n">cz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">cu</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">cv</span><span class="p">))</span>
+            <span class="n">cred</span> <span class="o">=</span> <span class="nb">complex</span><span class="p">(</span><span class="n">cz</span><span class="o">*</span><span class="n">cosz</span><span class="p">,</span> <span class="n">cu</span><span class="o">*</span><span class="n">cosu</span> <span class="o">+</span> <span class="n">cv</span><span class="o">*</span><span class="n">cosv</span><span class="p">)</span>
+            <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="p">((</span><span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">cz</span><span class="p">))</span><span class="o">/</span><span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">cred</span><span class="p">))</span>
+
+   <span class="c"># FFT inversion</span>
+   <span class="n">icvalfft</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">ifft2</span><span class="p">(</span><span class="n">cvalfft</span><span class="p">)</span>
+   <span class="n">val</span> <span class="o">=</span> <span class="n">icvalfft</span><span class="o">.</span><span class="n">real</span> <span class="o">+</span> <span class="n">mean</span>                                  <span class="c"># real part added to mean calculation</span>
+
+   <span class="n">val</span><span class="p">[</span><span class="n">nan_indexes</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>                                   <span class="c"># set the initial &#39;nan&#39; values, as in the initial array</span>
+
+   <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span> <span class="o">=</span> <span class="n">val</span>                                  <span class="c"># to get the &#39;z_image&#39; array in (x,y) format.</span>
+
+
+</div>
+<div class="viewcode-block" id="continuation"><a class="viewcode-back" href="../../../index.html#geophpy.processing.magnetism.continuation">[docs]</a><span class="k">def</span> <span class="nf">continuation</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">prosptech</span><span class="p">,</span> <span class="n">apod</span><span class="p">,</span> <span class="n">downsensoraltitude</span><span class="p">,</span> <span class="n">upsensoraltitude</span><span class="p">,</span> <span class="n">continuationflag</span><span class="p">,</span> <span class="n">continuationvalue</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Continuation of the magnetic field</span>
+
+<span class="sd">   Parameters :</span>
+
+<span class="sd">   :dataset: DataSet Object to do the treatment</span>
+<span class="sd">   </span>
+<span class="sd">   :prosptech: Prospection technical</span>
+
+<span class="sd">   :apod: apodisation factor (%), to reduce bord effects</span>
+
+<span class="sd">   :downsensoraltitude: Altitude of the down magnetic sensor</span>
+
+<span class="sd">   :upsensoraltitude: Altitude of the up magnetic sensor</span>
+
+<span class="sd">   :continuationflag: Continuation flag, False if not continuation</span>
+
+<span class="sd">   :continuationvalue: Continuation altitude, greater than 0 if upper earth ground, lower than 0 else</span>
+<span class="sd">   </span>
+<span class="sd">   &#39;&#39;&#39;</span>
+
+   <span class="n">val</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+
+   <span class="c"># Calculation of lines and columns numbers</span>
+   <span class="n">ny</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+   <span class="n">nx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+   <span class="c"># Calculation of total values number</span>
+   <span class="n">nt</span> <span class="o">=</span> <span class="n">nx</span> <span class="o">*</span> <span class="n">ny</span>
+
+   <span class="n">nan_indexes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>                                 <span class="c"># searches the &#39;nan&#39; indexes in the initial array</span>
+   <span class="k">if</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">val</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">()):</span>                                    <span class="c"># if at least 1 &#39;nan&#39; is detected in the array,</span>
+      
+      <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_min</span><span class="p">,</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_max</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+      <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_min</span><span class="p">,</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_max</span><span class="p">,</span> <span class="n">ny</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+      <span class="n">_fillnanvalues</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">val</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>                                <span class="c"># fills the &#39;nan&#39; values by interpolated values</span>
+
+   <span class="k">if</span> <span class="p">(</span><span class="n">apod</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+      <span class="n">apodisation2d</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">apod</span><span class="p">)</span>
+
+   <span class="n">dz</span> <span class="o">=</span> <span class="n">downsensoraltitude</span> <span class="o">-</span> <span class="n">upsensoraltitude</span>     
+   <span class="n">zp</span> <span class="o">=</span> <span class="o">-</span> <span class="n">continuationvalue</span> <span class="o">+</span> <span class="n">downsensoraltitude</span>
+
+   <span class="c"># complex conversion, val[][] -&gt; cval[][]</span>
+   <span class="n">cval</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span>
+
+   <span class="c"># fast fourier series calculation</span>
+   <span class="n">cvalfft</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">fft2</span><span class="p">(</span><span class="n">cval</span><span class="p">)</span>
+
+   <span class="n">deltax</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_gridding_delta</span>
+   <span class="n">deltay</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_gridding_delta</span>
+
+   <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nx</span><span class="p">):</span>                                        <span class="c"># for each column</span>
+      <span class="k">for</span> <span class="n">iy</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ny</span><span class="p">):</span>                                     <span class="c"># for each line</span>
+         <span class="k">if</span> <span class="p">((</span><span class="n">ix</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">iy</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)):</span>                          <span class="c"># if not first point of array</span>
+            <span class="n">cu</span><span class="p">,</span> <span class="n">cv</span> <span class="o">=</span> <span class="n">_freq</span><span class="p">(</span><span class="n">ix</span><span class="p">,</span> <span class="n">iy</span><span class="p">,</span> <span class="n">deltax</span><span class="p">,</span> <span class="n">deltay</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">)</span>     <span class="c"># complex u and v calculation</span>
+            <span class="n">cz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">cu</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">cv</span><span class="p">))</span> <span class="o">*</span> <span class="p">(</span><span class="mf">2.</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">continuationflag</span> <span class="o">==</span> <span class="bp">True</span><span class="p">):</span>
+               <span class="n">ce</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">zp</span> <span class="o">*</span> <span class="n">cz</span><span class="p">)</span>
+               <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">*</span> <span class="nb">complex</span><span class="p">(</span><span class="n">ce</span><span class="p">,</span> <span class="mf">0.</span><span class="p">))</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">prosptech</span> <span class="o">==</span> <span class="n">prosptechlist</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>                <span class="c"># if prospection technic is magnetic field gradient</span>
+               <span class="n">cdz</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">dz</span> <span class="o">*</span> <span class="n">cz</span><span class="p">)</span>
+               <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">/</span> <span class="nb">complex</span><span class="p">(</span><span class="n">cdz</span><span class="p">,</span> <span class="mf">0.</span><span class="p">))</span>
+
+   <span class="c"># FFT inversion</span>
+   <span class="n">icvalfft</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">ifft2</span><span class="p">(</span><span class="n">cvalfft</span><span class="p">)</span>
+   <span class="n">val</span> <span class="o">=</span> <span class="n">icvalfft</span><span class="o">.</span><span class="n">real</span>
+
+   <span class="n">val</span><span class="p">[</span><span class="n">nan_indexes</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>                                   <span class="c"># set the initial &#39;nan&#39; values, as in the initial array</span>
+
+   <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span> <span class="o">=</span> <span class="n">val</span>                                  <span class="c"># to get the &#39;z_image&#39; array in (x,y) format.</span>
+
+</div>
+<span class="k">def</span> <span class="nf">eulerdeconvolution</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">xmin</span><span class="p">,</span> <span class="n">xmax</span><span class="p">,</span> <span class="n">ymin</span><span class="p">,</span> <span class="n">ymax</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">nflag</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">nvalue</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   cf. dataset   </span>
+<span class="sd">   &#39;&#39;&#39;</span>
+
+   <span class="n">val</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+
+   <span class="c"># Calculation of lines and columns numbers</span>
+   <span class="n">ny</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+   <span class="n">nx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+   <span class="c"># Calculation of total values number</span>
+   <span class="n">nt</span> <span class="o">=</span> <span class="n">nx</span> <span class="o">*</span> <span class="n">ny</span>
+
+   <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_min</span><span class="p">,</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_max</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+   <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_min</span><span class="p">,</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_max</span><span class="p">,</span> <span class="n">ny</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+   <span class="n">nan_indexes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>                                 <span class="c"># searches the &#39;nan&#39; indexes in the initial array</span>
+   <span class="k">if</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">val</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">()):</span>                                    <span class="c"># if at least 1 &#39;nan&#39; is detected in the array,     </span>
+      <span class="n">_fillnanvalues</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">val</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>                                <span class="c"># fills the &#39;nan&#39; values by interpolated values</span>
+
+   <span class="k">if</span> <span class="p">(</span><span class="n">apod</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+      <span class="n">apodisation2d</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">apod</span><span class="p">)</span>
+
+   <span class="c"># complex conversion, val[][] -&gt; cval[][]</span>
+   <span class="n">cval</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span>
+   <span class="n">val</span> <span class="o">=</span> <span class="n">cval</span><span class="o">.</span><span class="n">real</span>
+
+   <span class="n">deltax</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_gridding_delta</span>
+   <span class="n">deltay</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_gridding_delta</span>
+
+   <span class="c"># fast fourier series calculation</span>
+   <span class="n">cvalfft</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">fft2</span><span class="p">(</span><span class="n">cval</span><span class="p">)</span>
+   <span class="n">cvalfftdx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">ny</span><span class="p">,</span><span class="n">nx</span><span class="p">)),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span>
+   <span class="n">cvalfftdy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">ny</span><span class="p">,</span><span class="n">nx</span><span class="p">)),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span>
+   <span class="n">cvalfftdz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">ny</span><span class="p">,</span><span class="n">nx</span><span class="p">)),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span>
+
+   <span class="c"># derivations calculation</span>
+   <span class="k">for</span> <span class="n">iy</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ny</span><span class="p">):</span>                                        <span class="c"># for each column</span>
+      <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nx</span><span class="p">):</span>                                     <span class="c"># for each line</span>
+         <span class="k">if</span> <span class="p">((</span><span class="n">ix</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">iy</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)):</span>                          <span class="c"># if not first point of array</span>
+            <span class="n">cu</span><span class="p">,</span> <span class="n">cv</span> <span class="o">=</span> <span class="n">_freq</span><span class="p">(</span><span class="n">ix</span><span class="p">,</span> <span class="n">iy</span><span class="p">,</span> <span class="n">deltax</span><span class="p">,</span> <span class="n">deltay</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">)</span>     <span class="c"># complex u and v calculation</span>
+            <span class="n">cz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">cu</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">cv</span><span class="p">))</span>
+            <span class="c"># x derivation </span>
+            <span class="n">cvalfftdx</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span><span class="o">*</span><span class="nb">complex</span><span class="p">(</span><span class="mf">0.</span><span class="p">,</span> <span class="n">cu</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="mf">2.</span><span class="p">)</span>
+            <span class="c"># y derivation </span>
+            <span class="n">cvalfftdy</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span><span class="o">*</span><span class="nb">complex</span><span class="p">(</span><span class="mf">0.</span><span class="p">,</span> <span class="n">cv</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="mf">2.</span><span class="p">)</span>
+            <span class="c"># z derivation </span>
+            <span class="n">cvalfftdz</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span><span class="o">*</span><span class="n">cz</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="mf">2.</span>
+         <span class="k">else</span><span class="p">:</span>
+            <span class="n">cvalfftdx</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="nb">complex</span><span class="p">(</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">)</span>
+            <span class="n">cvalfftdy</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="nb">complex</span><span class="p">(</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">)</span>
+            <span class="n">cvalfftdz</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="nb">complex</span><span class="p">(</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">)</span>
+
+   <span class="c"># FFT inversion</span>
+   <span class="n">valdx</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">ifft2</span><span class="p">(</span><span class="n">cvalfftdx</span><span class="p">))</span><span class="o">.</span><span class="n">real</span>
+   <span class="n">valdy</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">ifft2</span><span class="p">(</span><span class="n">cvalfftdy</span><span class="p">))</span><span class="o">.</span><span class="n">real</span>
+   <span class="n">valdz</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">ifft2</span><span class="p">(</span><span class="n">cvalfftdz</span><span class="p">))</span><span class="o">.</span><span class="n">real</span>
+
+   <span class="n">ixmin</span><span class="p">,</span> <span class="n">xnearestmin</span> <span class="o">=</span> <span class="n">_searchnearest</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">xmin</span><span class="p">)</span>
+   <span class="n">ixmax</span><span class="p">,</span> <span class="n">xnearestmax</span> <span class="o">=</span> <span class="n">_searchnearest</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">xmax</span><span class="p">)</span>
+   
+   <span class="n">iymin</span><span class="p">,</span> <span class="n">ynearestmin</span> <span class="o">=</span> <span class="n">_searchnearest</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">ymin</span><span class="p">)</span>
+   <span class="n">iymax</span><span class="p">,</span> <span class="n">ynearestmax</span> <span class="o">=</span> <span class="n">_searchnearest</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">ymax</span><span class="p">)</span>
+
+   <span class="k">if</span> <span class="p">((</span><span class="n">nflag</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">nvalue</span><span class="o">==</span><span class="mi">0</span><span class="p">)):</span>   <span class="c"># automatic calculation structural index</span>
+                                       <span class="c"># 4 unknowns equation to solve</span>
+      <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+      <span class="n">A</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">4</span><span class="p">,</span><span class="mi">4</span><span class="p">))</span>
+      <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">iymin</span><span class="p">,</span> <span class="n">iymax</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+         <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ixmin</span><span class="p">,</span> <span class="n">ixmax</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+            <span class="n">coef</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="o">*</span> <span class="n">valdx</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span> <span class="o">+</span> <span class="n">y</span><span class="p">[</span><span class="n">l</span><span class="p">]</span> <span class="o">*</span> <span class="n">valdy</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">b</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+=</span> <span class="n">coef</span> <span class="o">*</span> <span class="n">val</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">b</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="n">coef</span> <span class="o">*</span> <span class="n">valdx</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">b</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">+=</span> <span class="n">coef</span> <span class="o">*</span> <span class="n">valdy</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">b</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">+=</span> <span class="n">coef</span> <span class="o">*</span> <span class="n">valdz</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+
+            <span class="n">A</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">])</span>
+            <span class="n">A</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="n">val</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span> <span class="o">*</span> <span class="n">valdx</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">A</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span> <span class="o">+=</span> <span class="n">val</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span> <span class="o">*</span> <span class="n">valdy</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">A</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">3</span><span class="p">]</span> <span class="o">+=</span> <span class="n">val</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span> <span class="o">*</span> <span class="n">valdz</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">A</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">valdx</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">])</span>
+            <span class="n">A</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span> <span class="o">+=</span> <span class="n">valdx</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span> <span class="o">*</span> <span class="n">valdy</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">A</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">3</span><span class="p">]</span> <span class="o">+=</span> <span class="n">valdx</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span> <span class="o">*</span> <span class="n">valdz</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">A</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">valdy</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">])</span>
+            <span class="n">A</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="mi">3</span><span class="p">]</span> <span class="o">+=</span> <span class="n">valdy</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span> <span class="o">*</span> <span class="n">valdz</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">A</span><span class="p">[</span><span class="mi">3</span><span class="p">][</span><span class="mi">3</span><span class="p">]</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">valdz</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">])</span>
+
+      <span class="c"># symmetry</span>
+      <span class="n">A</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">A</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+      <span class="n">A</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">A</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span>
+      <span class="n">A</span><span class="p">[</span><span class="mi">3</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">A</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">3</span><span class="p">]</span>
+      <span class="n">A</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">A</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span>
+      <span class="n">A</span><span class="p">[</span><span class="mi">3</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">A</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">3</span><span class="p">]</span>
+      <span class="n">A</span><span class="p">[</span><span class="mi">3</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">A</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="mi">3</span><span class="p">]</span>
+
+      <span class="n">x</span> <span class="o">=</span> <span class="n">_gaussresolution</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+      <span class="n">nvalue</span> <span class="o">=</span> <span class="o">-</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+      <span class="n">xpt</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+      <span class="n">ypt</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+      <span class="n">depth</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+      
+   <span class="k">else</span> <span class="p">:</span>                              <span class="c"># fixed structural index</span>
+                                       <span class="c"># 3 unknowns equation to solve</span>
+      <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+      <span class="n">A</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">3</span><span class="p">,</span><span class="mi">3</span><span class="p">))</span>
+      <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">iymin</span><span class="p">,</span> <span class="n">iymax</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+         <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ixmin</span><span class="p">,</span> <span class="n">ixmax</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+            <span class="n">coef</span> <span class="o">=</span> <span class="n">nvalue</span> <span class="o">*</span> <span class="n">val</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span> <span class="o">+</span> <span class="n">x</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="o">*</span> <span class="n">valdx</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span> <span class="o">+</span> <span class="n">y</span><span class="p">[</span><span class="n">l</span><span class="p">]</span> <span class="o">*</span> <span class="n">valdy</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">b</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+=</span> <span class="n">coef</span> <span class="o">*</span> <span class="n">valdx</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">b</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="n">coef</span> <span class="o">*</span> <span class="n">valdy</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">b</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">+=</span> <span class="n">coef</span> <span class="o">*</span> <span class="n">valdz</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+
+            <span class="n">A</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">valdx</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">])</span>
+            <span class="n">A</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="n">valdx</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span> <span class="o">*</span> <span class="n">valdy</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">A</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span> <span class="o">+=</span> <span class="n">valdx</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span> <span class="o">*</span> <span class="n">valdz</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">A</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">valdy</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">])</span>
+            <span class="n">A</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span> <span class="o">+=</span> <span class="n">valdy</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span> <span class="o">*</span> <span class="n">valdz</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">]</span>
+            <span class="n">A</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">valdz</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">c</span><span class="p">])</span>
+
+      <span class="c"># symmetry</span>
+      <span class="n">A</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">A</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+      <span class="n">A</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">A</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span>
+      <span class="n">A</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">A</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span>
+
+      <span class="n">x</span> <span class="o">=</span> <span class="n">_gaussresolution</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+      <span class="n">xpt</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+      <span class="n">ypt</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+      <span class="n">depth</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+      
+
+   
+   <span class="k">return</span> <span class="n">nvalue</span><span class="p">,</span> <span class="n">xpt</span><span class="p">,</span> <span class="n">ypt</span><span class="p">,</span> <span class="n">depth</span><span class="p">,</span> <span class="n">xnearestmin</span><span class="p">,</span> <span class="n">ynearestmin</span><span class="p">,</span> <span class="n">xnearestmax</span><span class="p">,</span> <span class="n">ynearestmax</span>
+
+
+
+<span class="k">def</span> <span class="nf">_searchnearest</span><span class="p">(</span><span class="n">array</span><span class="p">,</span> <span class="n">val</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Search the nearset value of val, in the array</span>
+
+<span class="sd">   Parameters :</span>
+
+<span class="sd">   :array:  1D array ordered to find the nearest value of val</span>
+
+<span class="sd">   :val: value to find</span>
+
+<span class="sd">   Returns :</span>
+
+<span class="sd">   :index: index in the array of the nearest value found</span>
+
+<span class="sd">   :valnearest: value of the nearest value found</span>
+<span class="sd">   </span>
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">array</span><span class="p">)</span>
+   <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+      <span class="n">gap</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">val</span><span class="o">-</span><span class="n">array</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+      <span class="k">if</span> <span class="p">((</span><span class="n">i</span><span class="o">==</span><span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">gap</span><span class="o">&lt;</span><span class="n">mingap</span><span class="p">)):</span>
+         <span class="n">mingap</span> <span class="o">=</span> <span class="n">gap</span>
+         <span class="n">index</span> <span class="o">=</span> <span class="n">i</span>
+   <span class="k">return</span> <span class="n">index</span><span class="p">,</span> <span class="n">array</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>            
+      
+
+
+<span class="k">def</span> <span class="nf">_gaussresolution</span><span class="p">(</span><span class="n">A</span><span class="p">,</span><span class="n">b</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Solving Ax=b equation with gauss pivot and LU factorisation</span>
+<span class="sd">   &#39;&#39;&#39;</span>
+   
+   <span class="n">n</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">A</span><span class="p">)</span>
+   <span class="c"># gauss pivot calculation</span>
+   <span class="k">for</span> <span class="n">i1</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+      <span class="c"># find the partial pivot</span>
+      <span class="n">l</span><span class="o">=</span><span class="n">i1</span>      
+      <span class="n">xam</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">absolute</span><span class="p">(</span><span class="n">A</span><span class="p">[</span><span class="n">i1</span><span class="p">][</span><span class="n">i1</span><span class="p">])</span>
+      <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i1</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="n">n</span><span class="p">):</span>
+         <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">absolute</span><span class="p">(</span><span class="n">A</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="n">i1</span><span class="p">])</span>
+         <span class="k">if</span> <span class="p">(</span><span class="n">x</span><span class="o">&gt;</span><span class="n">xam</span><span class="p">):</span>
+            <span class="n">xam</span> <span class="o">=</span> <span class="n">x</span>
+            <span class="n">l</span><span class="o">=</span><span class="n">j</span>
+
+      <span class="c"># set pivot at its place, swapping pivot and current lines</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">l</span><span class="o">&gt;</span><span class="n">i1</span><span class="p">):</span>
+         <span class="n">aux</span> <span class="o">=</span> <span class="n">b</span><span class="p">[</span><span class="n">l</span><span class="p">]</span>
+         <span class="n">b</span><span class="p">[</span><span class="n">l</span><span class="p">]</span> <span class="o">=</span> <span class="n">b</span><span class="p">[</span><span class="n">i1</span><span class="p">]</span>
+         <span class="n">b</span><span class="p">[</span><span class="n">i1</span><span class="p">]</span> <span class="o">=</span> <span class="n">aux</span>
+         <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+            <span class="n">aux</span> <span class="o">=</span> <span class="n">A</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">j</span><span class="p">]</span>
+            <span class="n">A</span><span class="p">[</span><span class="n">l</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">A</span><span class="p">[</span><span class="n">i1</span><span class="p">][</span><span class="n">j</span><span class="p">]</span>
+            <span class="n">A</span><span class="p">[</span><span class="n">i1</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">aux</span>
+
+   <span class="c"># solves Ax=b using LU factorisation</span>
+   <span class="n">x</span> <span class="o">=</span> <span class="n">lu_solve</span><span class="p">(</span><span class="n">lu_factor</span><span class="p">(</span><span class="n">A</span><span class="p">),</span> <span class="n">b</span><span class="p">)</span>
+
+   <span class="k">return</span> <span class="n">x</span>
+
+
+
+<span class="k">def</span> <span class="nf">analyticsignal</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   cf. dataset</span>
+<span class="sd">   &#39;&#39;&#39;</span>
+   
+   <span class="n">val</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+
+   <span class="c"># Calculation of lines and columns numbers</span>
+   <span class="n">ny</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+   <span class="n">nx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+   <span class="c"># Calculation of total values number</span>
+   <span class="n">nt</span> <span class="o">=</span> <span class="n">nx</span> <span class="o">*</span> <span class="n">ny</span>
+
+   <span class="n">nan_indexes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>                                 <span class="c"># searches the &#39;nan&#39; indexes in the initial array</span>
+   <span class="k">if</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">val</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">()):</span>                                    <span class="c"># if at least 1 &#39;nan&#39; is detected in the array,</span>
+      
+      <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_min</span><span class="p">,</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_max</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+      <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_min</span><span class="p">,</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_max</span><span class="p">,</span> <span class="n">ny</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+      <span class="n">_fillnanvalues</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">val</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>                              <span class="c"># fills the &#39;nan&#39; values by interpolated values</span>
+
+   <span class="k">if</span> <span class="p">(</span><span class="n">apod</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+      <span class="n">apodisation2d</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">apod</span><span class="p">)</span>
+
+   <span class="c"># complex conversion, val[][] -&gt; cval[][]</span>
+   <span class="n">cval</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span>
+
+   <span class="n">deltax</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_gridding_delta</span>
+   <span class="n">deltay</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_gridding_delta</span>
+
+   <span class="c"># fast fourier series calculation</span>
+   <span class="n">cvalfft</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">fft2</span><span class="p">(</span><span class="n">cval</span><span class="p">)</span>
+   <span class="n">cvalfftdx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">fft2</span><span class="p">(</span><span class="n">cval</span><span class="p">)</span>
+   <span class="n">cvalfftdy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">fft2</span><span class="p">(</span><span class="n">cval</span><span class="p">)</span>
+   <span class="n">cvalfftdz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">fft2</span><span class="p">(</span><span class="n">cval</span><span class="p">)</span>
+
+   <span class="c"># dx derivations calculation</span>
+   <span class="n">cvalfftdx</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="nb">complex</span><span class="p">(</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">)</span>
+   <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nx</span><span class="p">):</span>                                        <span class="c"># for each column</span>
+      <span class="k">for</span> <span class="n">iy</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ny</span><span class="p">):</span>                                     <span class="c"># for each line</span>
+         <span class="k">if</span> <span class="p">((</span><span class="n">ix</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">iy</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)):</span>                          <span class="c"># if not first point of array</span>
+            <span class="n">cu</span><span class="p">,</span> <span class="n">cv</span> <span class="o">=</span> <span class="n">_freq</span><span class="p">(</span><span class="n">ix</span><span class="p">,</span> <span class="n">iy</span><span class="p">,</span> <span class="n">deltax</span><span class="p">,</span> <span class="n">deltay</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">)</span>     <span class="c"># complex u and v calculation</span>
+            <span class="c"># x derivation </span>
+            <span class="n">cvalfftdx</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span><span class="o">*</span><span class="nb">complex</span><span class="p">(</span><span class="mf">0.</span><span class="p">,</span> <span class="n">cu</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="mi">2</span><span class="p">)</span>
+         
+   <span class="c"># FFT inversion</span>
+   <span class="n">icvalfft</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">ifft2</span><span class="p">(</span><span class="n">cvalfftdx</span><span class="p">)</span>
+   <span class="n">val</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">icvalfft</span><span class="o">.</span><span class="n">real</span><span class="p">)</span>
+
+   <span class="c"># dy derivations calculation</span>
+   <span class="n">cvalfftdy</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="nb">complex</span><span class="p">(</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">)</span>
+   <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nx</span><span class="p">):</span>                                        <span class="c"># for each column</span>
+      <span class="k">for</span> <span class="n">iy</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ny</span><span class="p">):</span>                                     <span class="c"># for each line</span>
+         <span class="k">if</span> <span class="p">((</span><span class="n">ix</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">iy</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)):</span>                          <span class="c"># if not first point of array</span>
+            <span class="n">cu</span><span class="p">,</span> <span class="n">cv</span> <span class="o">=</span> <span class="n">_freq</span><span class="p">(</span><span class="n">ix</span><span class="p">,</span> <span class="n">iy</span><span class="p">,</span> <span class="n">deltax</span><span class="p">,</span> <span class="n">deltay</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">)</span>     <span class="c"># complex u and v calculation</span>
+            <span class="c"># y derivation </span>
+            <span class="n">cvalfftdy</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span><span class="o">*</span><span class="nb">complex</span><span class="p">(</span><span class="mf">0.</span><span class="p">,</span> <span class="n">cv</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="mi">2</span><span class="p">)</span>
+         
+   <span class="c"># FFT inversion</span>
+   <span class="n">icvalfft</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">ifft2</span><span class="p">(</span><span class="n">cvalfftdy</span><span class="p">)</span>
+   <span class="n">val</span> <span class="o">=</span> <span class="n">val</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">icvalfft</span><span class="o">.</span><span class="n">real</span><span class="p">)</span>
+
+   <span class="c"># dz derivations calculation</span>
+   <span class="n">cvalfftdz</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="nb">complex</span><span class="p">(</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">)</span>
+   <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nx</span><span class="p">):</span>                                        <span class="c"># for each column</span>
+      <span class="k">for</span> <span class="n">iy</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ny</span><span class="p">):</span>                                     <span class="c"># for each line</span>
+         <span class="k">if</span> <span class="p">((</span><span class="n">ix</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">iy</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)):</span>                          <span class="c"># if not first point of array</span>
+            <span class="n">cu</span><span class="p">,</span> <span class="n">cv</span> <span class="o">=</span> <span class="n">_freq</span><span class="p">(</span><span class="n">ix</span><span class="p">,</span> <span class="n">iy</span><span class="p">,</span> <span class="n">deltax</span><span class="p">,</span> <span class="n">deltay</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">)</span>     <span class="c"># complex u and v calculation</span>
+            <span class="n">cz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">cu</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">cv</span><span class="p">))</span>
+            <span class="c"># z derivation </span>
+            <span class="n">cvalfftdz</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span><span class="o">*</span><span class="n">cz</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="mi">2</span>
+         
+   <span class="c"># FFT inversion</span>
+   <span class="n">icvalfft</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">ifft2</span><span class="p">(</span><span class="n">cvalfftdz</span><span class="p">)</span>
+   <span class="n">val</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">val</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">icvalfft</span><span class="o">.</span><span class="n">real</span><span class="p">))</span>
+
+   <span class="n">val</span><span class="p">[</span><span class="n">nan_indexes</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>                                   <span class="c"># set the initial &#39;nan&#39; values, as in the initial array</span>
+
+   <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span> <span class="o">=</span> <span class="n">val</span>                                  <span class="c"># to get the &#39;z_image&#39; array in (x,y) format.</span>
+
+
+
+<span class="k">def</span> <span class="nf">gradmagfieldconversion</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">prosptechused</span><span class="p">,</span> <span class="n">prosptechsim</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">downsensoraltused</span> <span class="o">=</span> <span class="mf">0.3</span><span class="p">,</span> <span class="n">upsensoraltused</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">downsensoraltsim</span> <span class="o">=</span> <span class="mf">0.3</span><span class="p">,</span> <span class="n">upsensoraltsim</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">inclineangle</span> <span class="o">=</span> <span class="mi">65</span><span class="p">,</span> <span class="n">alphaangle</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   cf. dataset</span>
+<span class="sd">   &#39;&#39;&#39;</span>
+   
+   <span class="n">case</span><span class="p">,</span> <span class="n">sense</span> <span class="o">=</span> <span class="n">_definecaseandsense</span><span class="p">(</span><span class="n">prosptechused</span><span class="p">,</span> <span class="n">prosptechsim</span><span class="p">)</span>
+
+   <span class="k">if</span> <span class="p">((</span><span class="n">case</span> <span class="o">!=</span> <span class="bp">None</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">sense</span> <span class="o">!=</span> <span class="bp">None</span><span class="p">)):</span>
+
+      <span class="n">val</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+
+      <span class="c"># Calculation of lines and columns numbers</span>
+      <span class="n">ny</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+      <span class="n">nx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+      <span class="c"># Calculation of total values number</span>
+      <span class="n">nt</span> <span class="o">=</span> <span class="n">nx</span> <span class="o">*</span> <span class="n">ny</span>
+
+      <span class="n">nan_indexes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>                                 <span class="c"># searches the &#39;nan&#39; indexes in the initial array</span>
+      <span class="k">if</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">val</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">()):</span>                                    <span class="c"># if at least 1 &#39;nan&#39; is detected in the array,</span>
+      
+         <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_min</span><span class="p">,</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_max</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+         <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_min</span><span class="p">,</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_max</span><span class="p">,</span> <span class="n">ny</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+         <span class="n">_fillnanvalues</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">val</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>                              <span class="c"># fills the &#39;nan&#39; values by interpolated values</span>
+
+      <span class="k">if</span> <span class="p">(</span><span class="n">apod</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+         <span class="n">apodisation2d</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">apod</span><span class="p">)</span>
+
+      <span class="c"># complex conversion, val[][] -&gt; cval[][]</span>
+      <span class="n">cval</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span>
+
+      <span class="n">deltax</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_gridding_delta</span>
+      <span class="n">deltay</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_gridding_delta</span>
+
+      <span class="c"># fast fourier series calculation</span>
+      <span class="n">cvalfft</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">fft2</span><span class="p">(</span><span class="n">cval</span><span class="p">)</span>
+
+      <span class="k">if</span> <span class="p">(</span><span class="n">case</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">):</span>
+         <span class="c"># deg-&gt;rad angle conversions</span>
+         <span class="n">rinc</span> <span class="o">=</span> <span class="p">(</span><span class="n">inclineangle</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span><span class="o">/</span><span class="mi">180</span> <span class="c"># inclination in radians</span>
+         <span class="n">ralpha</span> <span class="o">=</span> <span class="p">(</span><span class="n">alphaangle</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span><span class="o">/</span><span class="mi">180</span>  <span class="c"># alpha angle in radians</span>
+         <span class="n">cosu</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">absolute</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">rinc</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">ralpha</span><span class="p">))</span>
+         <span class="n">cosv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">absolute</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">rinc</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">ralpha</span><span class="p">))</span>
+         <span class="n">cosz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">rinc</span><span class="p">)</span>
+
+      <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nx</span><span class="p">):</span>                                        <span class="c"># for each column</span>
+         <span class="k">for</span> <span class="n">iy</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ny</span><span class="p">):</span>                                     <span class="c"># for each line</span>
+            <span class="k">if</span> <span class="p">((</span><span class="n">ix</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">iy</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)):</span>                          <span class="c"># if not first point of array</span>
+               <span class="n">cu</span><span class="p">,</span> <span class="n">cv</span> <span class="o">=</span> <span class="n">_freq</span><span class="p">(</span><span class="n">ix</span><span class="p">,</span> <span class="n">iy</span><span class="p">,</span> <span class="n">deltax</span><span class="p">,</span> <span class="n">deltay</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">)</span>     <span class="c"># complex u and v calculation</span>
+               <span class="n">cz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">cu</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">cv</span><span class="p">))</span>
+
+               <span class="k">if</span> <span class="p">(</span><span class="n">case</span> <span class="o">==</span> <span class="mi">1</span><span class="p">):</span>
+                  <span class="n">c1</span> <span class="o">=</span> <span class="p">(</span><span class="n">downsensoraltsim</span> <span class="o">-</span> <span class="n">downsensoraltused</span><span class="p">)</span><span class="o">*</span><span class="mf">2.</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="n">cz</span>
+                  <span class="n">c2</span> <span class="o">=</span> <span class="p">(</span><span class="n">upsensoraltsim</span> <span class="o">-</span> <span class="n">downsensoraltsim</span><span class="p">)</span><span class="o">*</span><span class="mf">2.</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="n">cz</span>
+                  <span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">c1</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">c2</span><span class="p">)</span>
+               <span class="k">elif</span> <span class="p">(</span><span class="n">case</span> <span class="o">==</span> <span class="mi">2</span><span class="p">):</span>
+                  <span class="n">c1</span> <span class="o">=</span> <span class="p">(</span><span class="n">downsensoraltsim</span> <span class="o">-</span> <span class="n">downsensoraltused</span><span class="p">)</span><span class="o">*</span><span class="mf">2.</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="n">cz</span>
+                  <span class="n">c2</span> <span class="o">=</span> <span class="p">(</span><span class="n">upsensoraltsim</span> <span class="o">-</span> <span class="n">downsensoraltsim</span><span class="p">)</span><span class="o">*</span><span class="mf">2.</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="n">cz</span>
+                  <span class="n">cred</span> <span class="o">=</span> <span class="nb">complex</span><span class="p">(</span><span class="n">cz</span><span class="o">*</span><span class="n">cosz</span><span class="p">,</span> <span class="n">cu</span><span class="o">*</span><span class="n">cosu</span> <span class="o">+</span> <span class="n">cv</span><span class="o">*</span><span class="n">cosv</span><span class="p">)</span>
+                  <span class="n">c</span> <span class="o">=</span> <span class="p">((</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">c1</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">c2</span><span class="p">))</span><span class="o">*</span><span class="n">cz</span><span class="p">)</span><span class="o">/</span><span class="n">cred</span>
+               <span class="k">else</span> <span class="p">:</span>                  <span class="c"># case = 3</span>
+                  <span class="n">cred</span> <span class="o">=</span> <span class="nb">complex</span><span class="p">(</span><span class="n">cz</span><span class="o">*</span><span class="n">cosz</span><span class="p">,</span> <span class="n">cu</span><span class="o">*</span><span class="n">cosu</span> <span class="o">+</span> <span class="n">cv</span><span class="o">*</span><span class="n">cosv</span><span class="p">)</span>
+                  <span class="n">c</span> <span class="o">=</span> <span class="n">cz</span><span class="o">/</span><span class="n">cred</span>
+                  
+               <span class="k">if</span> <span class="p">(</span><span class="n">sense</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+                  <span class="n">coef</span> <span class="o">=</span> <span class="n">c</span>
+               <span class="k">else</span><span class="p">:</span>
+                  <span class="n">coef</span> <span class="o">=</span> <span class="mf">1.</span><span class="o">/</span><span class="n">c</span>
+
+               <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">*</span> <span class="n">coef</span>
+               
+      <span class="c"># FFT inversion</span>
+      <span class="n">icvalfft</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">ifft2</span><span class="p">(</span><span class="n">cvalfft</span><span class="p">)</span>
+      <span class="n">val</span> <span class="o">=</span> <span class="n">icvalfft</span><span class="o">.</span><span class="n">real</span>
+
+      <span class="n">val</span><span class="p">[</span><span class="n">nan_indexes</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>                                   <span class="c"># set the initial &#39;nan&#39; values, as in the initial array</span>
+   
+      <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span> <span class="o">=</span> <span class="n">val</span>                                  <span class="c"># to get the &#39;z_image&#39; array in (x,y) format.</span>
+                  
+
+
+<span class="k">def</span> <span class="nf">_definecaseandsense</span><span class="p">(</span> <span class="n">prosptechused</span><span class="p">,</span> <span class="n">prosptechsim</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   define case and sense of conversion</span>
+<span class="sd">   case 1 = &quot;Magnetic field&quot; &lt;-&gt; &quot;Magnetic field gradient&quot;</span>
+<span class="sd">   case 2 = &quot;Magnetic field&quot; &lt;-&gt; &quot;Vertical component gradient&quot;</span>
+<span class="sd">   case 3 = &quot;Magnetic field gradient&quot; &lt;-&gt; &quot;Vertical component gradient&quot;</span>
+<span class="sd">   &#39;&#39;&#39;</span>
+
+   <span class="n">case</span> <span class="o">=</span> <span class="bp">None</span>
+   <span class="n">sense</span> <span class="o">=</span> <span class="bp">None</span>
+   <span class="k">if</span> <span class="p">((</span><span class="n">prosptechused</span> <span class="o">==</span> <span class="n">prosptechlist</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="ow">and</span> <span class="p">(</span><span class="n">prosptechsim</span> <span class="o">==</span> <span class="n">prosptechlist</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span> <span class="p">:</span>
+      <span class="n">case</span> <span class="o">=</span> <span class="mi">1</span>
+      <span class="n">sense</span> <span class="o">=</span> <span class="mi">0</span>
+   <span class="k">elif</span> <span class="p">((</span><span class="n">prosptechused</span> <span class="o">==</span> <span class="n">prosptechlist</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="ow">and</span> <span class="p">(</span><span class="n">prosptechsim</span> <span class="o">==</span> <span class="n">prosptechlist</span><span class="p">[</span><span class="mi">2</span><span class="p">]))</span> <span class="p">:</span>
+      <span class="n">case</span> <span class="o">=</span> <span class="mi">2</span>
+      <span class="n">sense</span> <span class="o">=</span> <span class="mi">0</span>
+   <span class="k">elif</span> <span class="p">((</span><span class="n">prosptechused</span> <span class="o">==</span> <span class="n">prosptechlist</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="ow">and</span> <span class="p">(</span><span class="n">prosptechsim</span> <span class="o">==</span> <span class="n">prosptechlist</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span> <span class="p">:</span>
+      <span class="n">case</span> <span class="o">=</span> <span class="mi">1</span>
+      <span class="n">sense</span> <span class="o">=</span> <span class="mi">1</span>
+   <span class="k">elif</span> <span class="p">((</span><span class="n">prosptechused</span> <span class="o">==</span> <span class="n">prosptechlist</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="ow">and</span> <span class="p">(</span><span class="n">prosptechsim</span> <span class="o">==</span> <span class="n">prosptechlist</span><span class="p">[</span><span class="mi">2</span><span class="p">]))</span> <span class="p">:</span>
+      <span class="n">case</span> <span class="o">=</span> <span class="mi">3</span>
+      <span class="n">sense</span> <span class="o">=</span> <span class="mi">0</span>
+   <span class="k">elif</span> <span class="p">((</span><span class="n">prosptechused</span> <span class="o">==</span> <span class="n">prosptechlist</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span> <span class="ow">and</span> <span class="p">(</span><span class="n">prosptechsim</span> <span class="o">==</span> <span class="n">prosptechlist</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span> <span class="p">:</span>
+      <span class="n">case</span> <span class="o">=</span> <span class="mi">2</span>
+      <span class="n">sense</span> <span class="o">=</span> <span class="mi">1</span>
+   <span class="k">elif</span> <span class="p">((</span><span class="n">prosptechused</span> <span class="o">==</span> <span class="n">prosptechlist</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span> <span class="ow">and</span> <span class="p">(</span><span class="n">prosptechsim</span> <span class="o">==</span> <span class="n">prosptechlist</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span> <span class="p">:</span>
+      <span class="n">case</span> <span class="o">=</span> <span class="mi">3</span>
+      <span class="n">sense</span> <span class="o">=</span> <span class="mi">1</span>
+
+   <span class="k">return</span> <span class="n">case</span><span class="p">,</span> <span class="n">sense</span>
+
+
+<span class="k">def</span> <span class="nf">susceptibility</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">prosptech</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">downsensoraltitude</span> <span class="o">=</span> <span class="mf">0.3</span><span class="p">,</span> <span class="n">upsensoraltitude</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">calculationdepth</span><span class="o">=.</span><span class="mi">0</span><span class="p">,</span> <span class="n">stratumthickness</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">inclineangle</span> <span class="o">=</span> <span class="mi">65</span><span class="p">,</span> <span class="n">alphaangle</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   cf. dataset</span>
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="n">val</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+   
+   <span class="c"># Calculation of lines and columns numbers</span>
+   <span class="n">ny</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>
+   <span class="n">nx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+   <span class="c"># Calculation of total values number</span>
+   <span class="n">nt</span> <span class="o">=</span> <span class="n">nx</span> <span class="o">*</span> <span class="n">ny</span>
+
+   <span class="n">nan_indexes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">val</span><span class="p">)</span>                                 <span class="c"># searches the &#39;nan&#39; indexes in the initial array</span>
+   <span class="k">if</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">val</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">()):</span>                                    <span class="c"># if at least 1 &#39;nan&#39; is detected in the array,</span>
+      
+      <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_min</span><span class="p">,</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_max</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+      <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_min</span><span class="p">,</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_max</span><span class="p">,</span> <span class="n">ny</span><span class="p">,</span> <span class="n">endpoint</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+      <span class="n">_fillnanvalues</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">val</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>                                <span class="c"># fills the &#39;nan&#39; values by interpolated values</span>
+
+   <span class="k">if</span> <span class="p">(</span><span class="n">apod</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+      <span class="n">apodisation2d</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">apod</span><span class="p">)</span>
+
+   <span class="c"># complex conversion, val[][] -&gt; cval[][]</span>
+   <span class="n">coef</span> <span class="o">=</span> <span class="mf">1.</span><span class="o">/</span><span class="p">(</span><span class="mf">400.</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span>
+   <span class="n">cval</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">val</span><span class="o">*</span><span class="n">coef</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span>
+
+   <span class="c"># fast fourier series calculation</span>
+   <span class="n">cvalfft</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">fft2</span><span class="p">(</span><span class="n">cval</span><span class="p">)</span>
+
+   <span class="c"># filter application</span>
+   <span class="c"># deg-&gt;rad angle conversions</span>
+   <span class="n">rinc</span> <span class="o">=</span> <span class="p">(</span><span class="n">inclineangle</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span><span class="o">/</span><span class="mi">180</span> <span class="c"># inclination in radians</span>
+   <span class="n">ralpha</span> <span class="o">=</span> <span class="p">(</span><span class="n">alphaangle</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span><span class="o">/</span><span class="mi">180</span>  <span class="c"># alpha angle in radians</span>
+
+   <span class="n">cosu</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">absolute</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">rinc</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">ralpha</span><span class="p">))</span>
+   <span class="n">cosv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">absolute</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">rinc</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">ralpha</span><span class="p">))</span>
+   <span class="n">cosz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">rinc</span><span class="p">)</span>
+
+   <span class="n">dz</span> <span class="o">=</span> <span class="n">downsensoraltitude</span> <span class="o">-</span> <span class="n">upsensoraltitude</span>
+   <span class="n">zp</span> <span class="o">=</span> <span class="n">calculationdepth</span> <span class="o">+</span> <span class="n">downsensoraltitude</span>
+   
+   <span class="n">deltax</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">x_gridding_delta</span>
+   <span class="n">deltay</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">y_gridding_delta</span>
+
+   <span class="k">if</span> <span class="p">(</span><span class="n">inclineangle</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+      <span class="n">teta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">/</span><span class="mi">2</span>
+   <span class="k">elif</span> <span class="p">(</span><span class="n">inclineangle</span> <span class="o">==</span> <span class="mi">90</span><span class="p">)</span> <span class="p">:</span>    <span class="c"># pi/2</span>
+      <span class="n">teta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span>
+   <span class="k">else</span> <span class="p">:</span>
+      <span class="n">teta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">arctan</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="o">/</span><span class="n">np</span><span class="o">.</span><span class="n">tan</span><span class="p">(</span><span class="n">rinc</span><span class="p">))</span>
+
+   <span class="c"># Field Module, medium field along I inclination calcultation if bipolar field</span>
+   <span class="n">FM</span> <span class="o">=</span> <span class="mf">14.722</span> <span class="o">*</span> <span class="p">(</span><span class="mi">4</span><span class="o">*</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">teta</span><span class="p">))</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">teta</span><span class="p">))))</span>
+
+   <span class="n">cvalfft</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.</span>
+   <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nx</span><span class="p">):</span>                                        <span class="c"># for each column</span>
+      <span class="k">for</span> <span class="n">iy</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ny</span><span class="p">):</span>                                     <span class="c"># for each line</span>
+         <span class="k">if</span> <span class="p">((</span><span class="n">ix</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">iy</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)):</span>                          <span class="c"># if not first point of array</span>
+            <span class="n">cu</span><span class="p">,</span> <span class="n">cv</span> <span class="o">=</span> <span class="n">_freq</span><span class="p">(</span><span class="n">ix</span><span class="p">,</span> <span class="n">iy</span><span class="p">,</span> <span class="n">deltax</span><span class="p">,</span> <span class="n">deltay</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">)</span>     <span class="c"># complex u and v calculation</span>
+            <span class="c"># continuation</span>
+            <span class="n">cz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">cu</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">cv</span><span class="p">))</span>
+            <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">*</span> <span class="nb">complex</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="n">cz</span><span class="o">*</span><span class="n">zp</span><span class="p">),</span> <span class="mf">0.</span><span class="p">)</span>
+            <span class="c"># pole reduction with potential calculation(and not with field as standard pole reduction)</span>
+            <span class="n">cred</span> <span class="o">=</span> <span class="nb">complex</span><span class="p">(</span><span class="n">cz</span><span class="o">*</span><span class="n">cosz</span><span class="p">,</span> <span class="n">cu</span><span class="o">*</span><span class="n">cosu</span> <span class="o">+</span> <span class="n">cv</span><span class="o">*</span><span class="n">cosv</span><span class="p">)</span>
+            <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">*</span> <span class="nb">complex</span><span class="p">(</span><span class="n">cz</span><span class="p">,</span><span class="mi">0</span><span class="p">))</span><span class="o">/</span><span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">cred</span><span class="p">))</span>
+
+            <span class="k">if</span> <span class="p">(</span><span class="n">prosptech</span> <span class="o">==</span> <span class="n">prosptechlist</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>                         <span class="c"># if prospection technic is magnetic field gradient</span>
+               <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">cvalfft</span><span class="p">[</span><span class="n">iy</span><span class="p">][</span><span class="n">ix</span><span class="p">]</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">dz</span><span class="o">*</span><span class="n">cz</span><span class="p">))</span>         
+
+   <span class="c"># FFT inversion</span>
+   <span class="n">icvalfft</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fft</span><span class="o">.</span><span class="n">ifft2</span><span class="p">(</span><span class="n">cvalfft</span><span class="p">)</span>
+
+   <span class="c"># Equivalent stratum thickness</span>
+   <span class="n">val</span> <span class="o">=</span> <span class="p">(</span><span class="n">icvalfft</span><span class="o">.</span><span class="n">real</span><span class="o">*</span><span class="mi">2</span><span class="o">*</span><span class="mi">100000</span><span class="p">)</span><span class="o">/</span><span class="p">(</span><span class="n">FM</span><span class="o">*</span><span class="n">stratumthickness</span><span class="p">)</span>         <span class="c"># 100000 because susceptibiliy in 10^-5 SI</span>
+
+   <span class="n">val</span><span class="p">[</span><span class="n">nan_indexes</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>                                   <span class="c"># set the initial &#39;nan&#39; values, as in the initial array</span>
+
+   <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span> <span class="o">=</span> <span class="n">val</span>                                  <span class="c"># to get the &#39;z_image&#39; array in (x,y) format.</span>
+
+
+
+<span class="n">prosptechlist</span> <span class="o">=</span> <span class="p">[</span><span class="s">&quot;Magnetic field&quot;</span><span class="p">,</span> <span class="s">&quot;Magnetic field gradient&quot;</span><span class="p">,</span> <span class="s">&quot;Vertical component gradient&quot;</span><span class="p">]</span>
+
+<span class="k">def</span> <span class="nf">getprosptechlist</span><span class="p">():</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Get list of prospection technicals availables</span>
+
+<span class="sd">   Returns : list of prospection technicals</span>
+<span class="sd">   </span>
+<span class="sd">   &#39;&#39;&#39;</span>
+
+   <span class="k">return</span> <span class="n">prosptechlist</span>
+   
+
+
+<span class="k">def</span> <span class="nf">_freq</span><span class="p">(</span><span class="n">ix</span><span class="p">,</span> <span class="n">iy</span><span class="p">,</span> <span class="n">deltax</span><span class="p">,</span> <span class="n">deltay</span><span class="p">,</span> <span class="n">nc</span><span class="p">,</span> <span class="n">nl</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Calculation of spatials frequencies u and v</span>
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="n">nyd</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">nl</span><span class="o">/</span><span class="mi">2</span>
+   <span class="n">nxd</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">nc</span><span class="o">/</span><span class="mi">2</span>
+
+   <span class="k">if</span> <span class="p">(</span><span class="n">iy</span> <span class="o">&lt;</span> <span class="n">nyd</span><span class="p">):</span>
+      <span class="n">cv</span> <span class="o">=</span> <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">iy</span><span class="p">))</span><span class="o">/</span><span class="p">((</span><span class="n">nl</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">*</span><span class="n">deltay</span><span class="p">)</span>
+   <span class="k">else</span><span class="p">:</span>
+      <span class="n">cv</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">iy</span><span class="o">-</span><span class="n">nl</span><span class="p">)</span><span class="o">/</span><span class="p">((</span><span class="n">nl</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">*</span><span class="n">deltay</span><span class="p">)</span>
+
+   <span class="k">if</span> <span class="p">(</span><span class="n">ix</span> <span class="o">&lt;</span> <span class="n">nxd</span><span class="p">):</span>
+      <span class="n">cu</span> <span class="o">=</span> <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">ix</span><span class="p">))</span><span class="o">/</span><span class="p">((</span><span class="n">nc</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">*</span><span class="n">deltax</span><span class="p">)</span>
+   <span class="k">else</span><span class="p">:</span>
+      <span class="n">cu</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">ix</span><span class="o">-</span><span class="n">nc</span><span class="p">)</span><span class="o">/</span><span class="p">((</span><span class="n">nc</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">*</span><span class="n">deltax</span><span class="p">)</span>
+
+   <span class="k">return</span> <span class="n">cu</span><span class="p">,</span> <span class="n">cv</span>
+
+
+<span class="k">def</span> <span class="nf">_fillnanvalues</span><span class="p">(</span><span class="n">xi</span><span class="p">,</span> <span class="n">yi</span><span class="p">,</span> <span class="n">val</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Fills the &#39;nan&#39; values by interpolated values using simple spline interpolation method !</span>
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">for</span> <span class="n">profile</span> <span class="ow">in</span> <span class="n">val</span><span class="p">:</span>                                         <span class="c"># for each profile,</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">profile</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">()):</span>                            <span class="c"># if one &#39;nan&#39; at least in the profile, does the completion</span>
+         <span class="n">nan_indexes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">profile</span><span class="p">)</span>
+         <span class="n">data_indexes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_not</span><span class="p">(</span><span class="n">nan_indexes</span><span class="p">)</span>
+         <span class="n">valid_data</span> <span class="o">=</span> <span class="n">profile</span><span class="p">[</span><span class="n">data_indexes</span><span class="p">]</span>
+         <span class="n">interpolated</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span><span class="n">nan_indexes</span><span class="o">.</span><span class="n">nonzero</span><span class="p">()[</span><span class="mi">0</span><span class="p">],</span> <span class="n">data_indexes</span><span class="o">.</span><span class="n">nonzero</span><span class="p">()[</span><span class="mi">0</span><span class="p">],</span> <span class="n">valid_data</span><span class="p">)</span>   
+         <span class="n">profile</span><span class="p">[</span><span class="n">nan_indexes</span><span class="p">]</span> <span class="o">=</span> <span class="n">interpolated</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../../../index.html">
+              <img class="logo" src="../../../_static/geophpy-square.png" alt="Logo"/>
+            </a></p><h3>Useful Links</h3>
+<ul>
+  <li><a href="http://pypi.python.org/pypi/GeophPy">
+    GeophPy @ PyPI</a></li>
+  <li><a href="http://134.157.44.234/GeophPy.pdf">
+    PDF Manual</a></li>
+</ul>
+
+<h3 style="margin-top: 1.5em;">Search</h3>
+<form class="search" action="search.html" method="get">
+  <input type="text" name="q">
+  <input type="submit" value="Go">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<p class="searchtip" style="font-size: 90%">
+Enter search terms or a module, class or function name.
+</p>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">GeophPy 0.20 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2014, Lionel Darras &amp; Philippe Marty.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3b2.
+    </div>
+  </body>
+</html>

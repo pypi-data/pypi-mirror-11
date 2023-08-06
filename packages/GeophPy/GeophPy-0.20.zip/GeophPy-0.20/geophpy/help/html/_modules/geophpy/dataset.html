@@ -1,0 +1,1371 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>geophpy.dataset &mdash; GeophPy 0.20 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.20',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="GeophPy 0.20 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">GeophPy 0.20 documentation</a> &raquo;</li>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for geophpy.dataset</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   GeophPy.dataset</span>
+<span class="sd">   ---------------</span>
+
+<span class="sd">   DataSet Object constructor and methods.</span>
+
+<span class="sd">   :copyright: Copyright 2014 Lionel Darras, Philippe Marty and contributors, see AUTHORS.</span>
+<span class="sd">   :license: GNU GPL v3.</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">absolute_import</span>
+<span class="kn">import</span> <span class="nn">geophpy.plotting.plot</span> <span class="kn">as</span> <span class="nn">plot</span>
+<span class="kn">import</span> <span class="nn">geophpy.plotting.correlation</span> <span class="kn">as</span> <span class="nn">correlation</span>
+<span class="kn">import</span> <span class="nn">geophpy.plotting.colormap</span> <span class="kn">as</span> <span class="nn">colormap</span>
+<span class="kn">import</span> <span class="nn">geophpy.plotting.histo</span> <span class="kn">as</span> <span class="nn">histo</span>
+<span class="kn">import</span> <span class="nn">geophpy.operation.general</span> <span class="kn">as</span> <span class="nn">genoperation</span>
+<span class="kn">import</span> <span class="nn">geophpy.processing.general</span> <span class="kn">as</span> <span class="nn">genprocessing</span>
+<span class="kn">import</span> <span class="nn">geophpy.processing.magnetism</span> <span class="kn">as</span> <span class="nn">magprocessing</span>
+<span class="kn">import</span> <span class="nn">geophpy.filesmanaging.files</span> <span class="kn">as</span> <span class="nn">iofiles</span>
+<span class="kn">import</span> <span class="nn">geophpy.geoposset</span> <span class="kn">as</span> <span class="nn">geopos</span>
+<span class="kn">import</span> <span class="nn">geophpy.geopositioning.kml</span> <span class="kn">as</span> <span class="nn">kml</span>
+<span class="kn">import</span> <span class="nn">geophpy.geopositioning.raster</span> <span class="kn">as</span> <span class="nn">raster</span>
+<span class="kn">import</span> <span class="nn">geophpy.geopositioning.general</span> <span class="kn">as</span> <span class="nn">gengeopositioning</span>
+<span class="kn">import</span> <span class="nn">math</span><span class="o">,</span> <span class="nn">os</span>
+
+
+
+<span class="c">#---------------------------------------------------------------------------#</span>
+<span class="c"># Informations about DataSet Object                                         #</span>
+<span class="c">#---------------------------------------------------------------------------#</span>
+<span class="k">class</span> <span class="nc">Info</span><span class="p">:</span>
+   <span class="n">x_min</span> <span class="o">=</span> <span class="bp">None</span>
+   <span class="n">x_max</span> <span class="o">=</span> <span class="bp">None</span>
+   <span class="n">y_min</span> <span class="o">=</span> <span class="bp">None</span>
+   <span class="n">y_max</span> <span class="o">=</span> <span class="bp">None</span>
+   <span class="n">z_min</span> <span class="o">=</span> <span class="bp">None</span>
+   <span class="n">z_max</span> <span class="o">=</span> <span class="bp">None</span>
+   <span class="n">x_gridding_delta</span> <span class="o">=</span> <span class="bp">None</span>
+   <span class="n">y_gridding_delta</span> <span class="o">=</span> <span class="bp">None</span>
+   <span class="n">gridding_interpolation</span> <span class="o">=</span> <span class="bp">None</span>
+   <span class="n">plottype</span> <span class="o">=</span> <span class="p">(</span><span class="n">plot</span><span class="o">.</span><span class="n">gettypelist</span><span class="p">())[</span><span class="mi">0</span><span class="p">]</span>
+   <span class="n">cmapname</span> <span class="o">=</span> <span class="s">&#39;Greys&#39;</span>
+
+
+
+<span class="c">#---------------------------------------------------------------------------#</span>
+<span class="c"># Fields names and values about DataSet Object                              #</span>
+<span class="c">#---------------------------------------------------------------------------#</span>
+<span class="k">class</span> <span class="nc">Data</span><span class="p">:</span>
+   <span class="n">fields</span> <span class="o">=</span> <span class="bp">None</span>
+   <span class="n">values</span> <span class="o">=</span> <span class="bp">None</span>
+   <span class="n">z_image</span> <span class="o">=</span> <span class="bp">None</span>
+   <span class="n">easting_image</span> <span class="o">=</span> <span class="bp">None</span>    <span class="c"># easting array</span>
+   <span class="n">northing_image</span> <span class="o">=</span> <span class="bp">None</span>   <span class="c"># northing array</span>
+
+
+
+<span class="c">#---------------------------------------------------------------------------#</span>
+<span class="c"># Coordinates Object in local and utm referencing                           #</span>
+<span class="c">#---------------------------------------------------------------------------#</span>
+<span class="k">class</span> <span class="nc">GeoRefPoint</span><span class="p">:</span>
+   <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">easting</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">northing</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+      <span class="bp">self</span><span class="o">.</span><span class="n">utm_easting</span> <span class="o">=</span> <span class="n">easting</span>
+      <span class="bp">self</span><span class="o">.</span><span class="n">utm_northing</span> <span class="o">=</span> <span class="n">northing</span>
+
+
+
+<span class="c">#---------------------------------------------------------------------------#</span>
+<span class="c"># Georeferencement System Object between local and geographics positions    #</span>
+<span class="c">#---------------------------------------------------------------------------#</span>
+<span class="k">class</span> <span class="nc">GeoRefSystem</span><span class="p">:</span>
+   <span class="n">active</span> <span class="o">=</span> <span class="bp">False</span>          <span class="c"># data set georeferencement status</span>
+   <span class="n">refsystem</span> <span class="o">=</span> <span class="bp">None</span>        <span class="c"># &#39;UTM&#39;, &#39;WGS84&#39;, ...</span>
+   <span class="n">utm_zoneletter</span> <span class="o">=</span> <span class="bp">None</span>   <span class="c"># E -&gt; X</span>
+   <span class="n">utm_zonenumber</span> <span class="o">=</span> <span class="bp">None</span>   <span class="c"># 1 -&gt; 60</span>
+   <span class="n">points_list</span> <span class="o">=</span> <span class="p">[]</span>        <span class="c"># list of points, [[num1, lon1 or eastern1, lat1 or northern1, x, y], ...]</span>
+
+
+
+<span class="c">#---------------------------------------------------------------------------#</span>
+<span class="c"># DataSet Object                                                            #</span>
+<span class="c">#---------------------------------------------------------------------------#</span>
+<div class="viewcode-block" id="DataSet"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet">[docs]</a><span class="k">class</span> <span class="nc">DataSet</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Creates a DataSet Object to process and display data.</span>
+
+<span class="sd">   info = Info()</span>
+<span class="sd">   data = Data()</span>
+<span class="sd">   georef = GeoRefSystem()</span>
+<span class="sd">   &#39;&#39;&#39;</span>
+
+   <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+      <span class="k">pass</span>
+
+   <span class="nd">@classmethod</span>
+   <span class="k">def</span> <span class="nf">_new</span><span class="p">(</span><span class="n">cls</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      Creates a new empty data set</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="n">dataset</span> <span class="o">=</span> <span class="n">cls</span><span class="p">()</span>
+      <span class="n">dataset</span><span class="o">.</span><span class="n">info</span> <span class="o">=</span> <span class="n">Info</span><span class="p">()</span>
+      <span class="n">dataset</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">Data</span><span class="p">()</span>
+      <span class="n">dataset</span><span class="o">.</span><span class="n">georef</span> <span class="o">=</span> <span class="n">GeoRefSystem</span><span class="p">()</span>
+      <span class="k">return</span> <span class="n">dataset</span>
+
+   <span class="c">#---------------------------------------------------------------------------#</span>
+   <span class="c"># Data set files management                                                 #</span>
+   <span class="c">#---------------------------------------------------------------------------#</span>
+   <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="DataSet.from_file"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.from_file">[docs]</a>   <span class="k">def</span> <span class="nf">from_file</span><span class="p">(</span><span class="n">filenameslist</span><span class="p">,</span> <span class="n">fileformat</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">delimiter</span><span class="o">=</span><span class="s">&#39;</span><span class="se">\t</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">x_colnum</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">y_colnum</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">z_colnum</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">skipinitialspace</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">skip_rows</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">fields_row</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      To build a DataSet Object from a file.</span>
+
+<span class="sd">      Parameters:</span>
+
+<span class="sd">      :filenameslist: list of files to open</span>
+<span class="sd">                      [&#39;file1.xyz&#39;, &#39;file2.xyz&#39; ...]</span>
+<span class="sd">                      or</span>
+<span class="sd">                      [&#39;file*.xyz&#39;] to open all files with filename beginning by &quot;file&quot; and ending by &quot;.xyz&quot;</span>
+
+<span class="sd">      :fileformat: format of files to open (None by default implies automatic determination from filename extension)</span>
+
+<span class="sd">      Note: all files must have the same format</span>
+
+<span class="sd">      :delimiter: pattern delimitting fields within one line (e.g. &#39;\t&#39;, &#39;,&#39;, &#39;;&#39; ...)</span>
+
+<span class="sd">      :x_colnum: column number of the X coordinate of the profile (1 by default)</span>
+
+<span class="sd">      :y_colnum: column number of the Y coordinate inside the profile (2 by default)</span>
+
+<span class="sd">      :z_colnum: column number of the measurement profile (3 by default)</span>
+
+<span class="sd">      :skipinitialspace: if True, several contiguous delimiters are equivalent to one</span>
+
+<span class="sd">      :skip_rows: number of rows to skip at the beginning of the file, i.e. to skip header rows (1 by default)</span>
+
+<span class="sd">      :fields_row: row number where to read the field names ; if -1 then default field names will be &quot;X&quot;, &quot;Y&quot; and &quot;Z&quot;</span>
+
+<span class="sd">      Returns:</span>
+
+<span class="sd">      :success: true if DataSet Object built, false if not</span>
+
+<span class="sd">      :dataset: DataSet Object build from file(s) (empty if any error)</span>
+
+<span class="sd">      Example:</span>
+
+<span class="sd">      success, dataset = DataSet.from_file(&quot;file.csv&quot;)</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="c"># Dispatch method ##############################################</span>
+      <span class="k">class</span> <span class="nc">From</span><span class="p">():</span>
+         <span class="nd">@staticmethod</span>
+         <span class="k">def</span> <span class="nf">ascii</span><span class="p">():</span>
+            <span class="k">return</span> <span class="n">iofiles</span><span class="o">.</span><span class="n">from_ascii</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">filenameslist</span><span class="p">,</span> <span class="n">delimiter</span><span class="o">=</span><span class="n">delimiter</span><span class="p">,</span> <span class="n">x_colnum</span><span class="o">=</span><span class="n">x_colnum</span><span class="p">,</span> <span class="n">y_colnum</span><span class="o">=</span><span class="n">y_colnum</span><span class="p">,</span> <span class="n">z_colnum</span><span class="o">=</span><span class="n">z_colnum</span><span class="p">,</span> <span class="n">skipinitialspace</span><span class="o">=</span><span class="n">skipinitialspace</span><span class="p">,</span> <span class="n">skip_rows</span><span class="o">=</span><span class="n">skip_rows</span><span class="p">,</span> <span class="n">fields_row</span><span class="o">=</span><span class="n">fields_row</span><span class="p">)</span>
+         <span class="nd">@staticmethod</span>
+         <span class="k">def</span> <span class="nf">netcdf</span><span class="p">():</span>
+            <span class="k">return</span> <span class="n">iofiles</span><span class="o">.</span><span class="n">from_netcdf</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">filenameslist</span><span class="p">,</span> <span class="n">x_colnum</span><span class="o">=</span><span class="n">x_colnum</span><span class="p">,</span> <span class="n">y_colnum</span><span class="o">=</span><span class="n">y_colnum</span><span class="p">,</span> <span class="n">z_colnum</span><span class="o">=</span><span class="n">z_colnum</span><span class="p">)</span>
+
+      <span class="c"># Create a new dataset #########################################</span>
+      <span class="n">dataset</span> <span class="o">=</span> <span class="n">DataSet</span><span class="o">.</span><span class="n">_new</span><span class="p">()</span>
+
+      <span class="c"># Choose the input file format #################################</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">fileformat</span> <span class="o">==</span> <span class="bp">None</span><span class="p">):</span>
+         <span class="c"># ...TBD... Determine the format from file header</span>
+         <span class="k">pass</span>
+
+      <span class="k">if</span> <span class="p">(</span><span class="n">fileformat</span> <span class="o">==</span> <span class="bp">None</span><span class="p">):</span>
+         <span class="c"># Determine the format from filename extension</span>
+         <span class="n">file_extension</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">filenameslist</span><span class="p">[</span><span class="mi">0</span><span class="p">])[</span><span class="mi">1</span><span class="p">]</span>
+         <span class="n">fileformat</span> <span class="o">=</span> <span class="n">format_chooser</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">file_extension</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+
+      <span class="c"># Read the dataset from input file #############################</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">fileformat</span> <span class="ow">in</span> <span class="n">fileformat_getlist</span><span class="p">()):</span>
+         <span class="n">readfile</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">From</span><span class="p">,</span> <span class="n">fileformat</span><span class="p">)</span>
+         <span class="n">error</span>    <span class="o">=</span> <span class="n">readfile</span><span class="p">()</span>
+      <span class="k">else</span><span class="p">:</span>
+         <span class="c"># Undefined file format #####################################</span>
+         <span class="c"># ...TBD... raise an error here !</span>
+         <span class="n">error</span> <span class="o">=</span> <span class="mi">1</span>
+
+      <span class="c"># Return the dataset and error code ############################</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">error</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+         <span class="n">success</span> <span class="o">=</span> <span class="bp">True</span>
+      <span class="k">else</span><span class="p">:</span>
+         <span class="n">success</span> <span class="o">=</span> <span class="bp">False</span>
+      <span class="k">return</span> <span class="n">success</span><span class="p">,</span> <span class="n">dataset</span>
+
+
+</div>
+<div class="viewcode-block" id="DataSet.to_file"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.to_file">[docs]</a>   <span class="k">def</span> <span class="nf">to_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">fileformat</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">delimiter</span><span class="o">=</span><span class="s">&#39;</span><span class="se">\t</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      Save a DataSet Object to a file.</span>
+
+<span class="sd">      Parameters :</span>
+
+<span class="sd">      :filename: name of file to save.</span>
+
+<span class="sd">      :fileformat: format of output file ...</span>
+
+<span class="sd">      :delimiter: delimiter between fields in a line of the output file, &#39;\t&#39;, &#39;,&#39;, &#39;;&#39;, ...</span>
+
+<span class="sd">      Returns :</span>
+
+<span class="sd">      :success: boolean</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="c"># Dispatch method ##############################################</span>
+      <span class="k">class</span> <span class="nc">To</span><span class="p">():</span>
+         <span class="nd">@staticmethod</span>
+         <span class="k">def</span> <span class="nf">ascii</span><span class="p">():</span>
+            <span class="k">return</span> <span class="n">iofiles</span><span class="o">.</span><span class="n">to_ascii</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">delimiter</span><span class="o">=</span><span class="n">delimiter</span><span class="p">)</span>
+         <span class="nd">@staticmethod</span>
+         <span class="k">def</span> <span class="nf">netcdf</span><span class="p">():</span>
+            <span class="k">return</span> <span class="n">iofiles</span><span class="o">.</span><span class="n">to_netcdf</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="n">description</span><span class="p">)</span>
+
+      <span class="c"># Choose the dataset format ####################################</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">fileformat</span> <span class="o">==</span> <span class="bp">None</span><span class="p">):</span>
+         <span class="c"># Determine the format from filename extension</span>
+         <span class="n">file_extension</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">filename</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+         <span class="n">fileformat</span> <span class="o">=</span> <span class="n">format_chooser</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">file_extension</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+
+      <span class="c"># Write the dataset to file ####################################</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">fileformat</span> <span class="ow">in</span> <span class="n">fileformat_getlist</span><span class="p">()):</span>
+         <span class="n">writefile</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">To</span><span class="p">,</span> <span class="n">fileformat</span><span class="p">)</span>
+         <span class="n">error</span>     <span class="o">=</span> <span class="n">writefile</span><span class="p">()</span>
+      <span class="k">else</span><span class="p">:</span>
+         <span class="c"># Undefined file format #####################################</span>
+         <span class="c"># ...TBD... raise an error here !</span>
+         <span class="n">error</span> <span class="o">=</span> <span class="mi">1</span>
+
+      <span class="c"># Return the error code ########################################</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">error</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+         <span class="n">success</span> <span class="o">=</span> <span class="bp">True</span>
+      <span class="k">else</span><span class="p">:</span>
+         <span class="n">success</span> <span class="o">=</span> <span class="bp">False</span>
+      <span class="k">return</span> <span class="n">success</span>
+
+
+
+   <span class="c">#---------------------------------------------------------------------------#</span>
+   <span class="c"># DataSet Plotting                                                          #</span>
+   <span class="c">#---------------------------------------------------------------------------#</span></div>
+<div class="viewcode-block" id="DataSet.plot"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.plot">[docs]</a>   <span class="k">def</span> <span class="nf">plot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plottype</span><span class="p">,</span> <span class="n">cmapname</span><span class="p">,</span> <span class="n">creversed</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">fig</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">cmmin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">cmmax</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">interpolation</span><span class="o">=</span><span class="s">&#39;bilinear&#39;</span><span class="p">,</span> <span class="n">cmapdisplay</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">axisdisplay</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">pointsdisplay</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">transparent</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">logscale</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">rects</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      Plot in 2D or 3D dimensions the cartography representation.</span>
+
+<span class="sd">      Parameters :</span>
+
+<span class="sd">      :plottype: plotting type, &#39;2D-SURFACE&#39;, &#39;2D-CONTOUR&#39;, ...</span>
+
+<span class="sd">      :cmapname: name of the color map used, &#39;gray_r&#39; for example.</span>
+
+<span class="sd">      :creversed: True to add &#39;_r&#39; at the cmname to reverse the color map</span>
+
+<span class="sd">      :fig: figure to plot, None by default to create a new figure.</span>
+
+<span class="sd">      :filename: name of the picture file to save, None if no file to save.</span>
+
+<span class="sd">      :cmmin: minimal value to display in the color map range.</span>
+
+<span class="sd">      :cmmax: maximal value to display in the color map range.</span>
+
+<span class="sd">      :interpolation: interpolation mode to display DataSet Image (&#39;bilinear&#39;, &#39;bicubic&#39;, &#39;spline16&#39;, ...), &#39;bilinear&#39; by default.</span>
+
+<span class="sd">      :cmapdisplay: True to display color map bar, False to hide the color map bar.</span>
+
+<span class="sd">      :axisdisplay: True to display axis and labels, False to hide axis and labels</span>
+
+<span class="sd">      :pointsdisplay: True to display grid points, False to not display them.</span>
+
+<span class="sd">      :dpi: &#39;dot per inch&#39; definition of the picture file if filename != None</span>
+
+<span class="sd">      :transparent: True to manage the transparency for the zones of lack of data</span>
+
+<span class="sd">      :logscale: True to display with the log scale</span>
+
+<span class="sd">      :rects: [[x0, y0, w0, h0], [x1, y1, w1, h1], ...], None if no selection rectangles to display</span>
+
+<span class="sd">      Returns : fig, plt, cmap.   None, None, None if filename with a wrong picture format</span>
+
+<span class="sd">      :fig: Figure Object</span>
+
+<span class="sd">      :cmap: ColorMap Object</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="n">dataset_todisplay</span> <span class="o">=</span> <span class="n">genoperation</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+      <span class="k">return</span> <span class="n">plot</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">dataset_todisplay</span><span class="p">,</span> <span class="n">plottype</span><span class="p">,</span> <span class="n">cmapname</span><span class="p">,</span> <span class="n">creversed</span><span class="p">,</span> <span class="n">fig</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">cmmin</span><span class="o">=</span><span class="n">cmmin</span><span class="p">,</span> <span class="n">cmmax</span><span class="o">=</span><span class="n">cmmax</span><span class="p">,</span> <span class="n">interpolation</span><span class="o">=</span><span class="n">interpolation</span><span class="p">,</span> <span class="n">cmapdisplay</span><span class="o">=</span><span class="n">cmapdisplay</span><span class="p">,</span> <span class="n">axisdisplay</span><span class="o">=</span><span class="n">axisdisplay</span><span class="p">,</span> <span class="n">pointsdisplay</span><span class="o">=</span><span class="n">pointsdisplay</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="n">dpi</span><span class="p">,</span> <span class="n">transparent</span><span class="o">=</span><span class="n">transparent</span><span class="p">,</span> <span class="n">logscale</span><span class="o">=</span><span class="n">logscale</span><span class="p">,</span> <span class="n">rects</span><span class="o">=</span><span class="n">rects</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="n">points</span><span class="p">)</span>
+
+
+</div>
+<div class="viewcode-block" id="DataSet.histo_plot"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.histo_plot">[docs]</a>   <span class="k">def</span> <span class="nf">histo_plot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fig</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">zmin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">transparent</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      Plot histogram.</span>
+
+<span class="sd">      Parameters :</span>
+
+<span class="sd">      :fig: figure to plot, None by default to create a new figure.</span>
+
+<span class="sd">      :filename: Name of the histogram file to save, None if no file to save.</span>
+
+<span class="sd">      :zmin: Minimal Z value to represent.</span>
+
+<span class="sd">      :zmax: Maximal Z value to represent.</span>
+
+<span class="sd">      :dpi: &#39;dot per inch&#39; definition of the picture file if filename != None</span>
+
+<span class="sd">      :transparent: True to manage the transparency.</span>
+
+<span class="sd">      Returns :</span>
+
+<span class="sd">      :fig: Figure Object</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">histo</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fig</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">zmin</span><span class="p">,</span> <span class="n">zmax</span><span class="p">,</span> <span class="n">dpi</span><span class="p">,</span> <span class="n">transparent</span><span class="p">)</span>
+
+
+</div>
+   <span class="k">def</span> <span class="nf">correlation_plotmap</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fig</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&quot;Pearson&quot;</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">transparent</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      Plot correlation map.</span>
+
+<span class="sd">      Parameters :</span>
+
+<span class="sd">      :fig: figure to plot, None by default to create a new figure.</span>
+
+<span class="sd">      :filename: Name of the histogram file to save, None if no file to save.</span>
+
+<span class="sd">      :method: Correlation method</span>
+
+<span class="sd">      :transparent: True to manage the transparency.</span>
+
+<span class="sd">      Returns :</span>
+
+<span class="sd">      :fig: Figure Object</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">correlation</span><span class="o">.</span><span class="n">plotmap</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fig</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">method</span><span class="p">,</span> <span class="n">dpi</span><span class="p">,</span> <span class="n">transparent</span><span class="p">)</span>
+
+
+
+   <span class="k">def</span> <span class="nf">correlation_plotsum</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fig</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&quot;Pearson&quot;</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">transparent</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      Plot correlation sum.</span>
+
+<span class="sd">      Parameters :</span>
+
+<span class="sd">      :fig: figure to plot, None by default to create a new figure.</span>
+
+<span class="sd">      :filename: Name of the histogram file to save, None if no file to save.</span>
+
+<span class="sd">      :method: Correlation method</span>
+
+<span class="sd">      :transparent: True to manage the transparency.</span>
+
+<span class="sd">      Returns :</span>
+
+<span class="sd">      :fig: Figure Object</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">correlation</span><span class="o">.</span><span class="n">plotsum</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fig</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">method</span><span class="p">,</span> <span class="n">dpi</span><span class="p">,</span> <span class="n">transparent</span><span class="p">)</span>
+
+
+
+<div class="viewcode-block" id="DataSet.histo_getlimits"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.histo_getlimits">[docs]</a>   <span class="k">def</span> <span class="nf">histo_getlimits</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      Get the limits values.</span>
+
+<span class="sd">      Returns : zmin, zmax</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">histo</span><span class="o">.</span><span class="n">getlimits</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+
+
+   <span class="c">#---------------------------------------------------------------------------#</span>
+   <span class="c"># DataSet Operations                                                        #</span>
+   <span class="c">#---------------------------------------------------------------------------#</span></div>
+<div class="viewcode-block" id="DataSet.copy"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.copy">[docs]</a>   <span class="k">def</span> <span class="nf">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      To duplicate a DataSet Object.</span>
+
+<span class="sd">      Parameters:</span>
+
+<span class="sd">      :dataset: DataSet Object to duplicate</span>
+
+<span class="sd">      Returns:</span>
+
+<span class="sd">      :newdataset: duplicated DataSet Object</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="c">#newdataset = DataSet._new()</span>
+      <span class="c">#newdataset = genoperation.copy(self, newdataset)</span>
+      <span class="c">#return newdataset</span>
+      <span class="k">return</span> <span class="n">genoperation</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+
+</div>
+   <span class="k">def</span> <span class="nf">interpolate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">interpolation</span><span class="o">=</span><span class="s">&quot;none&quot;</span><span class="p">,</span> <span class="n">x_delta</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">y_delta</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">x_decimal_maxnb</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">y_decimal_maxnb</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">x_frame_factor</span><span class="o">=</span><span class="mf">0.</span><span class="p">,</span> <span class="n">y_frame_factor</span><span class="o">=</span><span class="mf">0.</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      To interpolate raw values into z_image</span>
+
+<span class="sd">      Parameters:</span>
+
+<span class="sd">      :dataset: DataSet Object to interpolate</span>
+
+<span class="sd">      :interpolation: gridding interpolation method to use (from griddinginterpolation_getlist()) ; &quot;none&quot; default value means to simply project raw data on the grid without interpolation (holes will be filled with &quot;nan&quot;) ; otherwise &quot;cubic&quot; should be recommended (but currently doesn&#39;t handle nans correctly ...)</span>
+
+<span class="sd">      :x_delta: gridding delta x ; None default value means to calculate it</span>
+
+<span class="sd">      :y_delta: gridding delta y ; None default value means to calculate it</span>
+
+<span class="sd">      :x_decimal_maxnb: decimal precision (e.g. 2 means 10^-2) to compute x_delta</span>
+
+<span class="sd">      :y_decimal_maxnb: decimal precision (e.g. 1 means 10^-1) to compute y_delta</span>
+
+<span class="sd">      :x_frame_factor: frame extension coefficient along x axis (e.g. 0.1 means xlength +10% on each side, i.e. xlength +20% in total) ; pixels within extended borders will be filled with &quot;nan&quot;</span>
+
+<span class="sd">      :y_frame_factor: frame extension coefficient along y axis (e.g. 0.45 means yheight +45% top and bottom, i.e. yheight +90% in total) ; pixels within extended borders will be filled with &quot;nan&quot;</span>
+
+<span class="sd">      Returns:</span>
+
+<span class="sd">      fills the z_image data field and adjusts info meta data</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">genoperation</span><span class="o">.</span><span class="n">interpolate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">interpolation</span><span class="o">=</span><span class="n">interpolation</span><span class="p">,</span> <span class="n">x_delta</span><span class="o">=</span><span class="n">x_delta</span><span class="p">,</span> <span class="n">y_delta</span><span class="o">=</span><span class="n">y_delta</span><span class="p">,</span> <span class="n">x_decimal_maxnb</span><span class="o">=</span><span class="n">x_decimal_maxnb</span><span class="p">,</span> <span class="n">y_decimal_maxnb</span><span class="o">=</span><span class="n">y_decimal_maxnb</span><span class="p">,</span> <span class="n">x_frame_factor</span><span class="o">=</span><span class="n">x_frame_factor</span><span class="p">,</span> <span class="n">y_frame_factor</span><span class="o">=</span><span class="n">y_frame_factor</span><span class="p">)</span>
+
+
+
+   <span class="k">def</span> <span class="nf">sample</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      To rebuild the Values from a Z_image</span>
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">genoperation</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+
+
+   <span class="c">#---------------------------------------------------------------------------#</span>
+   <span class="c"># DataSet Geopositioning                                                    #</span>
+   <span class="c">#---------------------------------------------------------------------------#</span>
+   <span class="k">def</span> <span class="nf">to_kml</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plottype</span><span class="p">,</span> <span class="n">cmapname</span><span class="p">,</span> <span class="n">kmlfilename</span><span class="p">,</span> <span class="n">creversed</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">picturefilename</span><span class="o">=</span><span class="s">&quot;image.png&quot;</span><span class="p">,</span> <span class="n">cmmin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">cmmax</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">interpolation</span><span class="o">=</span><span class="s">&#39;bilinear&#39;</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      Plot in 2D dimensions the cartography representation to export in google earth.</span>
+
+<span class="sd">      Parameters :</span>
+
+<span class="sd">      :plottype: plotting type, &#39;2D-SURFACE&#39;, &#39;2D-CONTOUR&#39;, ...xyz</span>
+
+<span class="sd">      :cmapname: name of the color map used.</span>
+
+<span class="sd">      :kmlfilename: name of the kml file to create</span>
+
+<span class="sd">      :creversed: True to add &#39;_r&#39; at the cmname to reverse the color map</span>
+
+<span class="sd">      :picturefilename: name of the picture file to save, None if no file to save.</span>
+
+<span class="sd">      :cmmin: minimal value to display in the color map range.</span>
+
+<span class="sd">      :cmmax: maximal value to display in the color map range.</span>
+
+<span class="sd">      :interpolation: interpolation mode to display DataSet Image (&#39;bilinear&#39;, &#39;nearest&#39;, &#39;bicubic&#39;), &#39;bilinear&#39; by default.</span>
+
+<span class="sd">      :cmapdisplay: True to display color map bar, False to hide the color map bar.</span>
+
+<span class="sd">      :axisdisplay: True to display axis and labels, False to hide axis and labels</span>
+
+<span class="sd">      :dpi: &#39;dot per inch&#39; definition of the picture file if filename != None</span>
+
+<span class="sd">      Returns:</span>
+
+<span class="sd">      :success: True if success, False if not.</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="c"># calculation of the 4 points utm coordinates</span>
+      <span class="n">success</span><span class="p">,</span> <span class="p">[</span><span class="n">blcorner</span><span class="p">,</span> <span class="n">brcorner</span><span class="p">,</span> <span class="n">urcorner</span><span class="p">,</span> <span class="n">ulcorner</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">getquadcoords</span><span class="p">()</span>
+
+      <span class="k">if</span> <span class="p">(</span><span class="n">success</span> <span class="o">==</span> <span class="bp">True</span><span class="p">):</span>
+         <span class="c"># utm to wgs84 conversion</span>
+         <span class="n">blcorner_wgs84_lat</span><span class="p">,</span> <span class="n">blcorner_wgs84_lon</span> <span class="o">=</span> <span class="n">geopos</span><span class="o">.</span><span class="n">utm_to_wgs84</span><span class="p">(</span><span class="n">blcorner</span><span class="o">.</span><span class="n">utm_easting</span><span class="p">,</span> <span class="n">blcorner</span><span class="o">.</span><span class="n">utm_northing</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">georef</span><span class="o">.</span><span class="n">utm_zonenumber</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">georef</span><span class="o">.</span><span class="n">utm_zoneletter</span><span class="p">)</span>
+         <span class="n">brcorner_wgs84_lat</span><span class="p">,</span> <span class="n">brcorner_wgs84_lon</span> <span class="o">=</span> <span class="n">geopos</span><span class="o">.</span><span class="n">utm_to_wgs84</span><span class="p">(</span><span class="n">brcorner</span><span class="o">.</span><span class="n">utm_easting</span><span class="p">,</span> <span class="n">brcorner</span><span class="o">.</span><span class="n">utm_northing</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">georef</span><span class="o">.</span><span class="n">utm_zonenumber</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">georef</span><span class="o">.</span><span class="n">utm_zoneletter</span><span class="p">)</span>
+         <span class="n">urcorner_wgs84_lat</span><span class="p">,</span> <span class="n">urcorner_wgs84_lon</span> <span class="o">=</span> <span class="n">geopos</span><span class="o">.</span><span class="n">utm_to_wgs84</span><span class="p">(</span><span class="n">urcorner</span><span class="o">.</span><span class="n">utm_easting</span><span class="p">,</span> <span class="n">urcorner</span><span class="o">.</span><span class="n">utm_northing</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">georef</span><span class="o">.</span><span class="n">utm_zonenumber</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">georef</span><span class="o">.</span><span class="n">utm_zoneletter</span><span class="p">)</span>
+         <span class="n">ulcorner_wgs84_lat</span><span class="p">,</span> <span class="n">ulcorner_wgs84_lon</span> <span class="o">=</span> <span class="n">geopos</span><span class="o">.</span><span class="n">utm_to_wgs84</span><span class="p">(</span><span class="n">ulcorner</span><span class="o">.</span><span class="n">utm_easting</span><span class="p">,</span> <span class="n">ulcorner</span><span class="o">.</span><span class="n">utm_northing</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">georef</span><span class="o">.</span><span class="n">utm_zonenumber</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">georef</span><span class="o">.</span><span class="n">utm_zoneletter</span><span class="p">)</span>
+
+         <span class="n">quadcoords</span> <span class="o">=</span> <span class="p">[(</span><span class="n">blcorner_wgs84_lon</span><span class="p">,</span> <span class="n">blcorner_wgs84_lat</span><span class="p">),</span> <span class="p">(</span><span class="n">brcorner_wgs84_lon</span><span class="p">,</span> <span class="n">brcorner_wgs84_lat</span><span class="p">),</span> <span class="p">(</span><span class="n">urcorner_wgs84_lon</span><span class="p">,</span> <span class="n">urcorner_wgs84_lat</span><span class="p">),</span> <span class="p">(</span><span class="n">ulcorner_wgs84_lon</span><span class="p">,</span> <span class="n">ulcorner_wgs84_lat</span><span class="p">)]</span>
+
+         <span class="c"># creation of the picture file to overlay</span>
+         <span class="bp">self</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">plottype</span><span class="p">,</span> <span class="n">cmapname</span><span class="p">,</span> <span class="n">creversed</span><span class="p">,</span> <span class="n">fig</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="n">picturefilename</span><span class="p">,</span> <span class="n">cmmin</span><span class="o">=</span><span class="n">cmmin</span><span class="p">,</span> <span class="n">cmmax</span><span class="o">=</span><span class="n">cmmax</span><span class="p">,</span> <span class="n">interpolation</span><span class="o">=</span><span class="n">interpolation</span><span class="p">,</span> <span class="n">cmapdisplay</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">axisdisplay</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="n">dpi</span><span class="p">,</span> <span class="n">transparent</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+         <span class="c"># creation of the kml file</span>
+         <span class="n">kml</span><span class="o">.</span><span class="n">picture_to_kml</span><span class="p">(</span><span class="n">picturefilename</span><span class="p">,</span> <span class="n">quadcoords</span><span class="p">,</span> <span class="n">kmlfilename</span><span class="p">)</span>
+
+      <span class="k">return</span> <span class="n">success</span>
+
+
+
+   <span class="k">def</span> <span class="nf">to_raster</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plottype</span><span class="p">,</span> <span class="n">cmapname</span><span class="p">,</span> <span class="n">picturefilename</span><span class="p">,</span> <span class="n">creversed</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">cmmin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">cmmax</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">interpolation</span><span class="o">=</span><span class="s">&#39;bilinear&#39;</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      Plot in 2D dimensions the cartography representation with the world file associated, to using in a SIG application.</span>
+
+<span class="sd">      Parameters:</span>
+
+<span class="sd">      :plottype: plotting type, &#39;2D-SURFACE&#39;, &#39;2D-CONTOUR&#39;, ...xyz</span>
+
+<span class="sd">      :cmapname: name of the color map used.</span>
+
+<span class="sd">      :picturefilename: name of the picture file to save (.jpg, .jpeg, .tif, .tiff, .png) , None if no file to save.</span>
+
+<span class="sd">      :creversed: True to add &#39;_r&#39; at the cmname to reverse the color map</span>
+
+<span class="sd">      :cmmin: minimal value to display in the color map range.</span>
+
+<span class="sd">      :cmmax: maximal value to display in the color map range.</span>
+
+<span class="sd">      :interpolation: interpolation mode to display DataSet Image (&#39;bilinear&#39;, &#39;nearest&#39;, &#39;bicubic&#39;), &#39;bilinear&#39; by default.</span>
+
+<span class="sd">      :dpi: &#39;dot per inch&#39; definition of the picture file</span>
+
+<span class="sd">      Returns:</span>
+
+<span class="sd">      :success: True if success, False if not.</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="c"># calculation of the 4 points utm coordinates</span>
+      <span class="n">success</span><span class="p">,</span> <span class="p">[</span><span class="n">blcorner</span><span class="p">,</span> <span class="n">brcorner</span><span class="p">,</span> <span class="n">urcorner</span><span class="p">,</span> <span class="n">ulcorner</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">getquadcoords</span><span class="p">()</span>
+
+      <span class="k">if</span> <span class="p">(</span><span class="n">success</span> <span class="o">==</span> <span class="bp">True</span><span class="p">):</span>
+         <span class="c"># tests if picture format available for raster</span>
+         <span class="n">success</span> <span class="o">=</span> <span class="n">raster</span><span class="o">.</span><span class="n">israsterformat</span><span class="p">(</span><span class="n">picturefilename</span><span class="p">)</span>
+
+         <span class="k">if</span> <span class="p">(</span><span class="n">success</span> <span class="o">==</span> <span class="bp">True</span><span class="p">):</span>
+            <span class="n">quadcoords</span> <span class="o">=</span> <span class="p">[(</span><span class="n">blcorner</span><span class="o">.</span><span class="n">utm_easting</span><span class="p">,</span> <span class="n">blcorner</span><span class="o">.</span><span class="n">utm_northing</span><span class="p">),</span> <span class="p">(</span><span class="n">brcorner</span><span class="o">.</span><span class="n">utm_easting</span><span class="p">,</span> <span class="n">brcorner</span><span class="o">.</span><span class="n">utm_northing</span><span class="p">),</span> <span class="p">(</span><span class="n">urcorner</span><span class="o">.</span><span class="n">utm_easting</span><span class="p">,</span> <span class="n">urcorner</span><span class="o">.</span><span class="n">utm_northing</span><span class="p">),</span> <span class="p">(</span><span class="n">ulcorner</span><span class="o">.</span><span class="n">utm_easting</span><span class="p">,</span> <span class="n">ulcorner</span><span class="o">.</span><span class="n">utm_northing</span><span class="p">)]</span>
+
+            <span class="c"># creation of the picture file to overlay</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">plottype</span><span class="p">,</span> <span class="n">cmapname</span><span class="p">,</span> <span class="n">creversed</span><span class="p">,</span> <span class="n">fig</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="n">picturefilename</span><span class="p">,</span> <span class="n">cmmin</span><span class="o">=</span><span class="n">cmmin</span><span class="p">,</span> <span class="n">cmmax</span><span class="o">=</span><span class="n">cmmax</span><span class="p">,</span> <span class="n">interpolation</span><span class="o">=</span><span class="n">interpolation</span><span class="p">,</span> <span class="n">cmapdisplay</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">axisdisplay</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="n">dpi</span><span class="p">,</span> <span class="n">transparent</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+            <span class="c"># creation of the world file</span>
+            <span class="n">success</span> <span class="o">=</span> <span class="n">raster</span><span class="o">.</span><span class="n">picture_to_worldfile</span><span class="p">(</span><span class="n">picturefilename</span><span class="p">,</span> <span class="n">quadcoords</span><span class="p">)</span>
+
+      <span class="k">return</span> <span class="n">success</span>
+
+
+
+   <span class="k">def</span> <span class="nf">setgeoref</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">refsystem</span><span class="p">,</span> <span class="n">points_list</span><span class="p">,</span> <span class="n">utm_zoneletter</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">utm_zonenumber</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      Sets georeferencement of data set</span>
+
+<span class="sd">      Parameters :</span>
+
+<span class="sd">      :refsystem: Reference system, &#39;UTM&#39;, &#39;WGS84&#39;, ...</span>
+
+<span class="sd">      :points_list: list of points tu use for the georeferencement, [[num1, lat1, lon1, x1, y1], ..., [numN, latN, lonN, xN, yN]] </span>
+<span class="sd">      </span>
+<span class="sd">      :utm_zoneletter: UTM Letter, E-&gt;X, None if not &#39;UTM&#39; ref system</span>
+
+<span class="sd">      :utm_zonenumber: UTM number, 1-&gt;60, None if not &#39;UTM&#39; ref system</span>
+
+<span class="sd">      Returns :</span>
+
+<span class="sd">      :error: error number, 0 if no error, -1 if no enough points, -2 if dataset zone greater than points list zone</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+
+      <span class="k">return</span> <span class="n">gengeopositioning</span><span class="o">.</span><span class="n">setgeoref</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">refsystem</span><span class="p">,</span> <span class="n">points_list</span><span class="p">,</span> <span class="n">utm_zoneletter</span><span class="p">,</span> <span class="n">utm_zonenumber</span><span class="p">)</span>
+   
+
+
+   <span class="k">def</span> <span class="nf">getquadcoords</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      Calculates the utm coordinates of the DataSet Image corners.</span>
+
+<span class="sd">      Returns:</span>
+
+<span class="sd">      :success: True if coordinates getted, False if not</span>
+
+<span class="sd">      :bottomleft: utm coordinates of the bottom left corner</span>
+
+<span class="sd">      :bottomright: utm coordinates of the bottom right corner</span>
+
+<span class="sd">      :upright: utm coordinates of the up right corner</span>
+
+<span class="sd">      :upleft: utm coordinates of the up left corner</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="n">bottomleft</span> <span class="o">=</span> <span class="bp">None</span>
+      <span class="n">bottomright</span> <span class="o">=</span> <span class="bp">None</span>
+      <span class="n">upright</span> <span class="o">=</span> <span class="bp">None</span>
+      <span class="n">upleft</span> <span class="o">=</span> <span class="bp">None</span>
+      <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">georef</span><span class="o">.</span><span class="n">active</span> <span class="o">==</span> <span class="bp">True</span><span class="p">):</span>
+         <span class="n">bottomleft</span> <span class="o">=</span> <span class="n">GeoRefPoint</span><span class="p">()</span>
+         <span class="n">bottomright</span> <span class="o">=</span> <span class="n">GeoRefPoint</span><span class="p">()</span>
+         <span class="n">upright</span> <span class="o">=</span> <span class="n">GeoRefPoint</span><span class="p">()</span>
+         <span class="n">upleft</span> <span class="o">=</span> <span class="n">GeoRefPoint</span><span class="p">()</span>
+         <span class="n">bottomleft</span><span class="o">.</span><span class="n">utm_easting</span><span class="p">,</span> <span class="n">bottomleft</span><span class="o">.</span><span class="n">utm_northing</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">easting_image</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">northing_image</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+         <span class="n">bottomright</span><span class="o">.</span><span class="n">utm_easting</span><span class="p">,</span> <span class="n">bottomright</span><span class="o">.</span><span class="n">utm_northing</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">easting_image</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">northing_image</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+         <span class="n">upleft</span><span class="o">.</span><span class="n">utm_easting</span><span class="p">,</span> <span class="n">upleft</span><span class="o">.</span><span class="n">utm_northing</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">easting_image</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">northing_image</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+         <span class="n">upright</span><span class="o">.</span><span class="n">utm_easting</span><span class="p">,</span> <span class="n">upright</span><span class="o">.</span><span class="n">utm_northing</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">easting_image</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">northing_image</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+      <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">georef</span><span class="o">.</span><span class="n">active</span><span class="p">,</span> <span class="p">[</span><span class="n">bottomleft</span><span class="p">,</span> <span class="n">bottomright</span><span class="p">,</span> <span class="n">upright</span><span class="p">,</span> <span class="n">upleft</span><span class="p">]</span>
+
+
+
+   <span class="c">#---------------------------------------------------------------------------#</span>
+   <span class="c"># DataSet Processing                                                        #</span>
+   <span class="c">#---------------------------------------------------------------------------#</span>
+<div class="viewcode-block" id="DataSet.peakfilt"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.peakfilt">[docs]</a>   <span class="k">def</span> <span class="nf">peakfilt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">setmin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">setmax</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">setmed</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">setnan</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      To eliminate peaks from a DataSet Object.</span>
+
+<span class="sd">      Parameters:</span>
+
+<span class="sd">      :dataset: DataSet Object to eliminate peaks from</span>
+
+<span class="sd">      :setmin: minimal threshold value</span>
+
+<span class="sd">      :setmax: maximal threshold value</span>
+
+<span class="sd">      :setmed: if set to True, then values beyond threshold are replaced by a median instead of the threshold value ; the median is computed ...TBD...</span>
+
+<span class="sd">      :setnan: if set to True, then values beyond thresholds are replaced by nan instead of the threshold value</span>
+
+<span class="sd">      Note: if both &quot;setnan&quot; and &quot;setmed&quot; are True at the same time, then &quot;nan&quot; prevails</span>
+
+<span class="sd">      :valfilt: if set to True, then filters data.values instead of data.zimage</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">genprocessing</span><span class="o">.</span><span class="n">peakfilt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">setmin</span><span class="o">=</span><span class="n">setmin</span><span class="p">,</span> <span class="n">setmax</span><span class="o">=</span><span class="n">setmax</span><span class="p">,</span> <span class="n">setmed</span><span class="o">=</span><span class="n">setmed</span><span class="p">,</span> <span class="n">setnan</span><span class="o">=</span><span class="n">setnan</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="n">valfilt</span><span class="p">)</span>
+
+
+</div>
+<div class="viewcode-block" id="DataSet.medianfilt"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.medianfilt">[docs]</a>   <span class="k">def</span> <span class="nf">medianfilt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nx</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ny</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">percent</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">gap</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      To process a DataSet Object with a median filter</span>
+
+<span class="sd">      Parameters:</span>
+
+<span class="sd">      :dataset: Dataset Object to process</span>
+
+<span class="sd">      :nx: filter size in x coordinate</span>
+
+<span class="sd">      :ny: filter size in y coordinate</span>
+
+<span class="sd">      :percent: deviation (in percents) from the median value (for absolute field measurements)</span>
+
+<span class="sd">      :gap: deviation (in raw units) from the median value (for relative anomaly measurements)</span>
+
+<span class="sd">      :valfilt: if set to True, then filters data.values instead of data.zimage</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">genprocessing</span><span class="o">.</span><span class="n">medianfilt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nx</span><span class="o">=</span><span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="o">=</span><span class="n">ny</span><span class="p">,</span> <span class="n">percent</span><span class="o">=</span><span class="n">percent</span><span class="p">,</span> <span class="n">gap</span><span class="o">=</span><span class="n">gap</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="n">valfilt</span><span class="p">)</span>
+
+
+</div>
+<div class="viewcode-block" id="DataSet.festoonfilt"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.festoonfilt">[docs]</a>   <span class="k">def</span> <span class="nf">festoonfilt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&#39;Pearson&#39;</span><span class="p">,</span> <span class="n">shift</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      To filter festoon-like artefacts out of DataSet Object</span>
+
+<span class="sd">      Parameters:</span>
+
+<span class="sd">      :dataset: DataSet Object to be filtered</span>
+
+<span class="sd">      :method: correlation method to use (from festooncorrelation_getlist())</span>
+
+<span class="sd">      :shift: systematic shift value (in pixels) to apply ; if shift=0 then the shift value will be determined for each profile by correlation with neighbours</span>
+
+<span class="sd">      :valfilt: if set to True, then filters data.values instead of data.zimage</span>
+
+<span class="sd">      Returns:</span>
+
+<span class="sd">      :shift: shift value, modified if shift=0 in input parameter</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">genprocessing</span><span class="o">.</span><span class="n">festoonfilt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span> <span class="n">shift</span><span class="o">=</span><span class="n">shift</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="n">valfilt</span><span class="p">)</span>
+
+
+</div>
+<div class="viewcode-block" id="DataSet.destripecon"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.destripecon">[docs]</a>   <span class="k">def</span> <span class="nf">destripecon</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Nprof</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">setmin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">setmax</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&quot;add&quot;</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      To destripe a DataSet Object by a constant (Zero Mean Traverse)</span>
+
+<span class="sd">      Parameters:</span>
+
+<span class="sd">      :dataset: DataSet Object to be destriped</span>
+
+<span class="sd">      :Nprof: number of profiles over which to compute the mean of reference ; if set to 0 (default), compute the mean over the whole data</span>
+
+<span class="sd">      :setmin: while computing the mean, do not take into account data values lower than setmin</span>
+
+<span class="sd">      :setmax: while computing the mean, do not take into account data values greater than setmax</span>
+
+<span class="sd">      :method: if set to &quot;add&quot; (default), destriping is done additively ; if set to &quot;mult&quot;, it is done multiplicatively</span>
+
+<span class="sd">      :valfilt: if set to True, then filters data.values instead of data.zimage</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">genprocessing</span><span class="o">.</span><span class="n">destripecon</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Nprof</span><span class="o">=</span><span class="n">Nprof</span><span class="p">,</span> <span class="n">setmin</span><span class="o">=</span><span class="n">setmin</span><span class="p">,</span> <span class="n">setmax</span><span class="o">=</span><span class="n">setmax</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="n">valfilt</span><span class="p">)</span>
+
+
+</div>
+   <span class="k">def</span> <span class="nf">destripecub</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Nprof</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">setmin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">setmax</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">Ndeg</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      To destripe a DataSet Object by a cubic curvilinear regression (chi squared)</span>
+
+<span class="sd">      Parameters:</span>
+
+<span class="sd">      :dataset: DataSet Object to be destriped</span>
+
+<span class="sd">      :Nprof: number of profiles over which to compute the polynomial reference ; if set to 0 (default), compute the mean over the whole data</span>
+
+<span class="sd">      :setmin: while fitting the polynomial curve, do not take into account data values lower than setmin</span>
+
+<span class="sd">      :setmax: while fitting the polynomail curve, do not take into account data values greater than setmax</span>
+
+<span class="sd">      :Ndeg: polynomial degree of the curve to fit</span>
+
+<span class="sd">      :valfilt: if set to True, then filters data.values instead of data.zimage</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">genprocessing</span><span class="o">.</span><span class="n">destripecub</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Nprof</span><span class="o">=</span><span class="n">Nprof</span><span class="p">,</span> <span class="n">setmin</span><span class="o">=</span><span class="n">setmin</span><span class="p">,</span> <span class="n">setmax</span><span class="o">=</span><span class="n">setmax</span><span class="p">,</span> <span class="n">Ndeg</span><span class="o">=</span><span class="n">Ndeg</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="n">valfilt</span><span class="p">)</span>
+
+
+
+<div class="viewcode-block" id="DataSet.regtrend"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.regtrend">[docs]</a>   <span class="k">def</span> <span class="nf">regtrend</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nx</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ny</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&quot;rel&quot;</span><span class="p">,</span> <span class="n">component</span><span class="o">=</span><span class="s">&quot;loc&quot;</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      To filter a DataSet Object from its regional trend</span>
+
+<span class="sd">      Parameters:</span>
+
+<span class="sd">      :dataset: DataSet Object to be filtered</span>
+
+<span class="sd">      :nx: filter size in x coordinate</span>
+
+<span class="sd">      :ny: filter size in y coordinate</span>
+
+<span class="sd">      :method: set to &quot;rel&quot; to filter by relative value (resistivity) or to &quot;abs&quot; to filter by absolute value (magnetic field)</span>
+
+<span class="sd">      :component: set to &quot;loc&quot; to keep the local variations or to &quot;reg&quot; to keep regional variations</span>
+
+<span class="sd">      :valfilt: if set to True, then filters data.values instead of data.zimage</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">genprocessing</span><span class="o">.</span><span class="n">regtrend</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nx</span><span class="o">=</span><span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="o">=</span><span class="n">ny</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span> <span class="n">component</span><span class="o">=</span><span class="n">component</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="n">valfilt</span><span class="p">)</span>
+
+
+</div>
+<div class="viewcode-block" id="DataSet.wallisfilt"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.wallisfilt">[docs]</a>   <span class="k">def</span> <span class="nf">wallisfilt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nx</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ny</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">setmean</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">setstdev</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">setgain</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">edgefactor</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      To apply Wallis filter to a DataSet Object</span>
+
+<span class="sd">      Parameters:</span>
+
+<span class="sd">      :dataset: DataSet Object to be filtered</span>
+
+<span class="sd">      :nx: filter size in x coordinate</span>
+
+<span class="sd">      :ny: filter size in y coordinate</span>
+
+<span class="sd">      :setmean: ...TBD... float</span>
+
+<span class="sd">      :setstdev: ...TBD... float</span>
+
+<span class="sd">      :setgain: ...TBD... float</span>
+
+<span class="sd">      :limit: ...TBD... float</span>
+
+<span class="sd">      :edgefactor: ...TBD... float{0..1}</span>
+
+<span class="sd">      :valfilt: if set to True, then filters data.values instead of data.zimage</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">genprocessing</span><span class="o">.</span><span class="n">wallisfilt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nx</span><span class="o">=</span><span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="o">=</span><span class="n">ny</span><span class="p">,</span> <span class="n">setmean</span><span class="o">=</span><span class="n">setmean</span><span class="p">,</span> <span class="n">setstdev</span><span class="o">=</span><span class="n">setstdev</span><span class="p">,</span> <span class="n">setgain</span><span class="o">=</span><span class="n">setgain</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span> <span class="n">edgefactor</span><span class="o">=</span><span class="n">edgefactor</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="n">valfilt</span><span class="p">)</span>
+
+
+</div>
+<div class="viewcode-block" id="DataSet.ploughfilt"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.ploughfilt">[docs]</a>   <span class="k">def</span> <span class="nf">ploughfilt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nx</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ny</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">angle</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      To apply anti-ploughing filter to a DataSet Object</span>
+
+<span class="sd">      Parameters:</span>
+
+<span class="sd">      :dataset: DataSet Object to be filtered</span>
+
+<span class="sd">      :nx: filter size in x coordinate</span>
+
+<span class="sd">      :ny: filter size in y coordinate</span>
+
+<span class="sd">      :apod: apodisation factor (percent)</span>
+
+<span class="sd">      :angle: ...TBD... float/degrees</span>
+
+<span class="sd">      :cutoff: ...TBD... float/frequency</span>
+
+<span class="sd">      :valfilt: if set to True, then filters data.values instead of data.zimage</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">genprocessing</span><span class="o">.</span><span class="n">ploughfilt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nx</span><span class="o">=</span><span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="o">=</span><span class="n">ny</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="n">apod</span><span class="p">,</span> <span class="n">angle</span><span class="o">=</span><span class="n">angle</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="n">cutoff</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="n">valfilt</span><span class="p">)</span>
+
+
+</div>
+<div class="viewcode-block" id="DataSet.logtransform"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.logtransform">[docs]</a>   <span class="k">def</span> <span class="nf">logtransform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">multfactor</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      To transform the data in logarihtmics values</span>
+
+<span class="sd">      Parameters:</span>
+
+<span class="sd">      :dataset: DataSet Object to be treated</span>
+
+<span class="sd">      :multfactor: multiply factor</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">magprocessing</span><span class="o">.</span><span class="n">logtransform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">multfactor</span><span class="p">)</span>
+
+
+</div>
+<div class="viewcode-block" id="DataSet.polereduction"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.polereduction">[docs]</a>   <span class="k">def</span> <span class="nf">polereduction</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">inclineangle</span><span class="o">=</span><span class="mi">65</span><span class="p">,</span> <span class="n">alphaangle</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      To do a reduction at the pole of DataSet Object</span>
+
+<span class="sd">      Parameters:</span>
+
+<span class="sd">      :apod: apodisation factor, to limit side effects</span>
+
+<span class="sd">      :inclineangle: magnetic field incline</span>
+
+<span class="sd">      :alphaangle: magnetic field alpha angle</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">magprocessing</span><span class="o">.</span><span class="n">polereduction</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">apod</span><span class="p">,</span> <span class="n">inclineangle</span><span class="p">,</span> <span class="n">alphaangle</span><span class="p">)</span>
+
+
+</div>
+<div class="viewcode-block" id="DataSet.continuation"><a class="viewcode-back" href="../../index.html#geophpy.dataset.DataSet.continuation">[docs]</a>   <span class="k">def</span> <span class="nf">continuation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prosptech</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">downsensoraltitude</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">upsensoraltitude</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">continuationflag</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">continuationvalue</span><span class="o">=</span><span class="mf">0.0</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      Continuation of the magnetic field</span>
+
+<span class="sd">      Parameters :</span>
+
+<span class="sd">      :prosptech: Prospection technical</span>
+
+<span class="sd">      :apod: apodisation factor, to limit side effects</span>
+
+<span class="sd">      :downsensoraltitude: Altitude of the down magnetic sensor</span>
+
+<span class="sd">      :upsensoraltitude: Altitude of the upper magnetic sensor</span>
+
+<span class="sd">      :continuationflag: Continuation flag, False if not continuation</span>
+
+<span class="sd">      :continuationaltitude: Continuation altitude, greater than 0 if upper earth ground, lower than 0 else</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">magprocessing</span><span class="o">.</span><span class="n">continuation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prosptech</span><span class="p">,</span> <span class="n">apod</span><span class="p">,</span> <span class="n">downsensoraltitude</span><span class="p">,</span> <span class="n">upsensoraltitude</span><span class="p">,</span> <span class="n">continuationflag</span><span class="p">,</span> <span class="n">continuationvalue</span><span class="p">)</span>
+
+
+</div>
+   <span class="k">def</span> <span class="nf">eulerdeconvolution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">xmin</span><span class="p">,</span> <span class="n">xmax</span><span class="p">,</span> <span class="n">ymin</span><span class="p">,</span> <span class="n">ymax</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">nflag</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">nvalue</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      To calculate the euler deconvolution</span>
+
+<span class="sd">      Parameters :</span>
+
+<span class="sd">      :xmin: minimal x value of the zone treated</span>
+
+<span class="sd">      :xmax: maximal x value of the zone treated</span>
+
+<span class="sd">      :ymin: minimal y value of the zone treated</span>
+
+<span class="sd">      :ymax: maximal y value of the zone treated</span>
+
+<span class="sd">      :apod: apodisation factor, to limit side effects</span>
+
+<span class="sd">      :nflag: structural index flag, False is not selected</span>
+
+<span class="sd">      :nvalue: structural index value, 0 if automatic calcultation, 1 for a sheet-like body, 2 for a circular section cylinder, 3 for a sphere</span>
+
+<span class="sd">      Returns : x, y, depth</span>
+
+<span class="sd">      :nvalue: structural index value, calculated if 0 in input, or else, the same than in input</span>
+
+<span class="sd">      :x: x value of the point where the depth has been estimated.</span>
+
+<span class="sd">      :y: y value of the point where the depth has been estimated.</span>
+
+<span class="sd">      :depth: depth estimated.</span>
+
+<span class="sd">      :xnearestmin: minimal x value of the zone treated found in the array</span>
+
+<span class="sd">      :xnearestmax: maximal x value of the zone treated found in the array</span>
+
+<span class="sd">      :ynearestmin: minimal y value of the zone treated found in the array</span>
+
+<span class="sd">      :ynearestmax: maximal y value of the zone treated found in the array</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">magprocessing</span><span class="o">.</span><span class="n">eulerdeconvolution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">xmin</span><span class="p">,</span> <span class="n">xmax</span><span class="p">,</span> <span class="n">ymin</span><span class="p">,</span> <span class="n">ymax</span><span class="p">,</span> <span class="n">apod</span><span class="p">,</span> <span class="n">nflag</span><span class="p">,</span> <span class="n">nvalue</span><span class="p">)</span>
+
+
+
+   <span class="k">def</span> <span class="nf">analyticsignal</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      Analytic signal conversion</span>
+
+<span class="sd">      Parameters :</span>
+
+<span class="sd">      :apod: apodisation factor, to limit side effects</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">magprocessing</span><span class="o">.</span><span class="n">analyticsignal</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">apod</span><span class="p">)</span>
+
+
+   <span class="k">def</span> <span class="nf">gradmagfieldconversion</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prosptechused</span><span class="p">,</span> <span class="n">prosptechsim</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">downsensoraltused</span> <span class="o">=</span> <span class="mf">0.3</span><span class="p">,</span> <span class="n">upsensoraltused</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">downsensoraltsim</span> <span class="o">=</span> <span class="mf">0.3</span><span class="p">,</span> <span class="n">upsensoraltsim</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">inclineangle</span> <span class="o">=</span> <span class="mi">65</span><span class="p">,</span> <span class="n">alphaangle</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      Conversion between gradient and magnetic field values</span>
+
+<span class="sd">      Parameters :</span>
+
+<span class="sd">      :prosptechused: Prospection technical used</span>
+
+<span class="sd">      :prosptechsim: Prospection technical simulated</span>
+
+<span class="sd">      :apod: apodisation factor, to limit side effects</span>
+
+<span class="sd">      :downsensoraltused: Altitude of the down magnetic sensor used</span>
+
+<span class="sd">      :upsensoraltused: Altitude of the upper magnetic sensor used</span>
+
+<span class="sd">      :downsensoraltsim: Altitude of the down magnetic sensor simulated</span>
+
+<span class="sd">      :upsensoraltsim: Altitude of the upper magnetic sensor simulated</span>
+
+<span class="sd">      :inclineangle: magnetic field incline</span>
+
+<span class="sd">      :alphaangle: magnetic field alpha angle</span>
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">magprocessing</span><span class="o">.</span><span class="n">gradmagfieldconversion</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prosptechused</span><span class="p">,</span> <span class="n">prosptechsim</span><span class="p">,</span> <span class="n">apod</span><span class="p">,</span> <span class="n">downsensoraltused</span><span class="p">,</span> <span class="n">upsensoraltused</span><span class="p">,</span> <span class="n">downsensoraltsim</span><span class="p">,</span> <span class="n">upsensoraltsim</span><span class="p">,</span> <span class="n">inclineangle</span><span class="p">,</span> <span class="n">alphaangle</span><span class="p">)</span>
+
+
+
+   <span class="k">def</span> <span class="nf">susceptibility</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prosptech</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">downsensoraltitude</span> <span class="o">=</span> <span class="mf">0.3</span><span class="p">,</span> <span class="n">upsensoraltitude</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">calculationdepth</span><span class="o">=.</span><span class="mi">0</span><span class="p">,</span> <span class="n">stratumthickness</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">inclineangle</span> <span class="o">=</span> <span class="mi">65</span><span class="p">,</span> <span class="n">alphaangle</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
+      <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">      Calcultation of an equivalent stratum of magnetic susceptibility</span>
+
+<span class="sd">      Parameters :</span>
+
+<span class="sd">      :prosptech: Prospection technical</span>
+
+<span class="sd">      :apod: apodisation factor, to limit side effects</span>
+
+<span class="sd">      :downsensoraltitude: Altitude of the down magnetic sensor</span>
+
+<span class="sd">      :upsensoraltitude: Altitude of the upper magnetic sensor</span>
+
+<span class="sd">      :calculationdepth: Depth(m) to do the calculation</span>
+
+<span class="sd">      :stratumthickness: Thickness of the equivalent stratim</span>
+
+<span class="sd">      :inclineangle: magnetic field incline</span>
+
+<span class="sd">      :alphaangle: magnetic field alpha angle</span>
+
+
+<span class="sd">      &#39;&#39;&#39;</span>
+      <span class="k">return</span> <span class="n">magprocessing</span><span class="o">.</span><span class="n">susceptibility</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prosptech</span><span class="p">,</span> <span class="n">apod</span><span class="p">,</span> <span class="n">downsensoraltitude</span><span class="p">,</span> <span class="n">upsensoraltitude</span><span class="p">,</span> <span class="n">calculationdepth</span><span class="p">,</span> <span class="n">stratumthickness</span><span class="p">,</span> <span class="n">inclineangle</span><span class="p">,</span> <span class="n">alphaangle</span><span class="p">)</span>
+
+
+
+
+
+<span class="c">#===========================================================================#</span>
+
+
+
+<span class="c">#---------------------------------------------------------------------------#</span>
+<span class="c"># General DataSet Environment functions                                     #</span>
+<span class="c">#---------------------------------------------------------------------------#</span></div>
+<span class="n">format_chooser</span> <span class="o">=</span> <span class="p">{</span>
+   <span class="s">&quot;.dat&quot;</span> <span class="p">:</span> <span class="s">&quot;ascii&quot;</span><span class="p">,</span>
+   <span class="s">&quot;.txt&quot;</span> <span class="p">:</span> <span class="s">&quot;ascii&quot;</span><span class="p">,</span>
+   <span class="s">&quot;.nc&quot;</span>  <span class="p">:</span> <span class="s">&quot;netcdf&quot;</span><span class="p">,</span>
+   <span class="s">&quot;.cdf&quot;</span> <span class="p">:</span> <span class="s">&quot;netcdf&quot;</span><span class="p">,</span>
+   <span class="s">&quot;.pga&quot;</span> <span class="p">:</span> <span class="s">&quot;wumap&quot;</span><span class="p">,</span>
+   <span class="s">&quot;.grd&quot;</span> <span class="p">:</span> <span class="s">&quot;surfer&quot;</span><span class="p">,</span>
+   <span class="s">&quot;.mat&quot;</span> <span class="p">:</span> <span class="s">&quot;matrix&quot;</span><span class="p">,</span>
+   <span class="s">&quot;.app&quot;</span> <span class="p">:</span> <span class="s">&quot;profile&quot;</span><span class="p">,</span>
+   <span class="s">&quot;.rt&quot;</span>  <span class="p">:</span> <span class="s">&quot;electric&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+
+
+
+<div class="viewcode-block" id="getlinesfrom_file"><a class="viewcode-back" href="../../index.html#geophpy.dataset.getlinesfrom_file">[docs]</a><span class="k">def</span> <span class="nf">getlinesfrom_file</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">fileformat</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">delimiter</span><span class="o">=</span><span class="s">&#39;</span><span class="se">\t</span><span class="s">&#39;</span><span class="p">,</span> <span class="n">skipinitialspace</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">skiprowsnb</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">rowsnb</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Reads lines in a file.</span>
+
+<span class="sd">   Parameters :</span>
+
+<span class="sd">   :fileformat: file format</span>
+
+<span class="sd">   :filename: file name with extension to read, &quot;test.dat&quot; for example.</span>
+
+<span class="sd">   :delimiter: delimiter between fields, tabulation by default.</span>
+
+<span class="sd">   :skipinitialspace: if True, considers severals delimiters as only one : &quot;\t\t&quot; as &#39;\t&#39;.</span>
+
+<span class="sd">   :skiprowsnb: number of rows to skip to get lines.</span>
+
+<span class="sd">   :rowsnb: number of the rows to read, 1 by default.</span>
+
+<span class="sd">   Returns:</span>
+
+<span class="sd">   :colsnb: number of columns in all rows, 0 if rows have different number of columns</span>
+
+<span class="sd">   :rows: rows.</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="c"># Dispatch method ##############################################</span>
+   <span class="k">class</span> <span class="nc">From</span><span class="p">():</span>
+      <span class="nd">@staticmethod</span>
+      <span class="k">def</span> <span class="nf">ascii</span><span class="p">():</span>
+         <span class="k">return</span> <span class="n">iofiles</span><span class="o">.</span><span class="n">getlinesfrom_ascii</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">delimiter</span><span class="p">,</span> <span class="n">skipinitialspace</span><span class="p">,</span> <span class="n">skiprowsnb</span><span class="p">,</span> <span class="n">rowsnb</span><span class="p">)</span>
+      <span class="nd">@staticmethod</span>
+      <span class="k">def</span> <span class="nf">netcdf</span><span class="p">():</span>
+         <span class="k">return</span> <span class="n">iofiles</span><span class="o">.</span><span class="n">getlinesfrom_netcdf</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+   <span class="c"># Choose the input file format #################################</span>
+   <span class="k">if</span> <span class="p">(</span><span class="n">fileformat</span> <span class="o">==</span> <span class="bp">None</span><span class="p">):</span>
+      <span class="c"># ...TBD... Determine the format from file header</span>
+      <span class="k">pass</span>
+
+   <span class="k">if</span> <span class="p">(</span><span class="n">fileformat</span> <span class="o">==</span> <span class="bp">None</span><span class="p">):</span>
+      <span class="c"># Determine the format from filename extension</span>
+      <span class="n">file_extension</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">filenameslist</span><span class="p">[</span><span class="mi">0</span><span class="p">])[</span><span class="mi">1</span><span class="p">]</span>
+      <span class="n">fileformat</span> <span class="o">=</span> <span class="n">format_chooser</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">file_extension</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+
+   <span class="c"># Read the dataset from input file #############################</span>
+   <span class="k">if</span> <span class="p">(</span><span class="n">fileformat</span> <span class="ow">in</span> <span class="n">fileformat_getlist</span><span class="p">()):</span>
+      <span class="n">readfile</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">From</span><span class="p">,</span> <span class="n">fileformat</span><span class="p">)</span>
+      <span class="k">return</span> <span class="n">readfile</span><span class="p">()</span>
+   <span class="k">else</span><span class="p">:</span>
+      <span class="c"># Undefined file format #####################################</span>
+      <span class="c"># ...TBD... raise an error here !</span>
+      <span class="k">return</span> <span class="bp">None</span><span class="p">,</span> <span class="bp">None</span>
+
+
+</div>
+<div class="viewcode-block" id="fileformat_getlist"><a class="viewcode-back" href="../../index.html#geophpy.dataset.fileformat_getlist">[docs]</a><span class="k">def</span> <span class="nf">fileformat_getlist</span><span class="p">():</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Get list of format files availables</span>
+
+<span class="sd">   Returns: list of file formats availables, [&#39;ascii&#39;, ...]</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">return</span> <span class="n">iofiles</span><span class="o">.</span><span class="n">fileformat_getlist</span><span class="p">()</span>
+
+
+</div>
+<div class="viewcode-block" id="pictureformat_getlist"><a class="viewcode-back" href="../../index.html#geophpy.dataset.pictureformat_getlist">[docs]</a><span class="k">def</span> <span class="nf">pictureformat_getlist</span><span class="p">():</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Get list of pictures format availables</span>
+
+<span class="sd">   Returns: list of picture formats availables, [&#39;jpg&#39;, &#39;png&#39;, ...]</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">return</span> <span class="n">plot</span><span class="o">.</span><span class="n">getpictureformatlist</span><span class="p">()</span>
+
+
+</div>
+<div class="viewcode-block" id="rasterformat_getlist"><a class="viewcode-back" href="../../index.html#geophpy.dataset.rasterformat_getlist">[docs]</a><span class="k">def</span> <span class="nf">rasterformat_getlist</span><span class="p">():</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Get list of raster format files availables</span>
+
+<span class="sd">   Returns : list of raster file formats availables, [&#39;jpg&#39;, &#39;png&#39;, ...]</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">return</span> <span class="n">raster</span><span class="o">.</span><span class="n">getrasterformatlist</span><span class="p">()</span>
+
+
+</div>
+<div class="viewcode-block" id="plottype_getlist"><a class="viewcode-back" href="../../index.html#geophpy.dataset.plottype_getlist">[docs]</a><span class="k">def</span> <span class="nf">plottype_getlist</span><span class="p">():</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Get list of plot type availables</span>
+
+<span class="sd">   Returns : list of plot type availables, [&#39;2D_SURFACE&#39;, &#39;2D_CONTOUR&#39;, ...]</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">return</span> <span class="n">plot</span><span class="o">.</span><span class="n">gettypelist</span><span class="p">()</span>
+
+
+</div>
+<div class="viewcode-block" id="festooncorrelation_getlist"><a class="viewcode-back" href="../../index.html#geophpy.dataset.festooncorrelation_getlist">[docs]</a><span class="k">def</span> <span class="nf">festooncorrelation_getlist</span><span class="p">():</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   To get the list of available festoon correlation methods.</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">return</span> <span class="n">genprocessing</span><span class="o">.</span><span class="n">getfestooncorrelationlist</span><span class="p">()</span>
+
+
+</div>
+<span class="k">def</span> <span class="nf">destriping_getlist</span><span class="p">():</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   To get the list of available destriping methods.</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">return</span> <span class="n">genprocessing</span><span class="o">.</span><span class="n">getdestripinglist</span><span class="p">()</span>
+
+
+
+<span class="k">def</span> <span class="nf">regtrendmethod_getlist</span><span class="p">():</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   To get the list of available destriping methods.</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">return</span> <span class="n">genprocessing</span><span class="o">.</span><span class="n">getregtrendmethodlist</span><span class="p">()</span>
+
+
+
+<span class="k">def</span> <span class="nf">regtrendcomp_getlist</span><span class="p">():</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   To get the list of available destriping methods.</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">return</span> <span class="n">genprocessing</span><span class="o">.</span><span class="n">getregtrendcomplist</span><span class="p">()</span>
+
+
+
+<div class="viewcode-block" id="griddinginterpolation_getlist"><a class="viewcode-back" href="../../index.html#geophpy.dataset.griddinginterpolation_getlist">[docs]</a><span class="k">def</span> <span class="nf">griddinginterpolation_getlist</span><span class="p">():</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   To get the list of available gridding interpolation methods.</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">return</span> <span class="n">genoperation</span><span class="o">.</span><span class="n">getgriddinginterpolationlist</span><span class="p">()</span>
+
+
+</div>
+<div class="viewcode-block" id="interpolation_getlist"><a class="viewcode-back" href="../../index.html#geophpy.dataset.interpolation_getlist">[docs]</a><span class="k">def</span> <span class="nf">interpolation_getlist</span><span class="p">():</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Get list of interpolation methods availables</span>
+
+<span class="sd">   Returns : list of interpolation methods availables, [&#39;bilinear&#39;, &#39;bicubic&#39;, ...]</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">return</span> <span class="n">plot</span><span class="o">.</span><span class="n">getinterpolationlist</span><span class="p">()</span>
+
+
+</div>
+<span class="k">def</span> <span class="nf">prosptech_getlist</span><span class="p">():</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Get list of prospection technicals availables</span>
+
+<span class="sd">   Returns : list of prospection technicals</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">return</span> <span class="n">magprocessing</span><span class="o">.</span><span class="n">getprosptechlist</span><span class="p">()</span>
+
+
+
+<div class="viewcode-block" id="colormap_getlist"><a class="viewcode-back" href="../../index.html#geophpy.dataset.colormap_getlist">[docs]</a><span class="k">def</span> <span class="nf">colormap_getlist</span><span class="p">():</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Getting the colormap list.</span>
+
+<span class="sd">   Returns : list of colormap availables, [&#39;gray&#39;, ...]</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">return</span> <span class="n">colormap</span><span class="o">.</span><span class="n">getlist</span><span class="p">()</span>
+
+
+</div>
+<div class="viewcode-block" id="colormap_plot"><a class="viewcode-back" href="../../index.html#geophpy.dataset.colormap_plot">[docs]</a><span class="k">def</span> <span class="nf">colormap_plot</span><span class="p">(</span><span class="n">cmname</span><span class="p">,</span> <span class="n">creversed</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">fig</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">transparent</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   Plots the colormap.</span>
+
+<span class="sd">   Parameters :</span>
+
+<span class="sd">   :cmname: Name of the colormap, &#39;gray_r&#39; for example.</span>
+
+<span class="sd">   :creversed: True to add &#39;_r&#39; at the cmname to reverse the color map</span>
+
+<span class="sd">   :fig: figure to plot, None by default to create a new figure.</span>
+
+<span class="sd">   :filename: Name of the color map file to save, None if no file to save.</span>
+
+<span class="sd">   :dpi: &#39;dot per inch&#39; definition of the picture file if filename != None</span>
+
+<span class="sd">   :transparent: True to manage the transparency.</span>
+
+<span class="sd">   Returns:</span>
+
+<span class="sd">   :fig: Figure Object</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">return</span> <span class="n">colormap</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">cmname</span><span class="p">,</span> <span class="n">creversed</span><span class="p">,</span> <span class="n">fig</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">dpi</span><span class="p">,</span> <span class="n">transparent</span><span class="p">)</span>
+
+
+</div>
+<div class="viewcode-block" id="correlmap"><a class="viewcode-back" href="../../index.html#geophpy.dataset.correlmap">[docs]</a><span class="k">def</span> <span class="nf">correlmap</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">method</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   To compute the correlation map from an image :</span>
+<span class="sd">      * each profile (from the input list) is incrementally shifted and correlation coefficient computed against neighbouring profiles for each shift value</span>
+<span class="sd">      * profiles are considered to be vertical, and the shift performed along the profile (hence vertically)</span>
+<span class="sd">      * the correlation map size is then &quot;twice the image vertical size&quot; (shift may vary from -ymax to +ymax) by &quot;number of profiles&quot; (correlation is computed for each column listed in input)</span>
+
+<span class="sd">   Parameters:</span>
+
+<span class="sd">   :dataset: DataSet Object containing the Z-image to be correl-mapped</span>
+
+<span class="sd">   :cols: column numbers (1D array) of the image profiles to be correlated</span>
+
+<span class="sd">   :method: correlation method to use (from festooncorrelation_getlist())</span>
+
+<span class="sd">   Returns:</span>
+
+<span class="sd">   :cor1: correlation map (shape = (2*zimg.shape[0]-1 , cols.size))</span>
+
+<span class="sd">   :pva1: weight map (see correlation functions description)</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">return</span> <span class="n">genprocessing</span><span class="o">.</span><span class="n">correlmap</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">method</span><span class="p">)</span>
+
+
+</div>
+<span class="k">def</span> <span class="nf">correlshift</span><span class="p">(</span><span class="n">cor1</span><span class="p">,</span> <span class="n">pva1</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   To compute the best shift to re-align festooned profiles</span>
+
+<span class="sd">   Parameters:</span>
+
+<span class="sd">   :cor1: correlation map (shape = (2*zimg.shape[0]-1 , cols.size))</span>
+
+<span class="sd">   :pva1: weight map (see correlation functions description)</span>
+
+<span class="sd">   :apod: apodisation threshold (in percent of the max correl coef)</span>
+
+<span class="sd">   :output: correlation profile computed as a weighted mean across the correlation map ; the best shift value is found at this profile&#39;s maximum</span>
+
+<span class="sd">   Returns:</span>
+
+<span class="sd">   :shift: number of pixels to shift along the profile</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">return</span> <span class="n">genprocessing</span><span class="o">.</span><span class="n">correlshift</span><span class="p">(</span><span class="n">cor1</span><span class="p">,</span> <span class="n">pva1</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="n">apod</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="n">output</span><span class="p">)</span>
+
+
+
+<span class="n">help_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">__file__</span><span class="p">),</span> <span class="s">&#39;help&#39;</span><span class="p">)</span>
+<span class="n">htmlhelp_filename</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">help_path</span><span class="p">,</span> <span class="s">&#39;html&#39;</span><span class="p">,</span> <span class="s">&#39;index.html&#39;</span><span class="p">))</span>
+<span class="n">pdfhelp_filename</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">help_path</span><span class="p">,</span> <span class="s">&#39;pdf&#39;</span><span class="p">,</span> <span class="s">&#39;GeophPy.pdf&#39;</span><span class="p">))</span>
+
+
+
+<span class="k">def</span> <span class="nf">getgeophpyhelp</span><span class="p">(</span><span class="n">viewer</span><span class="o">=</span><span class="s">&#39;none&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="s">&#39;html&#39;</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   To get help documentation of GeophPy module</span>
+
+<span class="sd">   Parameters:</span>
+
+<span class="sd">   :type: type of help needed, &#39;html&#39; or &#39;pdf&#39;.</span>
+
+<span class="sd">   Returns:</span>
+
+<span class="sd">   :helpcommand: application to start followed by pathname and filename of the &#39;html&#39; or &#39;pdf&#39; help document.</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+
+   <span class="k">if</span> <span class="p">(</span><span class="nb">type</span> <span class="o">==</span> <span class="s">&#39;pdf&#39;</span><span class="p">):</span>
+      <span class="n">pathfilename</span> <span class="o">=</span> <span class="n">pdfhelp_filename</span>
+   <span class="k">else</span> <span class="p">:</span>
+      <span class="n">pathfilename</span> <span class="o">=</span> <span class="n">htmlhelp_filename</span>
+
+   <span class="k">if</span> <span class="p">(</span><span class="n">viewer</span> <span class="o">==</span> <span class="s">&#39;none&#39;</span><span class="p">):</span>           <span class="c"># start automatically the best application </span>
+       <span class="n">helpcommand</span> <span class="o">=</span> <span class="n">pathfilename</span>
+   <span class="k">else</span> <span class="p">:</span>
+       <span class="n">helpcommand</span> <span class="o">=</span> <span class="n">viewer</span> <span class="o">+</span> <span class="s">&quot; &quot;</span> <span class="o">+</span> <span class="n">pathfilename</span>
+   <span class="k">return</span> <span class="n">helpcommand</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../../index.html">
+              <img class="logo" src="../../_static/geophpy-square.png" alt="Logo"/>
+            </a></p><h3>Useful Links</h3>
+<ul>
+  <li><a href="http://pypi.python.org/pypi/GeophPy">
+    GeophPy @ PyPI</a></li>
+  <li><a href="http://134.157.44.234/GeophPy.pdf">
+    PDF Manual</a></li>
+</ul>
+
+<h3 style="margin-top: 1.5em;">Search</h3>
+<form class="search" action="search.html" method="get">
+  <input type="text" name="q">
+  <input type="submit" value="Go">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<p class="searchtip" style="font-size: 90%">
+Enter search terms or a module, class or function name.
+</p>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">GeophPy 0.20 documentation</a> &raquo;</li>
+          <li><a href="../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2014, Lionel Darras &amp; Philippe Marty.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3b2.
+    </div>
+  </body>
+</html>

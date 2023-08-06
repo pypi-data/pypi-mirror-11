@@ -1,0 +1,527 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>geophpy.processing.general &mdash; GeophPy 0.20 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.20',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="GeophPy 0.20 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">GeophPy 0.20 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for geophpy.processing.general</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    geophpy.processing.general</span>
+<span class="sd">    --------------------------</span>
+
+<span class="sd">    DataSet Object general processing routines.</span>
+
+<span class="sd">    :copyright: Copyright 2014 Lionel Darras, Philippe Marty and contributors, see AUTHORS.</span>
+<span class="sd">    :license: GNU GPL v3.</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="c">### USER DEFINED PARAMETERS ##########################################</span>
+
+<span class="c"># list of correlation methods available for wumappy interface</span>
+<span class="n">festoon_correlation_list</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;Pearson&#39;</span><span class="p">,</span> <span class="s">&#39;Spearman&#39;</span><span class="p">,</span> <span class="s">&#39;Kendall&#39;</span><span class="p">]</span>
+
+<span class="c"># list of destriping methods available for wumappy interface</span>
+<span class="n">destriping_list</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;add&#39;</span><span class="p">,</span> <span class="s">&#39;mult&#39;</span><span class="p">]</span>
+
+<span class="c"># list of regional trend methods available for wumappy interface</span>
+<span class="n">regtrendmethod_list</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;rel&#39;</span><span class="p">,</span> <span class="s">&#39;abs&#39;</span><span class="p">]</span>
+
+<span class="c"># list of regional trend components available for wumappy interface</span>
+<span class="n">regtrendcomp_list</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;loc&#39;</span><span class="p">,</span> <span class="s">&#39;reg&#39;</span><span class="p">]</span>
+
+<span class="c">######################################################################</span>
+
+
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">scipy.ndimage</span> <span class="kn">as</span> <span class="nn">ndimage</span>
+<span class="kn">from</span> <span class="nn">scipy.stats</span> <span class="kn">import</span> <span class="n">spearmanr</span><span class="p">,</span> <span class="n">kendalltau</span>
+<span class="kn">from</span> <span class="nn">geophpy.misc.utils</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">geophpy.operation.general</span> <span class="kn">import</span> <span class="o">*</span>
+
+
+
+<div class="viewcode-block" id="peakfilt"><a class="viewcode-back" href="../../../index.html#geophpy.processing.general.peakfilt">[docs]</a><span class="k">def</span> <span class="nf">peakfilt</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">setmin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">setmax</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">setmed</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">setnan</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   cf. dataset.py</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+<span class="c">###ORIGINAL CODE having some flaws:</span>
+<span class="c">###- min and max are builtin functions (reserved words)</span>
+<span class="c">###- should be able to work on values as well as on zimage</span>
+<span class="c">###- should be able to replace by nan or median instead of threshold</span>
+<span class="c">###- is iterative (for ...) ; should be global (where ...)</span>
+   <span class="c">#for i in range(dataset.info.lines_nb) :</span>
+   <span class="c">#   if ((min != None) and (dataset.data.values[i][2] &lt; min)):</span>
+   <span class="c">#      dataset.data.values[i][2] = min</span>
+   <span class="c">#   elif ((max != None) and (dataset.data.values[i][2] &gt; max)):</span>
+   <span class="c">#      dataset.data.values[i][2] = max</span>
+<span class="c">###</span>
+   <span class="k">if</span> <span class="p">(</span><span class="n">valfilt</span><span class="p">):</span>
+      <span class="n">val</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">values</span><span class="p">[:,</span><span class="mi">2</span><span class="p">]</span>
+   <span class="k">else</span><span class="p">:</span>
+      <span class="n">val</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+
+   <span class="k">if</span> <span class="p">(</span><span class="n">setmin</span> <span class="o">!=</span> <span class="bp">None</span><span class="p">):</span>
+      <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">val</span> <span class="o">&lt;</span> <span class="n">setmin</span><span class="p">)</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">setnan</span><span class="p">):</span>
+         <span class="n">val</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+      <span class="k">elif</span> <span class="p">(</span><span class="n">setmed</span><span class="p">):</span>
+         <span class="n">val</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span> <span class="c"># compute median here ...TBD...</span>
+      <span class="k">else</span><span class="p">:</span>
+         <span class="n">val</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">setmin</span>
+
+   <span class="k">if</span> <span class="p">(</span><span class="n">setmax</span> <span class="o">!=</span> <span class="bp">None</span><span class="p">):</span>
+      <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">val</span> <span class="o">&gt;</span> <span class="n">setmax</span><span class="p">)</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">setnan</span><span class="p">):</span>
+         <span class="n">val</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+      <span class="k">elif</span> <span class="p">(</span><span class="n">setmed</span><span class="p">):</span>
+         <span class="n">val</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span> <span class="c"># compute median here ...TBD...</span>
+      <span class="k">else</span><span class="p">:</span>
+         <span class="n">val</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">setmax</span>
+
+
+</div>
+<div class="viewcode-block" id="medianfilt"><a class="viewcode-back" href="../../../index.html#geophpy.processing.general.medianfilt">[docs]</a><span class="k">def</span> <span class="nf">medianfilt</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">nx</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ny</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">percent</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">gap</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   cf. dataset.py</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">if</span> <span class="p">(</span><span class="n">valfilt</span><span class="p">):</span>
+      <span class="c"># ...TBD... should use original wumap algorithm</span>
+      <span class="k">pass</span>
+   <span class="k">else</span><span class="p">:</span>
+      <span class="n">zimg</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">percent</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">gap</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+         <span class="n">zimg</span><span class="p">[:,:]</span> <span class="o">=</span> <span class="n">ndimage</span><span class="o">.</span><span class="n">median_filter</span><span class="p">(</span><span class="n">zimg</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">))</span>
+      <span class="k">else</span><span class="p">:</span>
+         <span class="c"># ...TBD... should use here also original wumap algorithm</span>
+         <span class="k">pass</span>
+
+
+</div>
+<span class="k">def</span> <span class="nf">getfestooncorrelationlist</span><span class="p">():</span>
+   <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">   cf. dataset.py</span>
+
+<span class="sd">   &quot;&quot;&quot;</span>
+   <span class="k">return</span> <span class="n">festoon_correlation_list</span>
+
+
+
+<div class="viewcode-block" id="festoonfilt"><a class="viewcode-back" href="../../../index.html#geophpy.processing.general.festoonfilt">[docs]</a><span class="k">def</span> <span class="nf">festoonfilt</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&#39;Pearson&#39;</span><span class="p">,</span> <span class="n">shift</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   cf. dataset.py</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">if</span> <span class="p">(</span><span class="n">valfilt</span><span class="p">):</span>
+      <span class="c"># Filter values ...TBD... ######################################</span>
+      <span class="k">pass</span>
+   <span class="k">else</span><span class="p">:</span>
+      <span class="c"># Filter zimage ################################################</span>
+      <span class="n">zimg</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+      <span class="n">cols</span> <span class="o">=</span> <span class="n">correlcols</span><span class="p">(</span><span class="n">zimg</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+      <span class="c"># Compute the profiles correlation map ######################</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">shift</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+         <span class="n">cor1</span><span class="p">,</span> <span class="n">pva1</span> <span class="o">=</span> <span class="n">correlmap</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">method</span><span class="p">)</span>
+         <span class="n">shift</span>      <span class="o">=</span> <span class="n">correlshift</span><span class="p">(</span><span class="n">cor1</span><span class="p">,</span> <span class="n">pva1</span><span class="p">)</span>
+
+      <span class="c"># Apply the same shift to each profile #########################</span>
+      <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">cols</span><span class="p">:</span>
+         <span class="n">zimg</span><span class="p">[:,</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">roll</span><span class="p">(</span><span class="n">zimg</span><span class="p">[:,</span><span class="n">i</span><span class="p">],</span><span class="n">shift</span><span class="p">)</span>
+
+   <span class="k">return</span> <span class="n">shift</span>
+
+
+</div>
+<span class="k">def</span> <span class="nf">correlcols</span><span class="p">(</span><span class="n">nx</span><span class="p">):</span>
+   <span class="k">return</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="n">nx</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">)</span> <span class="c"># ...TBD... à revoir ?</span>
+
+
+
+<span class="k">def</span> <span class="nf">correlmap</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">method</span><span class="p">):</span>
+         <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">         cf. dataset.py</span>
+
+<span class="sd">         &quot;&quot;&quot;</span>
+         <span class="n">zimg</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+         <span class="n">cols</span> <span class="o">=</span> <span class="n">correlcols</span><span class="p">(</span><span class="n">zimg</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+         <span class="n">ny</span>   <span class="o">=</span> <span class="n">zimg</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+         <span class="n">jmax</span> <span class="o">=</span> <span class="mi">2</span><span class="o">*</span><span class="n">ny</span><span class="o">-</span><span class="mi">1</span>
+         <span class="n">cor1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="n">jmax</span><span class="p">,</span><span class="nb">len</span><span class="p">(</span><span class="n">cols</span><span class="p">)))</span> <span class="o">/</span> <span class="mf">0.</span>
+         <span class="n">pva1</span> <span class="o">=</span> <span class="n">cor1</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+         <span class="n">ii</span>   <span class="o">=</span> <span class="mi">0</span>
+
+         <span class="k">if</span> <span class="p">(</span><span class="n">method</span> <span class="o">==</span> <span class="s">&#39;Pearson&#39;</span><span class="p">):</span>
+            <span class="c"># Use Pearson correlation ################################</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">cols</span><span class="p">:</span>
+               <span class="n">z1</span>   <span class="o">=</span> <span class="p">(</span><span class="n">zimg</span><span class="p">[:,</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">zimg</span><span class="p">[:,</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">])</span> <span class="o">/</span> <span class="mf">2.</span> <span class="c"># ...TBD... nanmean ?</span>
+               <span class="n">z1</span>   <span class="o">=</span> <span class="p">(</span><span class="n">z1</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmean</span><span class="p">(</span><span class="n">z1</span><span class="p">))</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">nanstd</span><span class="p">(</span><span class="n">z1</span><span class="p">)</span>
+               <span class="n">zi</span>   <span class="o">=</span> <span class="n">zimg</span><span class="p">[:,</span><span class="n">i</span><span class="p">]</span> <span class="o">*</span> <span class="mf">1.</span>
+               <span class="n">zi</span>   <span class="o">=</span> <span class="p">(</span><span class="n">zi</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmean</span><span class="p">(</span><span class="n">zi</span><span class="p">))</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">nanstd</span><span class="p">(</span><span class="n">zi</span><span class="p">)</span>
+               <span class="n">idx</span>  <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">z1</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">zi</span><span class="p">)</span>
+               <span class="n">jlen</span> <span class="o">=</span> <span class="mi">2</span><span class="o">*</span><span class="nb">len</span><span class="p">(</span><span class="n">idx</span><span class="o">.</span><span class="n">nonzero</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span><span class="o">-</span><span class="mi">1</span>
+               <span class="k">if</span> <span class="p">(</span><span class="n">jlen</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+                  <span class="n">jmin</span>  <span class="o">=</span> <span class="p">(</span><span class="n">jmax</span> <span class="o">-</span> <span class="n">jlen</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span>
+                  <span class="n">cor1</span><span class="p">[</span><span class="n">jmin</span><span class="p">:</span><span class="n">jmin</span><span class="o">+</span><span class="n">jlen</span><span class="p">,</span><span class="n">ii</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">correlate</span><span class="p">(</span><span class="n">z1</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span><span class="n">zi</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span><span class="n">mode</span><span class="o">=</span><span class="s">&#39;full&#39;</span><span class="p">)</span> <span class="o">/</span> <span class="n">idx</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+                  <span class="n">pva1</span><span class="p">[</span><span class="n">jmin</span><span class="p">:</span><span class="n">jmin</span><span class="o">+</span><span class="n">jlen</span><span class="p">,</span><span class="n">ii</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+               <span class="n">ii</span> <span class="o">+=</span> <span class="mi">1</span>
+         <span class="k">else</span><span class="p">:</span>
+            <span class="c"># Use Spearman or Kendall correlation ####################</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">cols</span><span class="p">:</span>
+               <span class="n">z1</span> <span class="o">=</span> <span class="p">(</span><span class="n">zimg</span><span class="p">[:,</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">zimg</span><span class="p">[:,</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">])</span> <span class="o">/</span> <span class="mf">2.</span> <span class="c"># ...TBD... nanmean ?</span>
+               <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="o">-</span><span class="n">ny</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="n">ny</span><span class="p">):</span>
+                  <span class="n">zi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">roll</span><span class="p">(</span><span class="n">zimg</span><span class="p">[:,</span><span class="n">i</span><span class="p">],</span><span class="n">j</span><span class="p">)</span>
+                  <span class="k">if</span> <span class="p">(</span><span class="n">j</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">):</span>
+                     <span class="n">zi</span><span class="p">[</span><span class="n">ny</span><span class="o">+</span><span class="n">j</span><span class="p">:</span><span class="n">ny</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+                  <span class="k">else</span><span class="p">:</span>
+                     <span class="n">zi</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+                  <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">z1</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">zi</span><span class="p">)</span>
+                  <span class="k">if</span> <span class="p">(</span><span class="n">method</span> <span class="o">==</span> <span class="s">&#39;Spearman&#39;</span><span class="p">):</span>
+                     <span class="c"># Use Spearman correlation ######################</span>
+                     <span class="n">cors</span><span class="p">,</span> <span class="n">pval</span> <span class="o">=</span> <span class="n">spearmanr</span><span class="p">(</span><span class="n">z1</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span><span class="n">zi</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span>
+                  <span class="k">elif</span> <span class="p">(</span><span class="n">method</span> <span class="o">==</span> <span class="s">&#39;Kendall&#39;</span><span class="p">):</span>
+                     <span class="c"># Use Kendall correlation #######################</span>
+                     <span class="c"># ...TBD... something goes wrong here ? what ? why ?</span>
+                     <span class="c">#cors, pval = kendalltau(z1[idx],zi[idx])</span>
+                     <span class="k">pass</span>
+                  <span class="k">else</span><span class="p">:</span>
+                     <span class="c"># Undefined correlation method ##################</span>
+                     <span class="c"># ...TBD... raise an error here !</span>
+                     <span class="k">pass</span>
+               <span class="k">if</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">z1</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">):</span>
+                  <span class="n">cor1</span><span class="p">[</span><span class="n">j</span><span class="o">+</span><span class="n">ny</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="n">ii</span><span class="p">]</span> <span class="o">=</span> <span class="n">cors</span>
+                  <span class="n">pva1</span><span class="p">[</span><span class="n">j</span><span class="o">+</span><span class="n">ny</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="n">ii</span><span class="p">]</span> <span class="o">=</span> <span class="n">pval</span>
+               <span class="n">ii</span><span class="o">+=</span><span class="mi">1</span>
+
+         <span class="k">return</span> <span class="n">cor1</span><span class="p">,</span> <span class="n">pva1</span>
+
+
+
+<span class="k">def</span> <span class="nf">correlshift</span><span class="p">(</span><span class="n">cor1</span><span class="p">,</span> <span class="n">pva1</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+         <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">         cf. dataset.py</span>
+
+<span class="sd">         &quot;&quot;&quot;</span>
+         <span class="n">ny</span> <span class="o">=</span> <span class="p">(</span><span class="n">cor1</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span>
+
+         <span class="c"># Define correlation curve apodisation threshold ############</span>
+         <span class="k">if</span> <span class="p">(</span><span class="n">apod</span> <span class="o">==</span> <span class="bp">None</span><span class="p">):</span>
+            <span class="n">apod</span> <span class="o">=</span> <span class="mf">0.1</span> <span class="c"># percent of the max correl coef</span>
+
+         <span class="c"># Make a mask for nans and apodisation ######################</span>
+         <span class="n">corl</span>  <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">cor1</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+         <span class="n">idx</span>   <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">corl</span> <span class="o">&lt;</span> <span class="nb">max</span><span class="p">(</span><span class="n">corl</span><span class="p">)</span> <span class="o">*</span> <span class="n">apod</span><span class="p">)</span>
+         <span class="n">corl</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+         <span class="n">pval</span>  <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">pva1</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+         <span class="n">idx</span>   <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">pval</span> <span class="o">&lt;</span> <span class="nb">max</span><span class="p">(</span><span class="n">pval</span><span class="p">)</span> <span class="o">*</span> <span class="n">apod</span><span class="p">)</span>
+         <span class="n">pval</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+         <span class="c"># Fold the correlation map ##################################</span>
+         <span class="n">cor2</span>  <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nansum</span><span class="p">(</span><span class="n">cor1</span><span class="p">,</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">corl</span>
+         <span class="n">pva2</span>  <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nansum</span><span class="p">(</span><span class="n">pva1</span><span class="p">,</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">pval</span>
+         <span class="n">corm</span>  <span class="o">=</span> <span class="n">cor2</span> <span class="o">/</span> <span class="n">pva2</span>
+
+         <span class="c"># Deduce the best &#39;shift&#39; value from the max correl coef ####</span>
+         <span class="n">idx</span>   <span class="o">=</span> <span class="p">(</span><span class="n">corm</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">corm</span><span class="p">))</span><span class="o">.</span><span class="n">nonzero</span><span class="p">()</span>
+         <span class="c"># ...TBD... en fait ici fitter une gaussienne et trouver son max</span>
+         <span class="n">shift</span> <span class="o">=</span> <span class="n">idx</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="o">-</span><span class="n">ny</span><span class="o">+</span><span class="mi">1</span>
+
+         <span class="k">if</span> <span class="p">(</span><span class="n">output</span> <span class="o">!=</span> <span class="bp">None</span><span class="p">):</span>
+            <span class="n">output</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">corm</span><span class="p">[:]</span>
+
+         <span class="k">return</span> <span class="n">shift</span>
+
+
+
+<span class="k">def</span> <span class="nf">getdestripinglist</span><span class="p">():</span>
+   <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">   cf. dataset.py</span>
+
+<span class="sd">   &quot;&quot;&quot;</span>
+   <span class="k">return</span> <span class="n">destriping_list</span>
+
+
+
+<div class="viewcode-block" id="destripecon"><a class="viewcode-back" href="../../../index.html#geophpy.processing.general.destripecon">[docs]</a><span class="k">def</span> <span class="nf">destripecon</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">Nprof</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">setmin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">setmax</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&quot;add&quot;</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   cf. dataset.py</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="n">dstmp</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+   <span class="n">dstmp</span><span class="o">.</span><span class="n">peakfilt</span><span class="p">(</span><span class="n">setmin</span><span class="o">=</span><span class="n">setmin</span><span class="p">,</span> <span class="n">setmax</span><span class="o">=</span><span class="n">setmax</span><span class="p">,</span> <span class="n">setnan</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="n">valfilt</span><span class="p">)</span>
+
+   <span class="k">if</span> <span class="p">(</span><span class="n">valfilt</span><span class="p">):</span>
+      <span class="c"># Filter values ...TBD... ######################################</span>
+      <span class="k">pass</span>
+   <span class="k">else</span><span class="p">:</span>
+      <span class="c"># Filter zimage ################################################</span>
+      <span class="n">zimg</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+      <span class="n">cols</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="n">zimg</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+      <span class="c"># Compute the mean for each profile ############################</span>
+      <span class="n">Z</span>    <span class="o">=</span> <span class="n">dstmp</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+      <span class="n">ZMOY</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmean</span><span class="p">(</span><span class="n">Z</span><span class="p">,</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span><span class="n">keepdims</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+      <span class="c"># Compute the mean of reference ################################</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">Nprof</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+         <span class="n">MOYR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmean</span><span class="p">(</span><span class="n">Z</span><span class="p">)</span>
+      <span class="k">else</span><span class="p">:</span>
+         <span class="n">MOYR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">ZMOY</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+         <span class="n">kp2</span>  <span class="o">=</span> <span class="n">Nprof</span> <span class="o">//</span> <span class="mi">2</span>
+         <span class="k">for</span> <span class="n">jc</span> <span class="ow">in</span> <span class="n">cols</span><span class="p">:</span>
+            <span class="n">jc1</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="n">jc</span><span class="o">-</span><span class="n">kp2</span><span class="p">)</span>
+            <span class="n">jc2</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">zimg</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="n">jc</span><span class="o">+</span><span class="n">kp2</span><span class="p">)</span>
+            <span class="n">MOYR</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="n">jc</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmean</span><span class="p">(</span><span class="n">Z</span><span class="p">[:,</span><span class="n">jc1</span><span class="p">:</span><span class="n">jc2</span><span class="p">])</span>
+
+      <span class="c"># Rescale the profiles #########################################</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">method</span> <span class="o">==</span> <span class="s">&quot;add&quot;</span><span class="p">):</span>
+         <span class="n">zimg</span> <span class="o">+=</span> <span class="n">MOYR</span>
+         <span class="n">zimg</span> <span class="o">-=</span> <span class="n">ZMOY</span>
+      <span class="k">elif</span> <span class="p">(</span><span class="n">method</span> <span class="o">==</span> <span class="s">&quot;mult&quot;</span><span class="p">):</span>
+         <span class="n">zimg</span> <span class="o">*=</span> <span class="n">MOYR</span>
+         <span class="n">zimg</span> <span class="o">/=</span> <span class="n">ZMOY</span>
+      <span class="k">else</span><span class="p">:</span>
+         <span class="c"># Undefined destriping method ###############################</span>
+         <span class="c"># ...TBD... raise an error here !</span>
+         <span class="k">pass</span>
+
+
+</div>
+<span class="k">def</span> <span class="nf">destripecub</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">Nprof</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">setmin</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">setmax</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">Ndeg</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   cf. dataset.py</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="n">dstmp</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+   <span class="n">dstmp</span><span class="o">.</span><span class="n">peakfilt</span><span class="p">(</span><span class="n">setmin</span><span class="o">=</span><span class="n">setmin</span><span class="p">,</span> <span class="n">setmax</span><span class="o">=</span><span class="n">setmax</span><span class="p">,</span> <span class="n">setnan</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="n">valfilt</span><span class="p">)</span>
+
+   <span class="k">if</span> <span class="p">(</span><span class="n">valfilt</span><span class="p">):</span>
+      <span class="c"># Filter values ...TBD... ######################################</span>
+      <span class="k">pass</span>
+   <span class="k">else</span><span class="p">:</span>
+      <span class="c"># Filter zimage ################################################</span>
+      <span class="n">zimg</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+      <span class="n">cols</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="n">zimg</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+      <span class="n">y</span> <span class="o">=</span> <span class="n">zimage_ycoord</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
+
+      <span class="c"># Compute the polynomial coefs for each profile ################</span>
+      <span class="n">Z</span>    <span class="o">=</span> <span class="n">dstmp</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+      <span class="n">ZPOL</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">polyfit</span><span class="p">(</span><span class="n">y</span><span class="p">[:,</span><span class="mi">0</span><span class="p">],</span><span class="n">Z</span><span class="p">,</span><span class="n">Ndeg</span><span class="p">)</span>
+
+      <span class="c"># Compute the polynomial reference #############################</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">Nprof</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+         <span class="n">POLR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmean</span><span class="p">(</span><span class="n">ZPOL</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+      <span class="k">else</span><span class="p">:</span>
+         <span class="n">POLR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">ZPOL</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+         <span class="n">kp2</span>  <span class="o">=</span> <span class="n">Nprof</span> <span class="o">//</span> <span class="mi">2</span>
+         <span class="k">for</span> <span class="n">jc</span> <span class="ow">in</span> <span class="n">cols</span><span class="p">:</span>
+            <span class="n">jc1</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="n">jc</span><span class="o">-</span><span class="n">kp2</span><span class="p">)</span>
+            <span class="n">jc2</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">zimg</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="n">jc</span><span class="o">+</span><span class="n">kp2</span><span class="p">)</span>
+            <span class="n">POLR</span><span class="p">[:,</span><span class="n">jc</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmean</span><span class="p">(</span><span class="n">ZPOL</span><span class="p">[:,</span><span class="n">jc1</span><span class="p">:</span><span class="n">jc2</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="bp">True</span><span class="p">)[:,</span><span class="mi">0</span><span class="p">]</span>
+
+      <span class="c"># Rescale the profiles #########################################</span>
+      <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">Ndeg</span><span class="p">):</span>
+         <span class="n">zimg</span> <span class="o">-=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">ZPOL</span><span class="p">[</span><span class="n">d</span><span class="o">+</span><span class="mi">1</span><span class="p">]])</span><span class="o">*</span><span class="n">y</span><span class="o">**</span><span class="p">(</span><span class="n">d</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+      <span class="k">if</span> <span class="p">(</span><span class="n">Nprof</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">):</span>
+         <span class="n">zimg</span> <span class="o">-=</span> <span class="n">ZPOL</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+         <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">Ndeg</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+            <span class="n">zimg</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">POLR</span><span class="p">[</span><span class="n">d</span><span class="p">]])</span><span class="o">*</span><span class="n">y</span><span class="o">**</span><span class="n">d</span>
+
+
+
+<span class="k">def</span> <span class="nf">getregtrendmethodlist</span><span class="p">():</span>
+   <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">   cf. dataset.py</span>
+
+<span class="sd">   &quot;&quot;&quot;</span>
+   <span class="k">return</span> <span class="n">regtrendmethod_list</span>
+
+
+
+<span class="k">def</span> <span class="nf">getregtrendcomplist</span><span class="p">():</span>
+   <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">   cf. dataset.py</span>
+
+<span class="sd">   &quot;&quot;&quot;</span>
+   <span class="k">return</span> <span class="n">regtrendcomp_list</span>
+
+
+
+<div class="viewcode-block" id="regtrend"><a class="viewcode-back" href="../../../index.html#geophpy.processing.general.regtrend">[docs]</a><span class="k">def</span> <span class="nf">regtrend</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">nx</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ny</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&quot;rel&quot;</span><span class="p">,</span> <span class="n">component</span><span class="o">=</span><span class="s">&quot;loc&quot;</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   cf. dataset.py</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">if</span> <span class="p">(</span><span class="n">valfilt</span><span class="p">):</span>
+      <span class="c"># Filter values ...TBD... ######################################</span>
+      <span class="k">pass</span>
+   <span class="k">else</span><span class="p">:</span>
+      <span class="c"># Filter zimage ################################################</span>
+      <span class="n">zimg</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+      <span class="n">cols</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="n">zimg</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+      <span class="n">ligs</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="n">zimg</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+      <span class="n">nx2</span>  <span class="o">=</span> <span class="n">nx</span><span class="o">//</span><span class="mi">2</span>
+      <span class="n">ny2</span>  <span class="o">=</span> <span class="n">ny</span><span class="o">//</span><span class="mi">2</span>
+      <span class="n">znew</span> <span class="o">=</span> <span class="n">zimg</span> <span class="o">*</span> <span class="mf">0.</span>
+
+      <span class="c"># Compute the mean of all data #################################</span>
+      <span class="n">zmoy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmean</span><span class="p">(</span><span class="n">zimg</span><span class="p">)</span>
+
+      <span class="c"># Compute the mean in each window ##############################</span>
+      <span class="k">for</span> <span class="n">jl</span> <span class="ow">in</span> <span class="n">ligs</span><span class="p">:</span>
+         <span class="n">jl1</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">jl</span> <span class="o">-</span> <span class="n">nx2</span><span class="p">)</span>            <span class="c"># ...TBD... -1 ?</span>
+         <span class="n">jl2</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">ligs</span><span class="p">),</span> <span class="n">jl</span> <span class="o">+</span> <span class="n">nx2</span><span class="p">)</span>    <span class="c"># ...TBD... -1 ?</span>
+         <span class="k">for</span> <span class="n">jc</span> <span class="ow">in</span> <span class="n">cols</span><span class="p">:</span>
+            <span class="n">jc1</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">jc</span> <span class="o">-</span> <span class="n">ny2</span><span class="p">)</span>         <span class="c"># ...TBD... -1 ?</span>
+            <span class="n">jc2</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">cols</span><span class="p">),</span> <span class="n">jc</span> <span class="o">+</span> <span class="n">ny2</span><span class="p">)</span> <span class="c"># ...TBD... -1 ?</span>
+            <span class="n">zloc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmean</span><span class="p">(</span><span class="n">zimg</span><span class="p">[</span><span class="n">jl1</span><span class="p">:</span><span class="n">jl2</span><span class="p">,</span><span class="n">jc1</span><span class="p">:</span><span class="n">jc2</span><span class="p">])</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">component</span> <span class="o">==</span> <span class="s">&quot;loc&quot;</span><span class="p">):</span>
+               <span class="k">if</span> <span class="p">(</span><span class="n">method</span> <span class="o">==</span> <span class="s">&quot;rel&quot;</span><span class="p">):</span>
+                  <span class="n">znew</span><span class="p">[</span><span class="n">jl</span><span class="p">,</span><span class="n">jc</span><span class="p">]</span> <span class="o">=</span> <span class="n">zimg</span><span class="p">[</span><span class="n">jl</span><span class="p">,</span><span class="n">jc</span><span class="p">]</span> <span class="o">*</span> <span class="n">zmoy</span> <span class="o">/</span> <span class="n">zloc</span>
+               <span class="k">elif</span> <span class="p">(</span><span class="n">method</span> <span class="o">==</span> <span class="s">&quot;abs&quot;</span><span class="p">):</span>
+                  <span class="n">znew</span><span class="p">[</span><span class="n">jl</span><span class="p">,</span><span class="n">jc</span><span class="p">]</span> <span class="o">=</span> <span class="n">zimg</span><span class="p">[</span><span class="n">jl</span><span class="p">,</span><span class="n">jc</span><span class="p">]</span> <span class="o">-</span> <span class="n">zloc</span>
+               <span class="k">else</span><span class="p">:</span>
+                  <span class="c"># Undefined method #################################</span>
+                  <span class="c"># ...TBD... raise an error here !</span>
+                  <span class="k">pass</span>
+            <span class="k">elif</span> <span class="p">(</span><span class="n">component</span> <span class="o">==</span> <span class="s">&quot;reg&quot;</span><span class="p">):</span>
+               <span class="n">znew</span><span class="p">[</span><span class="n">jl</span><span class="p">,</span><span class="n">jc</span><span class="p">]</span> <span class="o">=</span> <span class="n">zloc</span>
+            <span class="k">else</span><span class="p">:</span>
+               <span class="c"># Undefined component #################################</span>
+               <span class="c"># ...TBD... raise an error here !</span>
+               <span class="k">pass</span>
+
+      <span class="c"># Write result to input dataset ################################</span>
+      <span class="n">zimg</span><span class="p">[:,:]</span> <span class="o">=</span> <span class="n">znew</span>
+
+
+</div>
+<span class="k">def</span> <span class="nf">wallisfilt</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">nx</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ny</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">setmean</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">setstdev</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">setgain</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">edgefactor</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   cf. dataset.py</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">if</span> <span class="p">(</span><span class="n">valfilt</span><span class="p">):</span>
+      <span class="c"># Filter values ...TBD... ######################################</span>
+      <span class="k">pass</span>
+   <span class="k">else</span><span class="p">:</span>
+      <span class="c"># Filter zimage ################################################</span>
+      <span class="n">zimg</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+      <span class="n">cols</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="n">zimg</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+      <span class="c"># ...TBD...</span>
+
+
+
+<div class="viewcode-block" id="ploughfilt"><a class="viewcode-back" href="../../../index.html#geophpy.processing.general.ploughfilt">[docs]</a><span class="k">def</span> <span class="nf">ploughfilt</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">nx</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ny</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">apod</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">angle</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">valfilt</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+   <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">   cf. dataset.py</span>
+
+<span class="sd">   &#39;&#39;&#39;</span>
+   <span class="k">if</span> <span class="p">(</span><span class="n">valfilt</span><span class="p">):</span>
+      <span class="c"># Filter values ...TBD... ######################################</span>
+      <span class="k">pass</span>
+   <span class="k">else</span><span class="p">:</span>
+      <span class="c"># Filter zimage ################################################</span>
+      <span class="n">zimg</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">z_image</span>
+
+      <span class="k">if</span> <span class="p">(</span><span class="n">apod</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+         <span class="n">apodisation2d</span><span class="p">(</span><span class="n">zimg</span><span class="p">,</span> <span class="n">apod</span><span class="p">)</span>
+
+      <span class="n">cols</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="n">zimg</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+      <span class="c"># ...TBD...</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../../../index.html">
+              <img class="logo" src="../../../_static/geophpy-square.png" alt="Logo"/>
+            </a></p><h3>Useful Links</h3>
+<ul>
+  <li><a href="http://pypi.python.org/pypi/GeophPy">
+    GeophPy @ PyPI</a></li>
+  <li><a href="http://134.157.44.234/GeophPy.pdf">
+    PDF Manual</a></li>
+</ul>
+
+<h3 style="margin-top: 1.5em;">Search</h3>
+<form class="search" action="search.html" method="get">
+  <input type="text" name="q">
+  <input type="submit" value="Go">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<p class="searchtip" style="font-size: 90%">
+Enter search terms or a module, class or function name.
+</p>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../../index.html">GeophPy 0.20 documentation</a> &raquo;</li>
+          <li><a href="../../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2014, Lionel Darras &amp; Philippe Marty.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3b2.
+    </div>
+  </body>
+</html>
