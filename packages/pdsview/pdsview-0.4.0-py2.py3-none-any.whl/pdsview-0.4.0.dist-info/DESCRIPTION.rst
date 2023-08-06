@@ -1,0 +1,83 @@
+====================================
+pdsview - A Python PDS Image Viewer
+====================================
+
+.. image:: https://img.shields.io/travis/planetarypy/pdsview.svg
+        :target: https://travis-ci.org/planetarypy/pdsview
+
+.. image:: https://img.shields.io/pypi/v/pdsview.svg
+        :target: https://pypi.python.org/pypi/pdsview
+
+**NOTE** This is Alpha quality software that is being actively developed, use
+at your own risk.
+
+* Free software: BSD license
+* Documentation: https://pdsview.readthedocs.org.
+
+Features
+--------
+
+* NASA PDS Image Viewer
+
+NOTE: This is alpha quality software.  It lacks many features and lacks support
+for many PDS image types.
+
+Install
+-------
+
+On OS X you must first install the Qt UI toolkit using Homebrew
+(http://brew.sh/).  After installing Homebrew, issue the following command::
+
+    brew install qt
+
+Create a new virtual environment, install the `pdsview` module with pip,
+and setup the PySide environment::
+
+    mkvirtualenv pdsview
+    pip install pdsview
+    pyside_postinstall.py -install
+
+Now you should be able to run the `pdsview` program.
+
+This works on Linux as well (Ubuntu 14.04).  Instructions coming soon.
+Installing the proper Qt dev package and running `pyside_postinstall.py`
+in a similar fashion should work.
+
+
+
+
+History
+-------
+
+0.4.0 (2015-08-30)
+---------------------
+
+* Clicking on a point in an image now shows the image coordinates and pixel
+  value at that location.
+* Right clicking and dragging on the image will now create a region of interest.
+  Statistics about that region of interest are shown.
+* Composite RGB images can now be displayed by using the new Channels dialog and
+  checking the RGB toggle.
+
+
+0.3.0 (2015-08-03)
+---------------------
+
+* Reworked to use an ImageSet and ImageStamp model to improve program flow and
+  permit launching from other programs.
+
+
+0.2.0 (2015-07-28)
+---------------------
+
+* Cleaned up with parts rewritten.
+* Takes files as command line arguments.
+* Handles mutiple images.
+
+
+0.1.0 (2015-06-06)
+---------------------
+
+* First release on PyPI.
+
+
