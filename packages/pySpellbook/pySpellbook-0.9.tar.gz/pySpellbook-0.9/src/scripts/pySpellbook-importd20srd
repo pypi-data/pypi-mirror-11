@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+import sys
+try:
+    from pySpellbook.importTools import Importer
+except ImportError:
+    sys.path.append("..")
+    from pySpellbook.importTools import Importer
+try:
+    from pyquery import PyQuery as pq
+except ImportError:
+    print("The importscript depends on the python library \"pyquery\". Please install pyquery.", file=sys.stderr)
+    sys.exit(1)
+import re
+
+class D20SRDImporter(Importer):
+    def __init__(self, base_url):
+        super().__init__("/indexes/spellLists.htm", base_url=base_url)
+
+    def parseSpell(self, link, ispell):
+        spellpage = pq(filename=self.base_url + link)
+        ispell['name'] = spellpage("h1").text()
+        school_group = re.match("(?P<school>[^ ]*)(?: \( (?P<subschool>.*?) \))?(?: \[ (?P<descriptors>.*?) \])?", spellpage('h4').text())
+        ispell['school'] = school_group.group("school")
+        ispell['subschool'] = school_group.group("subschool")
+        ispell['descriptors'] = school_group.group("descriptors")
+
+        spell_ = {}
+        for row in spellpage("table.statBlock tr").items():
+            key = row("th").text().replace(":","").strip()
+            value = row("td").text()
+            if key == "Level":
+                pass
+            elif key == "Components" or key == "Component":
+                for comp in value.replace(" ","").replace("(","").replace("/", ',').split(','):
+                    if comp.startswith("M"):
+                        ispell["material"] = True
+                    elif comp.startswith("V"):
+                        ispell["verbal"] = True
+                    elif comp == "S":
+                        ispell["somatic"] = True
+                    elif comp.startswith("F"):
+                        ispell["arcane_focus"] = True
+                    elif comp == "DF":
+                        ispell["divine_focus"] = True
+                    elif comp.startswith("XP"):
+                        ispell["xp_costs"] = True
+            else:
+                spell_[key] = value
+
+        sourceTargetDict = {
+                            "Casting Time": "cast_time",
+                            "Range": "range",
+                            "Area": "area",
+                            "Effect": "effect",
+                            "Target": "target",
+                            "Targets": "target",
+                            "Target/Effect": "target",
+                            "Target / Effect": "target",
+                            "Target or Area": "target",
+                            "Target or Targets": "target",
+                            "Target, Effect, or Area": "target",
+                            "Target , Effect , or Area": "target",
+                            "Target, Effect, Area": "target",
+                            "Area or Target": "target",
+                            "Duration": "duration",
+                            "Spell Resistance": "spell_res",
+                            "Saving Throw": "save"
+                        }
+        for s, t in sourceTargetDict.items():
+            if s in spell_.keys():
+                ispell[t] = spell_[s]
+
+        startelem = spellpage("table.statBlock")
+        elem = startelem.next()
+        text = ""
+        while not elem.is_(".footer"):
+            text = text + elem.outerHtml().replace("<h6>","<i>").replace("</h6>","</i>")
+            elem = elem.next()
+        ispell["text"] = re.sub("<a[^>]*?>|</a>", "", text)
+        return ispell
+
+    def listSpellIndex(self):
+        index = pq(filename=self.base_url + self.root)
+        mapping_a = [(a.attr('href'), a.text().replace(" Spells","")) for a in list(index('h2 a').items())[1:] if a.text() != "Cleric Domains"]
+        mapping = []
+
+        for l,c in mapping_a:
+            if '/' in c:
+                for c2 in c.split("/"):
+                    mapping.append((l,c2))
+            else:
+                mapping.append((l,c))
+
+        for link, name in mapping:
+            class_page = pq(filename=self.base_url + link)
+            print(name)
+            for level_elem in class_page("h3").items():
+                try:
+                    level = int(level_elem.text()[0])
+                except:
+                    continue
+                print("\tLevel %s" % level)
+                if name == "Wizard" or name == "Sorcerer":
+                    elem = level_elem.next()
+                    while not elem.is_("h3") and not elem.is_(".footer"):
+                        if elem.is_("ul"):
+                            for spell in elem('strong .spell').items():
+                                spell_name = spell.text()
+                                spell_link = spell.attr("href")
+                                print("\t\t" + spell_name)
+                                yield (spell_link, {'name': spell_name,
+                                        'rulebook': "D20SRD",
+                                        'system': "D&D 3.5",
+                                        'classes': [(name, level)],
+                                        })
+                        elem = elem.next()
+
+                else:
+                    spell_list = level_elem.next()
+                    for spell in spell_list('strong .spell').items():
+                        spell_name = spell.text()
+                        spell_link = spell.attr("href")
+                        print("\t\t" + spell_name)
+                        yield (spell_link, {'name': spell_name,
+                                'rulebook': "D20SRD",
+                                'system': "D&D 3.5",
+                                'classes': [(name, level)],
+                                })
+
+    def postParse(self):
+        for spell in self._spells:
+            if not 'school' in spell.keys() or not spell['school']:
+                if spell['name'].endswith("Communal") or spell['name'].endswith("Mass") or spell['name'].endswith("Greater") or spell['name'].endswith("Lesser") or spell['name'].endswith("Improved"):
+                    parent_spell = self.findSpellByName(spell['name'].split(",")[0].strip())
+                    spell['school'] = parent_spell['school']
+                    if 'subschool' in parent_spell.keys():
+                        spell['subschool'] = parent_spell['subschool']
+                else:
+                    print("ERROR: NO SCHOOL %s" % spell['name'])
+                    sys.exit(1)
+
+if __name__ == "__main__":
+    D20SRDImporter(sys.argv[1]).save(sys.argv[2])
+
+
