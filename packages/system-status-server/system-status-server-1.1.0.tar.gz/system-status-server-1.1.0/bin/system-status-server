@@ -1,0 +1,46 @@
+#!/usr/bin/python
+
+import argparse
+import os
+import sys
+import subprocess
+
+from system_status_server.infodaemon import InfoDaemon, InfoServer
+
+parser = argparse.ArgumentParser()
+start_group = parser.add_mutually_exclusive_group(required = True)
+start_group.add_argument("command", help = "server command", choices = ['start', 'stop', 'restart', 'status'], nargs='?')
+start_group.add_argument("-c", "--console", help = "run in the console, not forking", action='store_true')
+start_group.add_argument("--install-autostart", dest = "autostart", help = "install scripts for system start (debian only)", action = 'store_true')
+parser.add_argument("--host", help = "listening host", type = str, default = '0.0.0.0')
+parser.add_argument("--port", help = "listening port", type = int, default = 35280)
+
+args = parser.parse_args()
+
+config = dict(listen = dict())
+
+config_file = '/etc/system-status-server.json'
+
+if os.path.isfile(config_file):
+    try:
+        with open(config_file) as file:
+            self.config.update(json.loads(file.read()))
+    except ValueError as e:
+        print(e)
+        sys.exit(1)
+else:
+    config['listen'].update(dict(host = args.host, port = args.port))
+
+if args.console:
+    server = InfoServer(config)
+    server.serve()
+elif args.autostart:
+    try:
+        os.symlink(__file__, '/etc/init.d/system-status-server')
+        subprocess.check_call(['update-rc.d', 'system-status-server', 'defaults'])
+    except Exception as e:
+        print(e)
+else:
+    daemon = InfoDaemon('/tmp/system-status-server.pid', config, '/tmp/system-status-server.log')
+    command = getattr(daemon, args.command)
+    print(command())
