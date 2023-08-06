@@ -1,0 +1,78 @@
+# -*- coding: utf-8 -*-
+#
+# This file is part of Invenio.
+# Copyright (C) 2015 CERN.
+#
+# Invenio is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 2 of the
+# License, or (at your option) any later version.
+#
+# Invenio is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Invenio; if not, write to the Free Software Foundation, Inc.,
+# 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+
+
+notifications:
+  email: false
+
+sudo: false
+
+services:
+  - mysql
+  - redis
+  - elasticsearch
+
+language: python
+
+cache:
+  - apt
+  - pip
+
+env:
+  - REQUIREMENTS=lowest REXTRAS=docs,tests
+  - REQUIREMENTS=release REXTRAS=docs,tests
+  - REQUIREMENTS=devel REXTRAS=docs,tests
+
+python:
+  - "2.7"
+
+before_install:
+  - "travis_retry pip install --upgrade pip"
+  - "travis_retry pip install check-manifest mock twine wheel coveralls"
+  - "python requirements.py --extras=$REXTRAS --level=min > .travis-lowest-requirements.txt"
+  - "python requirements.py --extras=$REXTRAS --level=pypi > .travis-release-requirements.txt"
+  - "python requirements.py --extras=$REXTRAS --level=dev > .travis-devel-requirements.txt"
+  - "mkdir -p ${VIRTUAL_ENV}/var/invenio.base-instance/"
+  - "cp .travis.invenio.cfg ${VIRTUAL_ENV}/var/invenio.base-instance/invenio.cfg"
+
+install:
+  - "travis_retry pip install -r .travis-$REQUIREMENTS-requirements.txt --allow-all-external"
+  - "travis_retry pip install -e .[$REXTRAS]"
+
+before_script:
+  - "inveniomanage database init --yes-i-know"
+  - "inveniomanage database create --quiet"
+
+script:
+  - "check-manifest --ignore .travis-\\*-requirements.txt"
+  - "sphinx-build -qnN docs docs/_build/html"
+  - "python setup.py test"
+
+after_success:
+  - coveralls
+
+deploy:
+  provider: pypi
+  user: jirikuncar
+  password:
+    secure: DpqLzPfJFJ9vz8JTz6TRkap2h28W9PvkHb1nuK51L1YoM9ydJ55zxJ+/UP3a7vR7NVtpt5iFJ4mC4ycQrCSqcjMjoybpBOfVntlJuUFBW10WXjoKKMk2gY7uh7YdAIJV72pye9NIpV0JWLq4/NbBHfoaacTU5LXX2UEsglGyfh3SFO36k+/P43ZTT5CJsfsxPYvmcfbRLf1luEdeJ5YsctyG0yUOJBYaWy2snZ6QjzSnMHiDLw1BKceJPt94WfXWHq8Tqxtf11ZMw4xQd88dZUEHKua1mACB6WV3NsSKJFIn49gyn+8DhsZ0hkwQp0PSK+oOR2TLaxNhNaO61s5fp7XqgUWVaX9kHsrYVbbtsjKU2jCBJfrvPjUCWwtiAcMPqP4pFlQyk7THTd/ISLtTk1m915r1smXv3I0L2utCatVNRMzsENPz9GwwqX8tqM6Qps8Lp8q5waMLdlkpxYWFhubAd320ow15rfSOhJot27cOdw7s8r0hDaDfX+58gEf5wVisNWQKoskw4iJ4RLo/k8jYPaVEfS4vMbLHpZlhgE7f72276dGFcOQy6mcvKgPG1PF5TlsU5eVgIXu8rXQD3bp8NKdeFd3IIu1I6icJjo5c5AO7KKb4j+gz5AcT1pidp8yPDgugnVK5TXXbvyRaIGE/BLeucuh7ZuNP51IEdcA=
+  distributions: "compile_catalog sdist bdist_wheel"
+  on:
+    tags: true
+    python: "2.7"
