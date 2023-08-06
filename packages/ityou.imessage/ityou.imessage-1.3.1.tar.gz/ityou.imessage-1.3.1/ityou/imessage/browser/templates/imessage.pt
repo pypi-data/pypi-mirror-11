@@ -1,0 +1,344 @@
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal"
+      xmlns:i18n="http://xml.zope.org/namespaces/i18n"
+      lang="en"
+      metal:use-macro="here/main_template/macros/master"
+      i18n:domain="ityou.imessage">
+<body>
+
+    <div metal:fill-slot="main">
+    <metal:main-macro define-macro="main"
+                      tal:define="templateId template/getId;
+                                  is_mobile python:False;
+                                  receiver_id request/sid | nothing;
+                                  portal_url view/portal_url;
+                                  ">
+
+		<h1 class="documentFirstHeading  breadcrumb" i18n:translate="instant_message_list">Instant Messages</h1>
+		
+		<!-- Dialog Group Member -->
+		<div id="messages-group-member" tal:condition="python: context.REQUEST.get('rid')"></div>
+		<div id="messages-dialog-partner" tal:condition="python: context.REQUEST.get('sid')" tal:define="sender view/sender_data">
+            <div class="alert alert-warning" id="dialog-partner">
+                <a tal:attributes="href string:${context/absolute_url}/author/${sender/id}">
+                    <div class="user-portrait" tal:attributes="data-uid string:${sender/id}">
+                        <img tal:attributes="src string:${sender/portrait}; alt string:${sender/name}" class="img-thumbnail" />
+                    </div>
+                    <span><span i18n:translate="dialog_partner">Chat with: </span><br /><i tal:replace="sender/name"></i></span>
+                </a>
+            </div>
+		</div>
+		
+	 
+		<div id="messages-controls" tal:condition="python: context.REQUEST.get('sid') or context.REQUEST.get('rid')">
+            <tal:hide condition="nothing">
+			    <button class="messages-all-button btn btn-default" i18n:translate="messages_all" onClick="return false">view all messages</button>
+			    <button class="messages-hideall-button btn btn-default" i18n:translate="messages_hideall" onClick="return false">hide all messages</button>
+            </tal:hide>
+			<div class="visualClear" ></div>
+			
+			<div class="well previous-messages">
+			    <p class="previous-messages-loader">
+		            <i class="fa fa-spinner fa-spin"></i> <em i18n:translate="messages_previous_loading">Loading...</em>
+			    </p>
+			    <p class="previous-messages-trigger">
+			        <i class="fa fa-arrow-up"></i> <em i18n:translate="messages_previous">view previous messages</em>
+			    </p>
+			</div>
+		</div>
+
+		<div class="visualClear"></div>		
+		<div class="ajax-params invisible hidden">
+		  <div id="IMESSAGE_DELAY" tal:content="view/IMESSAGE_DELAY"></div>
+		  <div id="ESI_ROOT" tal:content="view/ESI_ROOT"></div>
+		</div>
+		
+		<form name="message_receiver" class="message_receiver" tal:condition="python: not context.REQUEST.get('sid') and not context.REQUEST.get('rid')" tal:attributes="data-use-groups view/use_groups">
+			<div id="receiver_list"><ul class="clearfix"></ul></div>
+	        <div class="input_holder">
+	           <label for="w_user_name" i18n:translate="imessage_receiver">Receiver</label>
+	            <input type="text" name="w_user_name" id="w_user_name" autocomplete="off" placeholder="Choose receiver" i18n:attributes="placeholder" class="form-control" />
+	            <input type="hidden" name="w_user_id" id="w_user_id" value="" autocomplete="off" />
+	            <em style="display: none;" id="imessage_no_match_found" i18n:translate="imessage_no_match_found">No match found</em>
+	            <div class="usersearch">
+	                <ul class="users"></ul>
+	            </div>
+	        </div>
+	        <div class="group-creation hidden" id="group-creation">
+	            <div class="checkbox">
+	                <label>
+	                    <input type="checkbox" id="create-dialog-as-groupchat">&nbsp;<span i18n:translate="create_as_chat">create as group chat</span>
+	                </label>
+                </div>
+	            
+	            <div class="form-group hidden">
+	                <input type="text" class="form-control" id="group-name" placeholder="Groupname..." i18n:attributes="placeholder">
+	            </div>
+	        </div>
+	        
+	        
+	        <div class="modal fade" id="imessage-message-successfully-sent">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+                            <h4 class="modal-title" i18n:translate="imessage_sent_success">Message send successfully</h4>
+                        </div>
+                        
+                        <div class="modal-body clearfix">
+                            <button type="button" class="btn btn-default pull-right" data-dismiss="modal" i18n:translate="close">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+	    </form>
+				
+		<div id="message-stream">
+		
+			<ul class="latest-messages clearfix" id="message-partner-id" tal:attributes="title receiver_id">					
+                <!-- via ajax -->
+			</ul>
+			
+			<div class="message-controls clearfix"> 
+                <tal:comment condition="nothing">
+                # MR: zumindest für mobile Geräte den `Senden` Button rechts an die Textbox legen 
+                <div class="message-input-field"><textarea id="message-textarea" class="message-mce form-control"></textarea></div>
+                <button class="message-save-button btn btn-default" i18n:translate="message_save" onClick="return false">send</button>
+                </tal:comment>
+                
+                <div class="input-group dialog-msg-text">
+                    <textarea id="message-textarea" class="message-mce form-control can-paste-from-clipboard"></textarea>
+                    <span class="input-group-btn">
+                        <button class="message-save-button btn btn-default">
+                        <!--<i class="fa fa-save"></i>-->
+	                        <span class="fa-stack">
+	                            <i class="fa fa-envelope fa-stack-1x"></i>
+	                            <i class="fa fa-arrow-right fa-stack-1x"></i>
+	                        </span>
+                        </button>
+                    </span>
+                </div>
+            </div>
+
+		</div>
+
+				
+		<div id="debug" class="debug"></div>
+
+
+
+<tal:comment condition="nothing">
+# ------------------------------------------------------------------------------
+#
+# Template zum Rendern der Suchergebnisse von Benutzern und Gruppen
+#
+# Data = {
+#   email: {String},
+#   id: {String},
+#   last_login: {String},
+#   last_login_timestamp: {Number},
+#   lastname: {String},
+#   location: {String},
+#   name: {String},
+#   phone: {String},
+#   portrait: {String},
+#   position: {String},
+#   profile_url: {String},
+#   group: {Boolean} {optional}
+# }
+#
+#
+# Aufruf in `ityou.esi.theme/src/ityou/esi/theme/esi_theme/jesi-assets/js/ityou/ityou.imessage-cleanform.js:270`
+#
+# ------------------------------------------------------------------------------
+</tal:comment> 
+<script type="text/x-jsrender" id="imessage-usersearch-template">
+<li>
+    <a href="javascript:void(0);" title="{{:id}}" {{if group}}data-group="{{:id}}"{{/if}} class="clearfix">
+        <div class="user-portrait pull-left" data-uid="{{:id}}">
+            <img src="{{:portrait}}" class="img-thumbnail">
+        </div>
+        <h2>{{:name}}</h2>
+        {{if last_login}}
+        <p>Zuletzt angemeldet: {{:last_login}}</p>
+        {{/if}}
+        <!--<i class="button fa fa-envelope"></i>-->
+    </a>
+</li>
+</script>
+
+
+<tal:comment condition="nothing">
+# ------------------------------------------------------------------------------
+#
+# Template zum Rendern der Empfängerliste
+#
+# Data = {
+#   id: {String},
+#   name: {String},
+#   portal_url: {String},
+#   portrait_url: {String}
+# }
+#
+#
+# Aufruf in `ityou.esi.theme/src/ityou/esi/theme/esi_theme/jesi-assets/js/ityou/ityou.imessage-cleanform.js:471`
+#
+# ------------------------------------------------------------------------------
+</tal:comment> 
+<script type="text/x-jsrender" id="imessage-receiverlist-template">
+    <li>
+        <div class="bs-row">
+            <div class="col-xs-12">
+                <div class="thumbnail" id="imgrcv-{{:id}}" {{if group}}data-group="{{:id}}"{{/if}}>
+                    <img src="{{:portrait_url}}" alt="{{:id}}" title="{{:name}}" class="pull-left" />
+                    <div class="caption">
+                        {{if group}}<p>{{:name}}</p>{{else}}<p><a href="{{:portal_url}}/author/{{:id}}">{{:name}}</a></p>{{/if}}
+                        <p><button type="button" class="remove close">&times;</button></p> 
+                    </div>
+                </div>
+            </div>
+        </div>
+    </li>
+</script>
+
+
+<tal:comment condition="nothing">
+# ------------------------------------------------------------------------------
+#
+# Template zum Rendern von Dialog Einträgen ( = Nachrichten)
+#
+# data = {
+#   approved: {Boolean},
+#   deleted: {Boolean},
+#   group: {Boolean},
+#   hash: {String},
+#   message: {String},
+#   multiple_receivers: {Array},
+#   receiver_email: {String},
+#   receiver_id: {String},
+#   receiver_name: {String},
+#   receiver_portrait: {String},
+#   sender_email: {String},
+#   sender_id: {String},
+#   sender_name: {String},
+#   sender_portrait: {String},
+#   sent: {Boolean},
+#   site_url: {String},
+#   timestamp: {String},
+#   timestr: {String},
+#   unread: {Boolean}
+# }
+#
+#
+# Aufruf in `ityou.esi.theme/src/ityou/esi/theme/esi_theme/jesi-assets/js/ityou/ityou.imessage.js:325`
+#
+# ------------------------------------------------------------------------------
+</tal:comment> 
+<script type="text/x-jsrender" id="imessage-dialog-template">
+<li class="latest-message {{if sent == true}}message-sent{{else}} message-received {{if approved == false}}message-unread{{/if}}{{/if}}" id="{{:hash}}" data-timestamp="{{:timestamp}}">
+    <a name="{{:hash}}" id="{{:hash}}"></a>
+    <div class="latest-message-wrapper">
+        
+        <div class="btn-group pull-right">
+            <button class="btn btn-default message-hide-button" title="hide" i18n:attributes="title">
+                <i class="fa fa-caret-up"></i>
+            </button>
+            {{if sent == true}}
+            <button class="btn btn-default copy-to-clipboard" title="copytoclipboard" data-parent-id="#{{:hash}}" i18n:attributes="title">
+                <i class="fa fa-copy"></i>
+            </button>
+            {{/if}}
+            <button class="btn btn-default message-delete-button" title="delete" i18n:attributes="title">
+                <i class="fa fa-trash-o"></i>
+            </button>
+        </div>
+            
+        
+        <div class="message-portrait">
+			<a href="/author/{{:sender_id}}" class="user-portrait" data-uid="{{:sender_id}}">
+			    <img class="small-personal-portrait" src="{{:sender_portrait}}" title="{{:sender_name}}" alt="{{:sender_name}}">
+			</a>
+		</div>
+												
+		<div class="message-text">
+		    <span class="timestamp" id="{{:timestamp}}">{{:timestr}}</span>
+		    <!--<br/>-->
+            {{if group == true}}
+                <a class="message-text-sender" href="/author/{{:sender_id}}">{{:sender_name}}</a>
+			    <span class="arrow"> &rarr; </span>
+                <span>{{:receiver_name}}</span>
+                <span class="dpkt">:<br/></span>
+            {{else}}
+                <!--<a class="message-text-receiver" href="/author/{{:receiver_id}}">{{:receiver_name}}</a>
+                <span class="dpkt">:<br/></span>-->
+            {{/if}}
+			<br />
+			<div class="message can-copy-to-clipboard">{{:message}}</div>
+		</div>
+    </div>
+    <div class="visualClear"></div>
+</li>
+</script>
+
+<tal:comment condition="nothing">
+# ------------------------------------------------------------------------------
+#
+# Template zur Darstellung der Gruppenmitglieder, dient als Wrapper der eigentlichen Mitglieder
+#
+# data = {
+#   groupname: {String}
+# }
+#
+#
+# Aufruf in `ityou.esi.theme/src/ityou/esi/theme/esi_theme/jesi-assets/js/ityou/ityou.imessage.js:396`
+#
+# ------------------------------------------------------------------------------
+</tal:comment> 
+<script type="text/x-jsrender" id="imessage-group-member-template">
+<div class="alert alert-warning" id="group-member-content">
+    <a data-toggle="dropdown" href="#">
+        <strong>{{:groupname}}</strong>
+        <span class="caret"></span>
+    </a>
+    
+    <ul class="dropdown-menu" role="menu" aria-labelledby="dropdown-group-member"></ul>
+</div>
+</script>
+
+
+<tal:comment condition="nothing">
+# ------------------------------------------------------------------------------
+#
+# Mitglieder einer Gruppe rendern
+#
+# data = {
+#   id: {String},
+#   name: {String},
+#   portrait: {String}
+# }
+#
+#
+# Aufruf in `ityou.esi.theme/src/ityou/esi/theme/esi_theme/jesi-assets/js/ityou/ityou.imessage.js:400`
+#
+# ------------------------------------------------------------------------------
+</tal:comment> 
+<script type="text/x-jsrender" id="imessage-group-member-content-template">
+<li>
+    <a href="@@messages?sid={{:id}}" class="clearfix">
+        <div class="user-portrait pull-left" data-uid="{{:id}}">
+            <img src="{{:portrait}}" class="img-thumbnail">
+        </div>
+        <span>{{:name}}</span>
+    </a>
+</li>
+</script>
+
+
+<!--  ~~~~~~~~~~~~~~~~~~~~~~~~~~~ /JQ-TMPL   ~~~~~~ -->		
+
+    </metal:main-macro>
+    </div>
+</body>
+</html>
