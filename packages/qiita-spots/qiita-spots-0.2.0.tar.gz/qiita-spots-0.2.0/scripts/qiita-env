@@ -1,0 +1,183 @@
+#!/usr/bin/env python
+
+# -----------------------------------------------------------------------------
+# Copyright (c) 2014--, The Qiita Development Team.
+#
+# Distributed under the terms of the BSD 3-clause License.
+#
+# The full license is in the file LICENSE, distributed with this software.
+# -----------------------------------------------------------------------------
+
+from sys import exit
+
+import click
+
+from qiita_db.environment_manager import (
+    make_environment, drop_environment, clean_test_environment,
+    patch as _patch)
+from qiita_db.portal import Portal
+from qiita_db.exceptions import (QiitaDBError, QiitaDBDuplicateError,
+                                 QiitaDBLookupError)
+from qiita_core.environment_manager import (
+    start_cluster as _start_cluster, stop_cluster as _stop_cluster,
+    test as _test, TEST_RUNNERS)
+from qiita_core.configuration_manager import ConfigurationManager
+
+_CONFIG = ConfigurationManager()
+
+
+@click.group()
+def env():
+    pass
+
+
+@env.command()
+@click.argument('clusters', type=click.Choice(_CONFIG.ipython_contexts),
+                nargs=-1)
+def start_cluster(clusters):
+    """Start a compute environment"""
+    if not clusters:
+        clusters = ('qiita-general',)
+    for cluster in clusters:
+        print "Starting cluster", cluster
+        _start_cluster(cluster)
+
+
+@env.command()
+@click.argument('clusters', type=click.Choice(_CONFIG.ipython_contexts),
+                nargs=-1)
+def stop_cluster(clusters):
+    """Stop a compute environment"""
+    if not clusters:
+        clusters = ('qiita-general',)
+    for cluster in clusters:
+        print "Stopping cluster", cluster
+        _stop_cluster(cluster)
+
+
+@env.command()
+@click.option('--load-ontologies/--no-load-ontologies',
+              default=True, help='If True, ontologies will be loaded. '
+              'Cannot be True if this is a test environment.')
+@click.option('--download-reference/--no-download-reference',
+              default=False, help='If True, greengenes reference files will '
+                                  'be downloaded')
+@click.option('--add-demo-user/--no-add-demo-user',
+              default=False, help='If True, then demo@microbio.me will be '
+                                  'added to the database with password '
+                                  '"password"')
+def make(load_ontologies, download_reference, add_demo_user):
+    """Creates the database specified in config"""
+    # TODO: use password from config, see issue #363
+    # Or figure out a way to use
+    # http://click.pocoo.org/3/options/#password-prompts
+    # and have it work with Travis...
+    make_environment(load_ontologies, download_reference, add_demo_user)
+
+
+@env.command()
+@click.option('--ask-for-confirmation/--no-ask-for-confirmation',
+              default=True, help='If True, will ask for confirmation before '
+              'dropping the production environment.')
+def drop(ask_for_confirmation):
+    """Drops the database specified in config"""
+    # TODO: use password from config, see issue #363
+    # Or figure out a way to use
+    # http://click.pocoo.org/3/options/#password-prompts
+    # and have it work with Travis...
+    try:
+        drop_environment(ask_for_confirmation)
+    except RuntimeError as e:
+        raise click.ClickException(str(e))
+
+
+@env.command()
+def clean_test():
+    """Cleans the test database environment.
+
+    In case that the test database is dirty (i.e. the 'qiita' schema is
+    present), this cleans it up by dropping the 'qiita' schema and rebuilding
+    the test database.
+    """
+    clean_test_environment()
+
+
+@env.command()
+def patch():
+    """Patches the database schema based on the SETTINGS table
+
+    Pulls the current patch from the settings table and applies all subsequent
+    patches found in the patches directory.
+    """
+    _patch()
+
+
+@env.command()
+@click.option('--runner', required=False, type=click.Choice(TEST_RUNNERS),
+              default='all', help='Test runner to use')
+def test(runner):
+    """Test the environment
+
+    Check to make sure that basic services are up and working. These include
+    connectivity to postgres, redis, and the ability to submit jobs through
+    moi.
+
+    Tests are performed both on localhost and ipengines.
+    """
+    _test(runner)
+
+
+@env.command()
+@click.option('--job', required=True, type=str, help='The job ID')
+def job_details(job):
+    """Pretty print moi job details"""
+    from json import loads
+    from moi import r_client
+    from redis.exceptions import ResponseError
+
+    try:
+        data = r_client.get(job)
+    except ResponseError:
+        click.echo("ID does not appear to be a job")
+        exit(1)
+
+    if data is None:
+        click.echo("Job cannot be found")
+    else:
+        data = loads(data)
+        for k in sorted(data):
+            value = data[k]
+
+            if k == 'result':
+                if isinstance(value, list):
+                    value = ''.join(value)
+                else:
+                    value = str(value)
+
+            click.echo("%s : %s" % (k, value))
+
+
+@env.command(name="create-portal")
+@click.argument('portal', required=True, type=str)
+@click.argument('description', required=True, type=str)
+def add_portal(portal, description):
+    """Creates a new portal on the database"""
+    try:
+        Portal.create(portal, description)
+    except QiitaDBDuplicateError:
+        raise click.BadParameter("Portal name already exists!")
+
+
+@env.command(name="remove-portal")
+@click.argument('portal', required=True, type=str)
+def rem_portal(portal):
+    """Removes a portal from the database"""
+    try:
+        Portal.delete(portal)
+    except QiitaDBError as e:
+        raise click.BadParameter(str(e))
+    except QiitaDBLookupError:
+        raise click.BadParameter("Portal name does not exist!")
+
+if __name__ == '__main__':
+    env()
