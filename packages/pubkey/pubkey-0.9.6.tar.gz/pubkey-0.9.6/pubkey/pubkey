@@ -1,0 +1,377 @@
+#!/usr/local/bin/python3 -u
+#
+# The MIT License (MIT)
+#
+# Copyright (c) 2015 by Oliver Ratzesberger
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+import os
+import json
+import socket
+import configparser
+import asyncio
+from aiohttp import web
+
+from cement.core.foundation import CementApp
+from cement.core.controller import CementBaseController
+from cement.core import hook
+from cement.core.exc import CaughtSignal
+from cement.ext.ext_colorlog import ColorLogHandler
+from cement.ext.ext_configparser import ConfigParserConfigHandler
+
+from pubkey import __author__, __copyright__, __version__, __license__  # noqa
+
+BANNER = """
+pubkey v%s
+%s
+""" % (__version__, __copyright__)
+
+CMD = """
+curl -s -S %s:%s >> ~/.ssh/authorized_keys
+"""
+
+DEFAULT_KEYFILE = """~/.ssh/id_rsa.pub"""
+DEFAULT_HOST = """localhost"""
+DEFAULT_PORT = 1080
+DEFAULT_TIME = 300  # 300 sec or 5 min before auto shutdown
+
+DESCRIPTION = """
+pubkey - Public Key distribution made easy.
+
+Ever needed to quickly setup trusted keys for password less ssh sessions?
+pubkey helps by making public keys avaialble on the local network with a
+simple REST interface and a matching command to append the public key to
+various machines on the same network.
+
+Simply start pubkey on the source of the public key. Then head over to your
+remote target and run:
+
+%s
+
+on the various hosts that require the key to be added to their trusted keys.
+Done.
+""" % CMD % ('host', 'port')
+
+EPILOG = """
+
+Examples:
+
+$ pubkey --auto
+
+  Run pubkey in host auto detection mode. Should detect the correct server IP
+  for the local host on the local network in most cases. If not use --host
+  option to override with desired hostname or IP.
+  Timeout after 300 seconds by default
+
+$ pubkey --host 10.1.1.124 --port 6080 --time 0
+
+  Run pubkey and open REST server at 10.1.1.124:6080 and no timeout.
+
+$ pubkey --auto --once
+
+  Run pubkey in host auto detection mode and finish after 1 request or the
+  default of 300s - whichever comes first
+
+$ pubkey -auto -n 10 -t 600
+
+  Run pubkey in auto detection mode and finish after 10 requests or 600 seconds
+  whichever comes first
+
+Report bugs, submit feature requests, and/or contribute code over at:
+https://github.com/fxstein/pubkey\n
+"""
+
+HELP_AUTO = """
+Auto detect IP address to bind REST server to.
+"""
+HELP_ONCE = """
+Reply to only 1 request then quit.
+"""
+HELP_HOST = """
+IP address to bind REST server to. Default is <%s> and
+therefore NOT visible on the network.
+"""
+HELP_NUM = """
+Reply to only (num) requests then quit. 0 for no limit. Deafult is 0 (no limit)
+"""
+HELP_TIME = """
+Timeout after (time) seconds then quit. 0 for no timeout. Default is 300s (5min)
+"""
+HELP_KEYFILE = """
+Keyfile of public key. Commonly %s
+Only public key filenames [.pub] allowed.
+"""
+HELP_PORT = """
+Port to be used by REST server. Default is %s.
+"""
+
+# Default settings
+from cement.utils.misc import init_defaults
+
+defaults = init_defaults('pubkey', 'pubkey')
+defaults['pubkey']['keyfile'] = DEFAULT_KEYFILE
+defaults['pubkey']['host'] = DEFAULT_HOST
+defaults['pubkey']['port'] = DEFAULT_PORT
+defaults['pubkey']['auto'] = False
+defaults['pubkey']['once'] = False
+defaults['pubkey']['num'] = 0
+defaults['pubkey']['time'] = DEFAULT_TIME
+
+
+# Cleanly catch missing mandatory config settings if needed
+class PubKeyConfigHandler(ConfigParserConfigHandler):
+    class Meta:
+        label = 'config_handler'
+
+    def get(self, *args, **kw):
+        try:
+            return super(PubKeyConfigHandler, self).get(*args, **kw)
+        except configparser.Error as e:
+            self.app.log.fatal('Missing configuration setting: %s' % e)
+            self.app.close(1)
+
+
+# Define command line options
+class PubKeyBaseController(CementBaseController):
+    class Meta:
+        label = 'base'
+        description = DESCRIPTION
+        epilog = EPILOG
+        arguments = [
+            (['-a', '--auto'],
+             dict(action='store_true', help=HELP_AUTO, dest='auto')),
+            (['--host'],
+             dict(action='store', help=HELP_HOST % DEFAULT_HOST, dest='host')),
+            (['--key'],
+             dict(action='store', help=HELP_KEYFILE % DEFAULT_KEYFILE,
+             dest='keyfile')),
+            (['-n', '--num'],
+             dict(action='store', help=HELP_NUM, dest='num')),
+            (['-o', '--once'],
+             dict(action='store_true', help=HELP_ONCE, dest='once')),
+            (['--port'],
+             dict(action='store', help=HELP_PORT % DEFAULT_PORT, dest='port')),
+            (['-t', '--time'],
+             dict(action='store', help=HELP_TIME, dest='time')),
+            (['-v', '--version'], dict(action='version', version=BANNER)),
+            ]
+
+
+# Colors for logging
+COLORS = {
+    'DEBUG':    'cyan',
+    'INFO':     'green',
+    'WARNING':  'yellow',
+    'ERROR':    'red',
+    'CRITICAL': 'white,bg_red',
+}
+
+
+# The main app of pubkey
+class PubKeyApp(CementApp):
+    class Meta:
+        label = 'pubkey'
+        config_defaults = defaults
+
+        base_controller = 'base'
+        config_handler = 'config_handler'
+        handlers = [PubKeyBaseController, PubKeyConfigHandler]
+
+        extensions = ['colorlog']
+        arguments_override_config = True
+
+        log_handler = ColorLogHandler(colors=COLORS)
+
+    def setup(self):
+        # always run core setup first
+        super(PubKeyApp, self).setup()
+
+        self.log.debug('running setup()')
+
+        self._loop = asyncio.get_event_loop()
+
+        hook.register('post_argument_parsing', self._post_argument_parsing)
+        hook.register('pre_close', self._pre_close)
+
+    def _setlimits(self):
+        self.log.debug('running _setlimits()')
+
+        self._numcalls = 0
+        self._maxcalls = None
+
+        if self.config.get('pubkey', 'once') is True:
+            self._maxcalls = 1
+        elif (int)(self.config.get('pubkey', 'num')) > 0:
+            self._maxcalls = (int)(self.config.get('pubkey', 'num'))
+
+        if self._maxcalls is not None:
+            self.log.info('Limit to %s requests' % self._maxcalls)
+
+        self.log.debug('Num calls: %s' % self._maxcalls)
+
+        if (float)(self.config.get('pubkey', 'time')) > 0:
+            self.log.info('Timeout after %ss' %
+                          self.config.get('pubkey', 'time'))
+            self._loop.call_later((float)(self.config.get('pubkey', 'time')),
+                                  self._timeout)
+
+    def _checklimits(self):
+        self.log.debug('running _checklimits()')
+
+        self._numcalls = self._numcalls + 1
+
+        if self._maxcalls is not None:
+            if self._numcalls >= self._maxcalls:
+                self._loop.stop()
+
+    def _timeout(self):
+        self.log.debug('running _timeout()')
+        self._loop.stop()
+
+    def _post_argument_parsing(self, app):
+        self.log.debug('running _post_argument_parsing()')
+
+        self._keyfile = os.path.expanduser(self.config.get(
+            'pubkey', 'keyfile')).strip()
+
+        self._loop.run_until_complete(self._init(self._loop))
+
+    def _pre_close(self, app):
+        self.log.debug('running _pre_close()')
+        self._loop.run_until_complete(self._finish())
+
+    @asyncio.coroutine
+    def _init(self, loop):
+        self.log.debug('running _init()')
+
+        # First we check if this is a pubkey. Wont proceed if it is not
+        if self._keyfile[::-1].find('.pub'[::-1]) is not 0:
+            self.log.fatal("Keyfile is not a public key. Sorry won't continue.")
+            self.log.fatal("Keyfile does not end in .pub: %s" % self._keyfile)
+            exit(2)
+
+        # Next read in pubkey and fail if needed
+        try:
+            with open(self._keyfile, 'rt') as file:
+                self._pubkey = file.read()
+        except Exception as e:
+            self.log.fatal("Unable to read pubkey file: %s" % self._keyfile)
+            self.log.fatal(e)
+            exit(3)
+
+        self.log.info('pubkey file used: %s' % self._keyfile)
+        self.log.debug('pubkey:\n%s' % self._pubkey)
+
+        host = self.config.get('pubkey', 'host')
+        port = self.config.get('pubkey', 'port')
+
+        # If auto flag is set, attempt to determine local host ip
+        if self.config.get('pubkey', 'auto') is True:
+            host = ([(s.connect(('8.8.8.8', 80)), s.getsockname()[0], s.close())
+                    for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]]
+                    [0][1])
+
+        self._webapp = web.Application(loop=loop)
+
+        # Handle incoming events
+        self._webapp.router.add_route('GET', '/', self.get_pubkey)
+        self._webapp.router.add_route('GET', '/json', self.get_pubkeyjson)
+
+        self._webapp_handler = self._webapp.make_handler()
+
+        try:
+            self._webapp_srv = yield from self._loop.create_server(
+                self._webapp_handler, host, port)
+
+            self.log.info('pubkey REST server started at http://%s:%s' %
+                          (host, port))
+
+        except Exception as e:
+            self.log.fatal('Error starting pubkey REST server at http://%s:%s' %
+                           (host, port))
+            self.log.fatal(e)
+            self._loop.stop()
+
+        if host in ['localhost', '127.0.0.1']:
+            self.log.warn('%s not reachable outside local host.' % host)
+            self.log.warn('Provide valid ip or hostname or use --auto')
+
+        if self.config.get('pubkey', 'once') is True:
+            self.log.info('Replying exactly once. Exiting after 1 request.')
+
+        # Set various execution limits from arguments or config settings
+        self._setlimits()
+
+        print('Remote host command: \n%s' % CMD % (host, port))
+
+    @asyncio.coroutine
+    def _finish(self):
+        self.log.debug('running _finish()')
+
+        yield from asyncio.sleep(0.1)
+
+        if hasattr(self, '_webapp_srv'):
+            self._webapp_srv.close()
+            yield from self._webapp_handler.finish_connections()
+            yield from self._webapp_srv.wait_closed()
+
+    def run_forever(self):
+        self.log.debug('run_forever()')
+
+        self._loop.run_forever()
+
+    @asyncio.coroutine
+    def get_pubkey(self, request):
+        self.log.debug('running get_pubkey()')
+
+        output = self._pubkey
+
+        self.log.info('Request: %s' % request)
+
+        self._checklimits()
+
+        return web.Response(body=output.encode('utf-8'))
+
+    @asyncio.coroutine
+    def get_pubkeyjson(self, request):
+        self.log.debug('running get_pubkeyjson()')
+
+        output = {'keyfile': self._keyfile,
+                  'pubkey': self._pubkey}
+
+        self.log.info('Request: %s' % request)
+
+        self._checklimits()
+
+        return web.Response(body=json.dumps(output,
+                                            sort_keys=True).encode('utf-8'))
+
+
+with PubKeyApp() as app:
+    app.run()
+
+    print('Press ctrl-C to stop.')
+
+    try:
+        app.run_forever()
+    except (KeyboardInterrupt, SystemExit, CaughtSignal):
+        pass
+
+    app.log.info('Shutting down pubkey REST server')
