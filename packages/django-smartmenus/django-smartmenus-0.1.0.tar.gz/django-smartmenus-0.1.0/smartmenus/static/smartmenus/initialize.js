@@ -1,0 +1,3 @@
+$(function() {
+	$('ul.sm').smartmenus();
+});
