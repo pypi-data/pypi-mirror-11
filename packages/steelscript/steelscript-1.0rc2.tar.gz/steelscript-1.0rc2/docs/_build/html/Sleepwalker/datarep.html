@@ -1,0 +1,611 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>DataReps &mdash; steelscript  documentation</title>
+    
+    <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/extra.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../_static/favicon.ico"/>
+    <link rel="top" title="steelscript  documentation" href="../index.html" />
+    <script type="text/javascript" src="//nexus.ensighten.com/riverbed/rvbss/Bootstrap.js"></script>
+     
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">steelscript  documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <span class="target" id="module-sleepwalker"></span><div class="section" id="module-sleepwalker.datarep">
+<span id="datareps"></span><h1>DataReps<a class="headerlink" href="#module-sleepwalker.datarep" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="using-datarep-objects">
+<h2>Using <a class="reference internal" href="#sleepwalker.datarep.DataRep" title="sleepwalker.datarep.DataRep"><code class="xref py py-class docutils literal"><span class="pre">DataRep</span></code></a> objects<a class="headerlink" href="#using-datarep-objects" title="Permalink to this headline">¶</a></h2>
+<p><cite>DataRep</cite> objects are the primary means of interacting with a
+REST server.  Each instance is associated with a URI defining the
+address of the resource on the server, and optionally a json-schema
+that describes the structure of the data.</p>
+<p>There are a few ways to create <cite>DataRep</cite> instances:</p>
+<ul class="simple">
+<li>Use <cite>Service.bind()</cite> method - this looks up a resource by name
+in the service definition.</li>
+<li>Call <cite>follow()</cite> or <cite>execute()</cite> from another <cite>DataRep</cite> instance</li>
+<li>Create a new object via <cite>create()</cite> from a <cite>DataRep</cite> instance that
+supports creation.</li>
+</ul>
+<p>Once created, a local copy of the data for this instance is retrieved
+from the server via <cite>pull()</cite> and a the server is updated via <cite>push()</cite>.</p>
+<p>A common read-modify-write cycle is shown below:</p>
+<div class="highlight-python"><div class="highlight"><pre># Staring with bookstore as a Service object
+&gt;&gt;&gt; book = bookstore.bind(&#39;book&#39;, id=1)
+&gt;&gt;&gt; book
+&lt;DataRep &#39;/api/bookstore/1.0/book&#39; type book&gt;
+
+# Retrieve a copy of the data from server
+&gt;&gt;&gt; book.pull()
+
+# Examine the data retrieved
+&gt;&gt;&gt; book.data
+{ &#39;id&#39;: 1, &#39;title&#39;: &#39;My first book&#39;,
+  &#39;author_ids&#39;: [1, 9], &#39;publisher_id&#39;: 3 }
+
+# Change the data
+&gt;&gt;&gt; book.data[&#39;title&#39;] = &#39;My First Book - Using Python&#39;
+
+# Push the changes back to the server
+&gt;&gt;&gt; book.push()
+</pre></div>
+</div>
+</div>
+<div class="section" id="links">
+<h2>Links<a class="headerlink" href="#links" title="Permalink to this headline">¶</a></h2>
+<p>A schema may define one or more links the describe operations than can be
+performed relative to an instance.  Each link is associated with a specific
+HTTP method as described in the service definition.</p>
+<p>For standard CRUD style resources, a resource will define get/set/create/delete
+links.  Additional links that perform non-standard actions specific to that
+resource may also be defined.</p>
+<p>For example, consider the &#8216;book&#8217; resource defined below:</p>
+<div class="highlight-python"><div class="highlight"><pre>book:
+   type: object
+   properties:
+      id: { type: number }
+      title: { type: string }
+      author_ids:
+         type: array
+         items: { type: number }
+      publisher_id: { type: number }
+
+   links:
+      purchase:
+         path: &#39;$/books/{id}/purchase&#39;
+         method: POST
+
+         request:
+            type: object
+            properties:
+               num_copies: { type: number }
+               shipping_address: { $ref: address }
+
+         response:
+            type: object
+            properties:
+               delivery_date: { type: string }
+               final_cost: { type: number }
+</pre></div>
+</div>
+<p>The <cite>purchase</cite> link describes how to purchase one or more copies of
+this book.  In order to purchase 100 copies of book id=1, the client
+must perform a POST to the server at the address
+&#8216;/api/bookstore/1.0/books/1/purchase&#8217; with a body include the requested
+number of copies and shipping address.</p>
+<p>Using a <cite>DataRep</cite> instance for this book, this is accomplished via the
+<cite>execute()</cite> method:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">book</span> <span class="o">=</span> <span class="n">bookstore</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="s">&#39;book&#39;</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">request</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;num_copies&#39;</span><span class="p">:</span> <span class="mi">100</span><span class="p">,</span> <span class="s">&#39;shipping_address&#39;</span><span class="p">:</span> <span class="s">&#39;123 Street, Boston&#39;</span> <span class="p">}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">response</span> <span class="o">=</span> <span class="n">book</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s">&#39;purchase&#39;</span><span class="p">,</span> <span class="n">request</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">response</span>
+<span class="go">&lt;DataRep &#39;/api/bookstore/1.0/books/1/purchase&#39;</span>
+<span class="go">    type:book.links.purchase.response&gt;</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="n">response</span><span class="o">.</span><span class="n">data</span>
+<span class="go">{ &#39;delivery_date&#39;: &#39;Oct 1&#39;, &#39;final_cost&#39;: 129.90 }</span>
+</pre></div>
+</div>
+<p>Calling <cite>execute()</cite> always returns a new <cite>DataRep</cite> instance representing the
+response.</p>
+<p>The list of links for a given <cite>DataRep</cite> is available by inspecting the
+<cite>links</cite> property:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">book</span><span class="o">.</span><span class="n">links</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<span class="go">[&#39;self&#39;, &#39;get&#39;, &#39;set&#39;, &#39;delete&#39;, &#39;purchase&#39;, &#39;new_chapter&#39;]</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="relations">
+<h2>Relations<a class="headerlink" href="#relations" title="Permalink to this headline">¶</a></h2>
+<p>Relations provide the means to reach other resources that are related to
+this one.  Each relation is essentially a pointer from one resource
+to another.</p>
+<p>For example, the <cite>book</cite> resource above has a <cite>publisher_id</cite> data
+member.  This identifies the publisher associated with this book.  The
+schema defines a relation &#8216;publisher&#8217; that provides the link to the
+full publisher resource:</p>
+<div class="highlight-python"><div class="highlight"><pre>book:
+   relations:
+      publisher:
+         resource: publisher
+         vars:
+            id: &#39;0/publisher_id&#39;
+</pre></div>
+</div>
+<p>This allows using the <cite>follow()</cite> method to get to a DataRep for the publisher:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">pub</span> <span class="o">=</span> <span class="n">book</span><span class="o">.</span><span class="n">follow</span><span class="p">(</span><span class="s">&#39;publisher&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pub</span>
+<span class="go">&lt;DataRep &#39;/api/bookstore/1.0/publishers/3&#39; type:publisher&gt;</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pub</span><span class="o">.</span><span class="n">data</span>
+<span class="go">{&#39;id&#39;: 3,</span>
+<span class="go"> &#39;name&#39;: &#39;DigiPrinters&#39;,</span>
+<span class="go"> &#39;billing_address&#39;: {&#39;city&#39;: &#39;Boston&#39;, &#39;street&#39;: &#39;123 Street&#39;}</span>
+<span class="go"> }</span>
+</pre></div>
+</div>
+<p>The <cite>follow</cite> method use the <cite>vars</cite> property in the relation definition to
+map the book.data[&#8216;publisher_id&#8217;] value to the <cite>id</cite> variable in the
+publisher representation, which is used to build the full URI.</p>
+</div>
+<div class="section" id="fragments">
+<h2>Fragments<a class="headerlink" href="#fragments" title="Permalink to this headline">¶</a></h2>
+<p>In some cases, it may be necessary to follow links on data nested within
+a single resource.  Consider the <cite>book</cite> example from above:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">book</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">book</span><span class="o">.</span><span class="n">data</span>
+<span class="go">{ &#39;id&#39;: 1, &#39;title&#39;: &#39;My first book&#39;,</span>
+<span class="go">  &#39;author_ids&#39;: [1, 9], &#39;publisher_id&#39;: 3 }</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="n">book</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s">&#39;author_ids&#39;</span><span class="p">]</span>
+<span class="go">[1, 9]</span>
+</pre></div>
+</div>
+<p>Just like following the <cite>publisher</cite> link based on <cite>publisher_id</cite>, it&#8217;s
+possible to follow a link to reach an author resource.  However,
+unlike publisher, there are multiple authors.</p>
+<p>The schema defines the <cite>full</cite> relation to reach an author as follows:</p>
+<div class="highlight-python"><div class="highlight"><pre>book:
+   description: A book object
+   type: object
+   properties:
+      id: { type: number }
+      title: { type: string }
+      publisher_id: { type: number }
+      author_ids:
+         type: array
+         items:
+            id: author_id
+            type: number
+
+            relations:
+               full:
+                  resource: author
+                  vars: { id: &#39;0&#39; }
+</pre></div>
+</div>
+<p>The <cite>publisher</cite> relation was defined at the top-level at
+<cite>book.relations.publisher</cite>.  The <cite>full</cite> relation is nested within
+the structure at <cite>book.properties.author_ids.items.relations.full</cite>.
+The best way to understand this is to look at the <cite>type</cite> at the same
+level as the <cite>relations</cite> keywork.  In this case <cite>relations.full</cite> is
+aligned with <cite>type: number</cite>.  This number is one author id in an
+array of authors associated with this book.  That means that
+the <cite>full</cite> relation must be invoked relative to an item in the
+book.author_ids array.  The <cite>full</cite> reference indicates that
+following this link will lead to a complete resource that is
+represented in part by the current data member (the id):</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">first_author</span> <span class="o">=</span> <span class="n">book</span><span class="p">[</span><span class="s">&#39;author_ids&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">follow</span><span class="p">(</span><span class="s">&#39;full&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">first_author</span>
+<span class="go">&lt;DataRep &#39;/api/bookstore/1.0/authors/1&#39; type:author&gt;</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="n">second_author</span> <span class="o">=</span> <span class="n">book</span><span class="p">[</span><span class="s">&#39;author_ids&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">follow</span><span class="p">(</span><span class="s">&#39;full&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">second_author</span>
+<span class="go">&lt;DataRep &#39;/api/bookstore/1.0/authors/9&#39; type:author&gt;</span>
+</pre></div>
+</div>
+<p>Breaking down that first line further shows DataRep fragment instances
+created:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">book</span><span class="o">.</span><span class="n">relations</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<span class="go">[&#39;instances&#39;, &#39;publishers&#39;]</span>
+</pre></div>
+</div>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">book_author_ids</span> <span class="o">=</span> <span class="n">book</span><span class="p">[</span><span class="s">&#39;author_ids&#39;</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">book_author_ids</span>
+<span class="go">&lt;DataRep &#39;/api/bookstore/1.0/books/1#/author_ids&#39; type:book.author_ids&gt;</span>
+</pre></div>
+</div>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">book_author_ids</span><span class="o">.</span><span class="n">data</span>
+<span class="go">[1, 9]</span>
+</pre></div>
+</div>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">book_author_ids_0</span> <span class="o">=</span> <span class="n">book_author_ids</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="go">&lt;DataRep &#39;/api/bookstore/1.0/books/1#/author_ids/0&#39;</span>
+<span class="go">    type:book.author_ids[author_id]&gt;</span>
+</pre></div>
+</div>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">book_author_ids_0</span><span class="o">.</span><span class="n">relations</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<span class="go">[&#39;full&#39;]</span>
+</pre></div>
+</div>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">first_author</span> <span class="o">=</span> <span class="n">book_author_ids_0</span><span class="o">.</span><span class="n">follow</span><span class="p">(</span><span class="s">&#39;full&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Each time a <cite>DataRep</cite> instance is indexed using <cite>[]</cite>, a new DataRep
+fragment is created.  This fragment is still associated with the same
+URI because it is merely a piece of the data at that URI based
+on the JSON pointer following the hash mark &#8216;#&#8217;.</p>
+</div>
+<div class="section" id="class-datarep">
+<h2>class <a class="reference internal" href="#sleepwalker.datarep.DataRep" title="sleepwalker.datarep.DataRep"><code class="xref py py-class docutils literal"><span class="pre">DataRep</span></code></a><a class="headerlink" href="#class-datarep" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="sleepwalker.datarep.DataRep">
+<em class="property">class </em><code class="descclassname">sleepwalker.datarep.</code><code class="descname">DataRep</code><span class="sig-paren">(</span><em>service=None</em>, <em>uri=None</em>, <em>jsonschema=None</em>, <em>fragment=''</em>, <em>root=None</em>, <em>data=&lt;_DataRepValue UNSET&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.DataRep" title="Permalink to this definition">¶</a></dt>
+<dd><p>A concrete representation of a resource at a fully defined address.</p>
+<p>The DataRep object manages a data representation of a particular
+REST resource at a defined address.  If a jsonschema is attached,
+the jsonschema describes the structure of that data representation.</p>
+<dl class="method">
+<dt id="sleepwalker.datarep.DataRep.__init__">
+<code class="descname">__init__</code><span class="sig-paren">(</span><em>service=None</em>, <em>uri=None</em>, <em>jsonschema=None</em>, <em>fragment=''</em>, <em>root=None</em>, <em>data=&lt;_DataRepValue UNSET&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.DataRep.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creata a new DataRep object associated with the resource at <cite>uri</cite>.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>service</strong> &#8211; the service of which this resource is a part.
+:type service: sleepwalker.service.Service</li>
+<li><strong>uri</strong> (<em>string</em>) &#8211; the URI of the resource, without any fragment attached.
+If <cite>fragment</cite> and <cite>root</cite> are passed, this must be None and the URI
+is inherited from the root.</li>
+<li><strong>jsonschema</strong> (<em>reschema.jsonschema.Schema subclass</em>) &#8211; a jsonschema.Schema derivative that
+describes the structure of the data at this uri.  If
+<cite>fragment</cite> and <cite>root</cite> are passed, this must be None, as
+the schema is inherited from the root.</li>
+<li><strong>fragment</strong> (<em>string</em>) &#8211; an optional JSON pointer creating a DataRep for
+a portion of the data at the given URI.  Requires <cite>root</cite> to be set.</li>
+<li><strong>root</strong> (<a class="reference internal" href="#sleepwalker.datarep.DataRep" title="sleepwalker.datarep.DataRep"><em>DataRep</em></a>) &#8211; must be set to the DataRep associated with the full
+data if <cite>fragment</cite> is set.</li>
+<li><strong>data</strong> (<em>Whatever Python data type matches the schema.</em>) &#8211; optional, may be set to initialize the data value
+for this representation.  May not be used with <cite>fragment</cite>.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.datarep.DataRep.apply_params">
+<code class="descname">apply_params</code><span class="sig-paren">(</span><em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.DataRep.apply_params" title="Permalink to this definition">¶</a></dt>
+<dd><p>Discard existing params and return a new DataRep with given params.</p>
+<p>The new DataRep has an UNSET value, whether or not this DataRep
+has a pulled value or has un-pushed modificatinos.  The state of the
+data in this DataRep is unaffected.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body">a DataRep with the supplied parameters applied to the URI.</td>
+</tr>
+<tr class="field-even field"><th class="field-name" colspan="2">Raises NotImplementedError:</th></tr>
+<tr class="field-even field"><td>&nbsp;</td><td class="field-body">if this DataRep URI has a fragment.</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.datarep.DataRep.create">
+<code class="descname">create</code><span class="sig-paren">(</span><em>obj</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.DataRep.create" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a new instance of a resource in a collection.</p>
+<p>This relies on the &#8216;create&#8217; link in the json-schema.</p>
+<p>On success, this returns a new <cite>DataRep</cite> instance associated
+with the newly created resource.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="sleepwalker.datarep.DataRep.data">
+<code class="descname">data</code><a class="headerlink" href="#sleepwalker.datarep.DataRep.data" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the data associated with this resource.</p>
+<p>This property serves as the client-side holder of the data
+associated the resource at the given address.  Calling <cite>pull()</cite>
+will refresh this propery with the latest data from the server.
+Calling <cite>push()</cite> will update the server with this data.</p>
+<p>If data has not yet been retrieved from the server, the first
+call to access this proprerty will result in a call to <cite>pull()</cite>
+Subsequent accesses will not refresh the data automatically,
+the client must manually invoke <cite>pull()</cite> as needed to refresh.</p>
+<p>If the last pull() resulted in a failure, an exception will be
+raised.</p>
+<p>If this DataRep instance defines a fragment, the data returned
+will be the result of following the fragment (as a JSON
+pointer) from the full data representation as the full URI.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.datarep.DataRep.data_unset">
+<code class="descname">data_unset</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.DataRep.data_unset" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return True if the data property has not yet been set.</p>
+<p>If a failed attempt to fetch the data has beenmade, this returns
+false.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.datarep.DataRep.data_valid">
+<code class="descname">data_valid</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.DataRep.data_valid" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return True if the data property has a valid data representation.</p>
+<p>This method will return false if no data has yet been pulled, even
+if the resource on the server has valid data.  It will not ever
+trigger a network operation.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.datarep.DataRep.delete">
+<code class="descname">delete</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.DataRep.delete" title="Permalink to this definition">¶</a></dt>
+<dd><p>Issue a delete for this resource.</p>
+<p>This relies on the &#8216;delete&#8217; link.</p>
+<p>On success, this marks the data property as DELETED and returns <cite>self</cite>.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.datarep.DataRep.execute">
+<code class="descname">execute</code><span class="sig-paren">(</span><em>_name</em>, <em>_data=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.DataRep.execute" title="Permalink to this definition">¶</a></dt>
+<dd><p>Execute a link by name.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Param:</th><td class="field-body">the link to follow and must exist in the jsonschema</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Param:</th><td class="field-body">is used if the link defines a <cite>request</cite> object</td>
+</tr>
+</tbody>
+</table>
+<p>additional keword arguments may be passed to resolve path variables.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.datarep.DataRep.follow">
+<code class="descname">follow</code><span class="sig-paren">(</span><em>_name</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.DataRep.follow" title="Permalink to this definition">¶</a></dt>
+<dd><p>Follow a relation by name.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Param:</th><td class="field-body">the name of the relation to follow, and must exist in
+the jsonschema <cite>relations</cite></td>
+</tr>
+</tbody>
+</table>
+<p>Additional keyword arguments can be passed to resolve path variables.</p>
+</dd></dl>
+
+<dl class="classmethod">
+<dt id="sleepwalker.datarep.DataRep.from_schema">
+<em class="property">classmethod </em><code class="descname">from_schema</code><span class="sig-paren">(</span><em>service=None</em>, <em>uri=None</em>, <em>jsonschema=None</em>, <em>root=None</em>, <em>fragment=''</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.DataRep.from_schema" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create the appropriate type of DataRep based on json-schema type</p>
+<p>This factory method instantiates the right kind of DataRep depending
+on whether the schema supplied has a type of &#8220;object&#8221; (dict), &#8220;array&#8221;
+(list) or some other type.</p>
+<p>Arguments are the same as for <cite>DataRep.__init__</cite></p>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.datarep.DataRep.full">
+<code class="descname">full</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.DataRep.full" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return a DataRep representing the full item for this fragment.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.datarep.DataRep.pull">
+<code class="descname">pull</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.DataRep.pull" title="Permalink to this definition">¶</a></dt>
+<dd><p>Update the data representation from the server.</p>
+<p>This relies on the schema &#8216;get&#8217; link.  This will always
+perform an interaction with the server to refresh the
+representation as per the &#8216;get&#8217; link.</p>
+<p>On success, the result is cached in <cite>self.data</cite> and <cite>self</cite> is returned.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.datarep.DataRep.push">
+<code class="descname">push</code><span class="sig-paren">(</span><em>obj=&lt;_DataRepValue UNSET&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.DataRep.push" title="Permalink to this definition">¶</a></dt>
+<dd><p>Modify the data representation for this resource from the server.</p>
+<p>This relies on the schema &#8216;set&#8217; link.  This will always
+perform an interaction with the server to attempt an update
+of the representation as per the &#8216;set&#8217; link.</p>
+<p>If <cite>obj</cite> is passed, <cite>self.data</cite> is modified.  This is true
+even if the push to the server results in a failure.</p>
+<p>Note that if this DataRep is associated with a fragment, the
+full data representation will be pulled if necessary,
+and the full modified data will then be pushed to the server.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">self</p>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Raises:</th><td class="field-body"><ul class="first last simple">
+<li><strong>DataNotSetError</strong> &#8211; if no data exists or has been supplied
+to push to the server.</li>
+<li><strong>DataPullError</strong> &#8211; if the data needed to be pulled in order
+to be modified and pushed, but the pull failed.</li>
+<li><strong>LinkError</strong> &#8211; if no set link is present to which to push.</li>
+<li><strong>ValidationError</strong> &#8211; if validation was requested and the
+value to be pushed fails validation.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="class-schema">
+<h2>class <a class="reference internal" href="#sleepwalker.datarep.Schema" title="sleepwalker.datarep.Schema"><code class="xref py py-class docutils literal"><span class="pre">Schema</span></code></a><a class="headerlink" href="#class-schema" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="sleepwalker.datarep.Schema">
+<em class="property">class </em><code class="descclassname">sleepwalker.datarep.</code><code class="descname">Schema</code><span class="sig-paren">(</span><em>service</em>, <em>jsonschema</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.Schema" title="Permalink to this definition">¶</a></dt>
+<dd><p>A Schema object represents the jsonschema for a resource or type.</p>
+<p>The Schema object is the generic form of a REST resource as defined by
+a json-schema.  If the json-schema includes a &#8216;self&#8217; link, the bind()
+method may be used to instantiate concrete resources at fully defined
+addresses.  This class may also represent a <cite>type</cite> defined in
+the service definition.</p>
+<p>Typcially, a <cite>Schema</cite> instance is created via the <cite>Service</cite> class.
+This allows inspection of the jsonschema as well as to bind and create
+<cite>DataRep</cite> instances:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">book_schema</span> <span class="o">=</span> <span class="n">bookstore</span><span class="o">.</span><span class="n">lookup_schema</span><span class="p">(</span><span class="s">&#39;book&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">book_schema</span>
+<span class="go">&lt;Schema &#39;/api/bookstore/1.0/books/{id}&#39; type:book&gt;</span>
+</pre></div>
+</div>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">book_schema</span><span class="o">.</span><span class="n">jsonschema</span><span class="o">.</span><span class="n">validate</span><span class="p">({</span><span class="s">&#39;id&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">})</span>
+</pre></div>
+</div>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">book1</span> <span class="o">=</span> <span class="n">book_schema</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">book1</span>
+<span class="go">&lt;DataRep &#39;/api/bookstore/1.0/books/1&#39; type:book&gt;</span>
+</pre></div>
+</div>
+<dl class="method">
+<dt id="sleepwalker.datarep.Schema.__init__">
+<code class="descname">__init__</code><span class="sig-paren">(</span><em>service</em>, <em>jsonschema</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.Schema.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a Schema bound to service as defined by jsonschema.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.datarep.Schema.bind">
+<code class="descname">bind</code><span class="sig-paren">(</span><em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.datarep.Schema.bind" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return a DataRep object by binding variables in the &#8216;self&#8217; link.</p>
+<p>This method is used to instantiate concreate DataRep objects
+with fully qualified URIs based on the &#8216;self&#8217; link associated
+with the jsonschema for this object.  The <cite>**kwargs</cite> must match
+the parameters defined in the self link, if any.</p>
+<p>Example:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">book_schema</span> <span class="o">=</span> <span class="n">Schema</span><span class="p">(</span><span class="n">bookstore</span><span class="p">,</span> <span class="n">book_jsonschema</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">book1</span> <span class="o">=</span> <span class="n">book_schema</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../index.html">
+              <img class="logo" src="../_static/rb-ss-logo.png" alt="Logo"/>
+            </a></p>
+  <h3><a href="overview.html">Sleepwalker</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">DataReps</a><ul>
+<li><a class="reference internal" href="#using-datarep-objects">Using <code class="docutils literal"><span class="pre">DataRep</span></code> objects</a></li>
+<li><a class="reference internal" href="#links">Links</a></li>
+<li><a class="reference internal" href="#relations">Relations</a></li>
+<li><a class="reference internal" href="#fragments">Fragments</a></li>
+<li><a class="reference internal" href="#class-datarep">class <code class="docutils literal"><span class="pre">DataRep</span></code></a></li>
+<li><a class="reference internal" href="#class-schema">class <code class="docutils literal"><span class="pre">Schema</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/Sleepwalker/datarep.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script><h3>
+<a href="../license.html">License</a>
+</h3>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">steelscript  documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015 Riverbed Technology, Inc..
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

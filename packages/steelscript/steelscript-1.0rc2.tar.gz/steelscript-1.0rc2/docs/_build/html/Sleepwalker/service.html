@@ -1,0 +1,520 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Services &mdash; steelscript  documentation</title>
+    
+    <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/extra.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../_static/favicon.ico"/>
+    <link rel="top" title="steelscript  documentation" href="../index.html" />
+    <script type="text/javascript" src="//nexus.ensighten.com/riverbed/rvbss/Bootstrap.js"></script>
+     
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">steelscript  documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <span class="target" id="module-sleepwalker"></span><div class="section" id="module-sleepwalker.service">
+<span id="services"></span><h1>Services<a class="headerlink" href="#module-sleepwalker.service" title="Permalink to this headline">¶</a></h1>
+<p>The <cite>Service</cite> class represents a single service instance supported by
+a server.  Each service is associated with an instance of a service
+defintion (<cite>ServiceDef</cite>), which is the complete map of resources and
+operations that are supported by this service.</p>
+<p>A separate <cite>Service</cite> object is required for each unique &lt;<cite>service id</cite>,
+<cite>host</cite>, <cite>instance</cite>&gt; triplet.  In addition to the <cite>service id</cite> which
+identifies the service, <cite>host</cite> identifies the particular server that
+is hosting the service, and <cite>instance</cite> is an optional qualifier in the
+event that the server is offering multiple instances of the same
+service defintion at different URI prefixes.</p>
+<p>Although a <cite>Service</cite> instance can be created directly, the <cite>ServiceManager</cite>
+is normally used to instantiate services as needed.  This is particularly
+important when following links and relations that lead to another Service
+instance.  Following such references will leverage ServiceManager to
+look for an already instantiated Service that matches, otherwise it
+will create a new Service instance.</p>
+<p>The <cite>Service.bind()</cite> method is used to instantiate a <cite>DataRep</cite> for a
+named resource, which is then used to access and modify resources on
+the server.  Any interaction with the server is via a <cite>Connection</cite>.</p>
+<div class="section" id="manual-service-creation">
+<h2>Manual Service creation<a class="headerlink" href="#manual-service-creation" title="Permalink to this headline">¶</a></h2>
+<p>Creating a <cite>Service</cite> object requires a <cite>ServiceDef</cite> and a <cite>Connection</cite>
+instance:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># Load the bookstore service definition from a file</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">bookstore_def</span> <span class="o">=</span> <span class="n">ServiceDef</span><span class="o">.</span><span class="n">create_from_file</span><span class="p">(</span><span class="s">&#39;bookstore.yml&#39;</span><span class="p">)</span>
+
+<span class="c"># Establish a connection to the bookstore server</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">conn</span> <span class="o">=</span> <span class="n">Connection</span><span class="p">(</span><span class="s">&#39;http://bookstore-server.com:8080&#39;</span><span class="p">)</span>
+
+<span class="c"># Create the Service object</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">bookstore</span> <span class="o">=</span> <span class="n">Service</span><span class="p">(</span><span class="n">bookstore_def</span><span class="p">,</span> <span class="s">&#39;http://bookstore-server.com:8080&#39;</span><span class="p">,</span>
+                      <span class="n">connection</span><span class="o">=</span><span class="n">conn</span><span class="p">)</span>
+
+<span class="c"># Bind a DataRep to a &#39;book&#39; instance and retrieve data for this</span>
+<span class="c"># book from the server</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">book</span> <span class="o">=</span> <span class="n">bookstore</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="s">&#39;book&#39;</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">book</span><span class="o">.</span><span class="n">data</span>
+<span class="p">{</span> <span class="s">&#39;id&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s">&#39;title&#39;</span><span class="p">:</span> <span class="s">&#39;A book&#39;</span> <span class="p">}</span>
+</pre></div>
+</div>
+<p>The <cite>bookstore</cite> instance can be used to access any and all resources
+associated directly with this service.  Any attempt to follow
+references to or leverage types in another service will not be
+possible.</p>
+</div>
+<div class="section" id="using-managers">
+<h2>Using Managers<a class="headerlink" href="#using-managers" title="Permalink to this headline">¶</a></h2>
+<p>For larger projects that span multiple services and hosts, it is easier
+to use the various managers:</p>
+<ul class="simple">
+<li><cite>ServiceDefManager</cite> - loads and creates <cite>ServiceDef</cite> instances only
+as needed; creates only a single instance per unique service <cite>id</cite>.</li>
+<li><cite>ConnectionManager</cite> - manages connections to hosts; establishes a
+single connection to each unique host that may be hosting multiple
+services.</li>
+<li><cite>ServiceManager</cite> - manages services; creates a unique <cite>Service</cite> for
+each unique &lt;<cite>service id</cite>, <cite>host</cite>, <cite>instance</cite>&gt; triplet.</li>
+</ul>
+<p>Typically only a single manager of each type will be created:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># Create a ServiceDefManager to manage service definitions The</span>
+<span class="c"># CustomServiceDefLoader implements the ServiceDefLoadHook andmust</span>
+<span class="c"># be defined in order to load service definitions on this system.</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">svcdef_mgr</span> <span class="o">=</span> <span class="n">ServiceDefManager</span><span class="p">()</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">svcdef_mgr</span><span class="o">.</span><span class="n">add_load_hook</span><span class="p">(</span><span class="n">CustomServiceDefLoader</span><span class="p">)</span>
+
+<span class="c"># Create a ConnectionManager to automatically establish connections</span>
+<span class="c"># as needed to hosts.  The CustomConnector implements</span>
+<span class="c"># ConnectionHook and must be defined to create a Connection object</span>
+<span class="c"># to the target host as needed.</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">conn_mgr</span> <span class="o">=</span> <span class="n">ConnectionManager</span><span class="p">()</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">conn_mgr</span><span class="o">.</span><span class="n">add_conn_hook</span><span class="p">(</span><span class="n">CustomConnecter</span><span class="p">)</span>
+
+<span class="c"># Create a ServiceManager that will use the above to establish</span>
+<span class="c"># connections</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">svc_mgr</span> <span class="o">=</span> <span class="n">ServiceManager</span><span class="p">(</span><span class="n">servicedef_manager</span><span class="o">=</span><span class="n">svcdef_mgr</span><span class="p">,</span>
+                             <span class="n">connection_manager</span><span class="o">=</span><span class="n">conn_mgr</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The ServiceManager then becomes the primary entry point for loading
+services:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># Ask the ServiceManager for the bookstore Service object</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">bookstore</span> <span class="o">=</span> <span class="n">svc_mgr</span><span class="o">.</span><span class="n">find_by_name</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="s">&#39;http://bookstore-server.com:8080&#39;</span><span class="p">,</span>
+                                   <span class="n">name</span><span class="o">=</span><span class="s">&#39;bookstore&#39;</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s">&#39;1.0&#39;</span><span class="p">)</span>
+
+<span class="c"># Bind a DataRep to a &#39;book&#39; instance and retrieve data for this</span>
+<span class="c"># book from the server</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">book</span> <span class="o">=</span> <span class="n">bookstore</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="s">&#39;book&#39;</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">book</span><span class="o">.</span><span class="n">data</span>
+<span class="p">{</span> <span class="s">&#39;id&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s">&#39;title&#39;</span><span class="p">:</span> <span class="s">&#39;A book&#39;</span> <span class="p">}</span>
+</pre></div>
+</div>
+<p>Any subsequent calls to <cite>svc_mgr</cite> for the <cite>bookstore/1.0</cite> service on this
+particular host will return the same <cite>Service</cite> instance.</p>
+<div class="section" id="authentication">
+<h3>Authentication<a class="headerlink" href="#authentication" title="Permalink to this headline">¶</a></h3>
+<p>Authentication in general is opaque to <cite>Service</cite> instances.  If access
+to the service&#8217;s host requires authentication, the <cite>auth</cite> parameter is
+passed at creation.  The <cite>auth</cite> parameter is stored and passed on to
+the <cite>Connection</cite> or <cite>ConnectionManager</cite> when a request is made.  As
+such, <cite>auth</cite> is not processed or interpreted at all by the service
+object.</p>
+<p>When used in conjunction with the managers, the <cite>auth</cite> object must
+be capable of supporting authentication for the same context across
+different hosts.  For example, for the authentication context of the
+user &#8216;Christopher J. White`, an auth object is built that knows
+the username and password on <cite>server-1</cite> as <cite>cwhite</cite>/<cite>getmein</cite>, but on
+<cite>server-2</cite> it is <cite>chriswhite</cite>/<cite>abc123</cite>.  The auth object as a
+callable can inspect a request generated by the underlying connection
+class to determine what the target host and service is, and pick
+the appropriate credentials.</p>
+</div>
+</div>
+<div class="section" id="connection">
+<h2>Connection<a class="headerlink" href="#connection" title="Permalink to this headline">¶</a></h2>
+<p>A single connection object may be used by multiple services.  However,
+each connection is associated with a single authentication session.
+As such, one connection must be establshied to the same host for each
+unique user (or access code or whatever constitutes a unique auth
+session).</p>
+<p>The default <cite>Connection</cite> class is layered on top of requests sessions,
+and requests is designed to support a single auth handler for the
+session.  As such, instantiating a Connection will take an &#8216;auth&#8217;
+callable:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">conn</span> <span class="o">=</span> <span class="n">Connection</span><span class="p">(</span><span class="n">host</span><span class="p">,</span> <span class="n">auth</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Note that while a single requests session can only handle a single auth
+context, it&#8217;s conceivable that the underlying socket could support
+multiplexing multiple different auth contexts.  Someone would have to
+play with this.</p>
+</div>
+<div class="section" id="connectionmanager">
+<h2>ConnectionManager<a class="headerlink" href="#connectionmanager" title="Permalink to this headline">¶</a></h2>
+<p>In order to share the same connection for a &lt;host,auth&gt; pair,
+ConnectionManager must also be authentication aware.  The <cite>find()</cite>
+method takes both a host and an associated auth.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">cm</span> <span class="o">=</span> <span class="n">ConnectionManager</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">conn</span> <span class="o">=</span> <span class="n">cm</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">host</span><span class="p">,</span> <span class="n">auth</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Like <cite>Service</cite> and <cite>ServiceManager</cite>, the auth parameter is not
+processed by ConnectionManager, merely passed along.  This implies the
+ConnectionHook.connect() must also take auth:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">class</span> <span class="nc">ConnectionHook</span><span class="p">(</span><span class="nb">object</span><span class="p">);</span>
+    <span class="k">def</span> <span class="nf">connect</span><span class="p">(</span><span class="n">host</span><span class="p">,</span> <span class="n">auth</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><cite>ConnectionManager</cite> caches connections based on the tuple &lt;host,
+auth&gt;.  In the event that <cite>auth</cite> is a callable (which is typical and
+in the style of Python <cite>requests</cite>), the hashing will be based on the
+callable __hash__() and __eq__() methods.  If not explicitly defined,
+they will be based on the default implementations which are
+essentially based on memory instances.</p>
+</div>
+<div class="section" id="service">
+<h2>Service<a class="headerlink" href="#service" title="Permalink to this headline">¶</a></h2>
+<p>Each service object is bound to a connection.  This is either manual
+(instantiation with a connection argument), or via a
+ConnectionManager.  It is the latter case that is more interesting
+because it enables bouncing from service to service, potentially to
+another host.  As such, Service takes an &#8216;auth&#8217; parameter directly:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">s</span> <span class="o">=</span> <span class="n">Service</span><span class="p">(</span><span class="o">&lt;</span><span class="n">servicedef</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">&lt;</span><span class="n">host</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">connectionmanager</span><span class="o">=</span><span class="n">cm</span><span class="p">,</span> <span class="n">auth</span><span class="o">=&lt;</span><span class="n">auth</span><span class="o">&gt;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>When needed (ie, when the client tries to issue a request via the
+service), the Service class will call to connection manager to find a
+connection to the desired host using the given auth context.</p>
+<p>Note that without a ServiceManager, it is still not actually possible to
+jump from one service to another seamlessly.</p>
+</div>
+<div class="section" id="servicemanager">
+<h2>ServiceManager<a class="headerlink" href="#servicemanager" title="Permalink to this headline">¶</a></h2>
+<p>ServiceManager pulls it all together adding the <cite>auth</cite> paramter
+to the <cite>find_by_name()</cite> and <cite>find_by_id()</cite> methods.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">sm</span> <span class="o">=</span> <span class="n">ServiceManager</span><span class="p">(</span><span class="n">connectionmanager</span><span class="o">=</span><span class="n">cm</span><span class="p">,</span> <span class="n">servicedef_manager</span><span class="o">=</span><span class="n">sdm</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">s</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">find_by_name</span><span class="p">(</span><span class="o">&lt;</span><span class="n">host</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">&lt;</span><span class="n">name</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">&lt;</span><span class="n">version</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">auth</span><span class="o">=&lt;</span><span class="n">auth</span><span class="o">&gt;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The Service object returned is equivalent to the following manual
+instantiation:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">s</span> <span class="o">=</span> <span class="n">Service</span><span class="p">(</span><span class="o">&lt;</span><span class="n">servicedef</span><span class="o">&gt;</span><span class="p">,</span> <span class="o">&lt;</span><span class="n">host</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">servicemanager</span><span class="o">=</span><span class="n">sm</span><span class="p">,</span> <span class="n">auth</span><span class="o">=</span><span class="n">auth</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>When following a link/relation that results in a different service and
+possibly different host, the <cite>auth</cite> object is passed along.  This is
+the reason that the <cite>auth</cite> object must be smart enough to handle
+authentication for multiple hosts.</p>
+</div>
+<div class="section" id="class-service">
+<h2>class <a class="reference internal" href="#sleepwalker.service.Service" title="sleepwalker.service.Service"><code class="xref py py-class docutils literal"><span class="pre">Service</span></code></a><a class="headerlink" href="#class-service" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="sleepwalker.service.Service">
+<em class="property">class </em><code class="descclassname">sleepwalker.service.</code><code class="descname">Service</code><span class="sig-paren">(</span><em>servicedef</em>, <em>host</em>, <em>instance=None</em>, <em>servicepath=None</em>, <em>service_manager=None</em>, <em>connection=None</em>, <em>connection_manager=None</em>, <em>auth=None</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.service.Service" title="Permalink to this definition">¶</a></dt>
+<dd><p>Manages all interaction with a server for a particular service.</p>
+<p>A <cite>Service</cite> instance is a client-side representation of
+a service hosted by a server as described by the following
+attributes:</p>
+<ul>
+<li><dl class="first docutils">
+<dt>service definition - the resources and operations supported</dt>
+<dd><p class="first last">by the service</p>
+</dd>
+</dl>
+</li>
+<li><p class="first">host - the server hosting this service</p>
+</li>
+<li><p class="first">instance - unique instance identifier</p>
+</li>
+<li><dl class="first docutils">
+<dt>auth - an authentication object that is used for authentication</dt>
+<dd><p class="first last">requests to server</p>
+</dd>
+</dl>
+</li>
+</ul>
+<p>Once created, most interaction with the server is done indirectly
+via <cite>DataRep</cite> instances associated with this <cite>Service</cite>.  The
+<cite>bind()</cite> method is used to lookup and bind to a resource, yielding
+a DataRep.</p>
+<dl class="method">
+<dt id="sleepwalker.service.Service.__init__">
+<code class="descname">__init__</code><span class="sig-paren">(</span><em>servicedef</em>, <em>host</em>, <em>instance=None</em>, <em>servicepath=None</em>, <em>service_manager=None</em>, <em>connection=None</em>, <em>connection_manager=None</em>, <em>auth=None</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.service.Service.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a Service object.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>servicedef</strong> &#8211; related ServiceDef for this Service</li>
+<li><strong>host</strong> &#8211; schema + IP address or hostname + port</li>
+<li><strong>instance</strong> &#8211; unique instance identifier for this
+service relative to the same host (by connection)</li>
+<li><strong>servicepath</strong> &#8211; URI prefix excluding host/port
+for all resources for this service.  Defaults
+to /api/&lt;instance&gt;/&lt;name&gt;/&lt;version&gt;.</li>
+<li><strong>service_manager</strong> &#8211; ServiceManager instance to use
+for finding other Services</li>
+<li><strong>connection</strong> &#8211; connection to the target server
+to use for all API calls</li>
+<li><strong>connection_manager</strong> &#8211; ConnectionManager instance to use
+for establishing a connection to other services</li>
+<li><strong>auth</strong> &#8211; object representing authentication credentials
+to use for this service instance</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<p>The <cite>auth</cite> object is opaque to the service object.  It is
+passed directly to the Connection class when a new connection
+is established.  If ConnectionManager is used, the auth is
+passed to the <cite>ConnectionHook.connect()</cite> method.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.service.Service.add_headers">
+<code class="descname">add_headers</code><span class="sig-paren">(</span><em>headers</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.service.Service.add_headers" title="Permalink to this definition">¶</a></dt>
+<dd><p>Add headers that are specific to this service.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.service.Service.bind">
+<code class="descname">bind</code><span class="sig-paren">(</span><em>_resource_name</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.service.Service.bind" title="Permalink to this definition">¶</a></dt>
+<dd><p>Look up resource <cite>_resource_name</cite>, bind it and return a DataRep.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>_resource_name</strong> &#8211; resource to bind</li>
+<li><strong>kwargs</strong> &#8211; variables specific to the resource to bind</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.service.Service.lookup_resource">
+<code class="descname">lookup_resource</code><span class="sig-paren">(</span><em>name</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.service.Service.lookup_resource" title="Permalink to this definition">¶</a></dt>
+<dd><p>Look up a resource by name, and return a <cite>Schema</cite>.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.service.Service.lookup_type">
+<code class="descname">lookup_type</code><span class="sig-paren">(</span><em>name</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.service.Service.lookup_type" title="Permalink to this definition">¶</a></dt>
+<dd><p>Look up a type by name, and return a <cite>Schema</cite>.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.service.Service.request">
+<code class="descname">request</code><span class="sig-paren">(</span><em>method</em>, <em>uri</em>, <em>body=None</em>, <em>params=None</em>, <em>headers=None</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.service.Service.request" title="Permalink to this definition">¶</a></dt>
+<dd><p>Make request through connection and return result.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="sleepwalker.service.Service.response">
+<code class="descname">response</code><a class="headerlink" href="#sleepwalker.service.Service.response" title="Permalink to this definition">¶</a></dt>
+<dd><p>Last response from server.</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="class-servicemanager">
+<h2>class <a class="reference internal" href="#sleepwalker.service.ServiceManager" title="sleepwalker.service.ServiceManager"><code class="xref py py-class docutils literal"><span class="pre">ServiceManager</span></code></a><a class="headerlink" href="#class-servicemanager" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="sleepwalker.service.ServiceManager">
+<em class="property">class </em><code class="descclassname">sleepwalker.service.</code><code class="descname">ServiceManager</code><span class="sig-paren">(</span><em>servicedef_manager</em>, <em>connection_manager</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.service.ServiceManager" title="Permalink to this definition">¶</a></dt>
+<dd><p>A ServiceManager instance manages multiple Services instances.</p>
+<p>A single <cite>ServiceManager</cite> instance creates <cite>Service</cite> instances as
+needed, caching instances as they are created.  A unique <cite>Service</cite>
+is identified by the tuple &lt;<cite>service id</cite>, <cite>host</cite>, <cite>instance</cite>&gt;</p>
+<p>The <cite>auth</cite> parameter accepted by <cite>find_by_id()</cite> and <cite>find_by_name()</cite>
+is an object representing authentication credentials.  This object
+is passed on to <cite>ConnectionManager</cite> which in turn passes it
+on to the appropriate <cite>ConnectionHook</cite> when establishing new
+connections.  In order to facilitate seamless transistions from
+one service to another, the <cite>auth</cite> object must be multi-service
+and multi-host aware.</p>
+<p>The exact form of the <cite>auth</cite> object is depending on the
+underlying connection object instantiated by the <cite>ConnectionHook</cite>
+that matches the target host.  For example, if the Python <cite>requests</cite>
+libarary is used for connections, the <cite>auth</cite> object is expected
+to be a callable such as <cite>requests.auth.HTTPBasicAuth</cite>.</p>
+<dl class="method">
+<dt id="sleepwalker.service.ServiceManager.__init__">
+<code class="descname">__init__</code><span class="sig-paren">(</span><em>servicedef_manager</em>, <em>connection_manager</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.service.ServiceManager.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a <cite>ServiceManager</cite> to manager <cite>Service</cite> instances</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>servicedef_manager</strong> &#8211; manager to create <cite>ServiceDef</cite>
+instances as needed</li>
+<li><strong>connection_manager</strong> &#8211; manager to establish connections to
+service hosts as needed</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.service.ServiceManager.find_by_id">
+<code class="descname">find_by_id</code><span class="sig-paren">(</span><em>host</em>, <em>id</em>, <em>instance=None</em>, <em>auth=None</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.service.ServiceManager.find_by_id" title="Permalink to this definition">¶</a></dt>
+<dd><p>Find a Service object by service id.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>host</strong> &#8211; IP address or hostname</li>
+<li><strong>id</strong> &#8211; fully qualified id of the service definition</li>
+<li><strong>instance</strong> &#8211; unique instance identifier for this
+service relative to the same host</li>
+<li><strong>auth</strong> &#8211; object representing authentication credentials</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="sleepwalker.service.ServiceManager.find_by_name">
+<code class="descname">find_by_name</code><span class="sig-paren">(</span><em>host</em>, <em>name</em>, <em>version</em>, <em>provider='riverbed'</em>, <em>instance=None</em>, <em>auth=None</em><span class="sig-paren">)</span><a class="headerlink" href="#sleepwalker.service.ServiceManager.find_by_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>Find a Service object by service &lt;name,version,provider&gt;</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>host</strong> &#8211; the host for this service</li>
+<li><strong>name</strong> &#8211; the service name</li>
+<li><strong>version</strong> &#8211; the service version</li>
+<li><strong>provider</strong> &#8211; the provider of the service</li>
+<li><strong>instance</strong> &#8211; unique instance identifier for this
+service relative to the same host</li>
+<li><strong>auth</strong> &#8211; object representing authentication credentials</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../index.html">
+              <img class="logo" src="../_static/rb-ss-logo.png" alt="Logo"/>
+            </a></p>
+  <h3><a href="overview.html">Sleepwalker</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Services</a><ul>
+<li><a class="reference internal" href="#manual-service-creation">Manual Service creation</a></li>
+<li><a class="reference internal" href="#using-managers">Using Managers</a><ul>
+<li><a class="reference internal" href="#authentication">Authentication</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#connection">Connection</a></li>
+<li><a class="reference internal" href="#connectionmanager">ConnectionManager</a></li>
+<li><a class="reference internal" href="#service">Service</a></li>
+<li><a class="reference internal" href="#servicemanager">ServiceManager</a></li>
+<li><a class="reference internal" href="#class-service">class <code class="docutils literal"><span class="pre">Service</span></code></a></li>
+<li><a class="reference internal" href="#class-servicemanager">class <code class="docutils literal"><span class="pre">ServiceManager</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/Sleepwalker/service.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script><h3>
+<a href="../license.html">License</a>
+</h3>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">steelscript  documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015 Riverbed Technology, Inc..
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,652 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>9.8. Reports, Sections and Widgets &mdash; steelscript  documentation</title>
+    
+    <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/extra.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../_static/favicon.ico"/>
+    <link rel="top" title="steelscript  documentation" href="../index.html" />
+    <link rel="up" title="9. SteelScript Application Framework" href="toc.html" />
+    <link rel="next" title="9.9. Tables" href="tables.html" />
+    <link rel="prev" title="9.7. Using the Application Framework" href="usingappfwk.html" />
+    <script type="text/javascript" src="//nexus.ensighten.com/riverbed/rvbss/Bootstrap.js"></script>
+     
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="tables.html" title="9.9. Tables"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="usingappfwk.html" title="9.7. Using the Application Framework"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">steelscript  documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../toc.html" >Table of Contents</a> &raquo;</li>
+          <li class="nav-item nav-item-2"><a href="toc.html" accesskey="U">9. SteelScript Application Framework</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="reports-sections-and-widgets">
+<h1>9.8. Reports, Sections and Widgets<a class="headerlink" href="#reports-sections-and-widgets" title="Permalink to this headline">¶</a></h1>
+<p>In the application framework, a report is a single web page that
+displays one or more widgets of data retrieved from one or more
+data sources associated with the installation.</p>
+<div class="section" id="overview">
+<h2>9.8.1. Overview<a class="headerlink" href="#overview" title="Permalink to this headline">¶</a></h2>
+<p>The Web UI version of a report is comprised of:</p>
+<p><strong>Criteria</strong></p>
+<blockquote>
+<div><p>A set of form fields for the user to fill in that serve as inputs
+to the back-end when running the report.  This includes selection
+fields, drop-down lists, text boxes that define the context for
+the report.</p>
+<p>There standard criteria such as start/end times and
+traffic filter expressions.  The report creator may
+also define custom criteria that is specific to this
+report or analysis functions required to generate.</p>
+</div></blockquote>
+<p><strong>Widgets</strong></p>
+<blockquote>
+<div>Charts and tables that display the data associated with the
+report.  Each widget is independently rendered JavaScript.
+Typical widgets include time series charts, pie and bar charts,
+tables, and map widgets.</div></blockquote>
+<p>Under the covers, the report is built from multiple pieces
+defined in a single Python source file:</p>
+<p><strong>Widgets</strong></p>
+<blockquote>
+<div>A widget defines how a table&#8217;s data will be displayed in the web
+UI.  Some widgets may have specific requirements about the
+structure of the data in the attached table.  For example, time
+series widget require that one of the columns is a date/time
+column.  Pie charts require at least one key column.  Note that
+while each defined widget must be bound to a table, the reverse is
+not necessarily true as some tables may be defined that are inputs
+to other tables.  In addition, it is possible to tie 2 or more
+widgets to the same table, providing different UI renderings of the
+same underlying data.</div></blockquote>
+<p><strong>Sections</strong></p>
+<blockquote>
+<div>Widgets are grouped into sections.  This division is currently
+solely for the purpose allowing for unique criteria per section.</div></blockquote>
+<p><strong>Reports</strong></p>
+<blockquote>
+<div>The report is the highest level container for the UI rendering of
+all the sections and widgets in the report configuration source
+file.  By default, all reports are listed in the &#8220;Reports&#8221; menu.
+In the Web UI, the report is displayed as a single page.</div></blockquote>
+<div class="section" id="sample-report-source-file">
+<h3>9.8.1.1. Sample Report Source File<a class="headerlink" href="#sample-report-source-file" title="Permalink to this headline">¶</a></h3>
+<p>Below is a sample report file:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">steelscript.appfwk.apps.report.models</span> <span class="kn">import</span> <span class="n">Report</span>
+<span class="kn">import</span> <span class="nn">steelscript.appfwk.apps.report.modules.yui3</span> <span class="kn">as</span> <span class="nn">yui3</span>
+
+<span class="kn">from</span> <span class="nn">steelscript.netprofiler.appfwk.datasources.netprofiler</span> \
+    <span class="kn">import</span> <span class="n">NetProfilerGroupbyTable</span><span class="p">,</span> <span class="n">NetProfilerTimeSeriesTable</span>
+<span class="kn">from</span> <span class="nn">steelscript.netshark.appfwk.datasources.netshark</span> \
+    <span class="kn">import</span> <span class="n">NetSharkTable</span>
+
+<span class="c"># Define the report and a single section</span>
+<span class="n">report</span> <span class="o">=</span> <span class="n">Report</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s">&quot;Overall&quot;</span><span class="p">)</span>
+<span class="n">report</span><span class="o">.</span><span class="n">add_section</span><span class="p">(</span><span class="s">&#39;Main&#39;</span><span class="p">)</span>
+
+<span class="c"># Define a Overall TimeSeries showing Avg Bytes/s</span>
+<span class="n">table</span> <span class="o">=</span> <span class="n">NetProfilerTimeSeriesTable</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s">&#39;timeseries&#39;</span><span class="p">)</span>
+
+<span class="n">table</span><span class="o">.</span><span class="n">add_column</span><span class="p">(</span><span class="s">&#39;time&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s">&#39;Time&#39;</span><span class="p">,</span> <span class="n">datatype</span><span class="o">=</span><span class="s">&#39;time&#39;</span><span class="p">,</span> <span class="n">iskey</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="n">table</span><span class="o">.</span><span class="n">add_column</span><span class="p">(</span><span class="s">&#39;avg_bytes&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s">&#39;Avg Bytes/s&#39;</span><span class="p">,</span> <span class="n">units</span><span class="o">=</span><span class="s">&#39;B/s&#39;</span><span class="p">)</span>
+
+<span class="n">report</span><span class="o">.</span><span class="n">add_widget</span><span class="p">(</span><span class="n">yui3</span><span class="o">.</span><span class="n">TimeSeriesWidget</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="s">&quot;NetProfiler Overall Traffic&quot;</span><span class="p">)</span>
+
+<span class="c"># Define a table, group by location</span>
+<span class="n">table</span> <span class="o">=</span> <span class="n">NetProfilerGroupbyTable</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s">&#39;locations&#39;</span><span class="p">,</span> <span class="n">groupby</span><span class="o">=</span><span class="s">&#39;host_group&#39;</span><span class="p">)</span>
+
+<span class="n">table</span><span class="o">.</span><span class="n">add_column</span><span class="p">(</span><span class="s">&#39;group_name&#39;</span><span class="p">,</span>    <span class="n">label</span><span class="o">=</span><span class="s">&#39;Group Name&#39;</span><span class="p">,</span> <span class="n">iskey</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">datatype</span><span class="o">=</span><span class="s">&quot;string&quot;</span><span class="p">)</span>
+<span class="n">table</span><span class="o">.</span><span class="n">add_column</span><span class="p">(</span><span class="s">&#39;response_time&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s">&#39;Resp Time&#39;</span><span class="p">,</span>  <span class="n">units</span><span class="o">=</span><span class="s">&#39;ms&#39;</span><span class="p">,</span> <span class="n">sortdesc</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="n">table</span><span class="o">.</span><span class="n">add_column</span><span class="p">(</span><span class="s">&#39;network_rtt&#39;</span><span class="p">,</span>   <span class="n">label</span><span class="o">=</span><span class="s">&#39;Net RTT&#39;</span><span class="p">,</span>    <span class="n">units</span><span class="o">=</span><span class="s">&#39;ms&#39;</span><span class="p">)</span>
+<span class="n">table</span><span class="o">.</span><span class="n">add_column</span><span class="p">(</span><span class="s">&#39;server_delay&#39;</span><span class="p">,</span>  <span class="n">label</span><span class="o">=</span><span class="s">&#39;Srv Delay&#39;</span><span class="p">,</span>  <span class="n">units</span><span class="o">=</span><span class="s">&#39;ms&#39;</span><span class="p">)</span>
+
+<span class="c"># Adding a widget using the Report object will apply them</span>
+<span class="c"># to the last defined Section, here that will be &#39;Locations&#39;</span>
+<span class="n">report</span><span class="o">.</span><span class="n">add_widget</span><span class="p">(</span><span class="n">yui3</span><span class="o">.</span><span class="n">TableWidget</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="s">&quot;Locations by Avg Bytes&quot;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>This will get rendered as follows:</p>
+<a class="reference internal image-reference" href="../_images/simple-report.png"><img alt="../_images/simple-report.png" src="../_images/simple-report.png" style="width: 308.7px; height: 296.4px;" /></a>
+<p>Notice that the criteria section has several fields for user input yet
+the report source file does not declare any criteria.  This is because
+each data source table (<code class="docutils literal"><span class="pre">NetProfilerTimeSeriesTable</span></code> and
+<code class="docutils literal"><span class="pre">NetProfilerGroupbyTable</span></code>) declares a set of criteria that it
+requires in order to collect data for that report.</p>
+</div>
+</div>
+<div class="section" id="creating-a-report">
+<h2>9.8.2. Creating a Report<a class="headerlink" href="#creating-a-report" title="Permalink to this headline">¶</a></h2>
+<p>Report objects are Django model instances and thus once a report
+object is instantiated and saved, the properties of the report are
+saved in the database.</p>
+<p>Report objects are created via <a class="reference internal" href="#steelscript.appfwk.apps.report.models.Report.create" title="steelscript.appfwk.apps.report.models.Report.create"><code class="xref py py-meth docutils literal"><span class="pre">Report.create()</span></code></a>:</p>
+<dl class="classmethod">
+<dt id="steelscript.appfwk.apps.report.models.Report.create">
+<em class="property">classmethod </em><code class="descclassname">Report.</code><code class="descname">create</code><span class="sig-paren">(</span><em>title</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#steelscript.appfwk.apps.report.models.Report.create" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a new Report object and save it to the database.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>title</strong> (<em>str</em>) &#8211; Title for the report</li>
+<li><strong>position</strong> (<em>float</em>) &#8211; Position in the menu for this report.
+By default, all system reports have a <code class="docutils literal"><span class="pre">position</span></code> of 9 or
+greater.</li>
+<li><strong>field_order</strong> (<em>list</em>) &#8211; List declaring the order to display
+criteria fields.  Any fields not list are displayed after
+all listed fields.</li>
+<li><strong>hidden_fields</strong> (<em>list</em>) &#8211; List of criteria fields to hide from UI</li>
+<li><strong>hide_criteria</strong> (<em>bool</em>) &#8211; Set to true to hide criteria and run on load</li>
+<li><strong>reload_minutes</strong> (<em>int</em>) &#8211; If non-zero, report will be reloaded
+automatically at the given duration in minutes</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<div class="section" id="adding-sections-to-a-report">
+<h3>9.8.2.1. Adding Sections to a Report<a class="headerlink" href="#adding-sections-to-a-report" title="Permalink to this headline">¶</a></h3>
+<p>Section objects are Django model instances and backed by the database.
+All sections must be bound to a Report.</p>
+<p>The preferred method for creating a section is to use
+<a class="reference internal" href="#steelscript.appfwk.apps.report.models.Report.add_section" title="steelscript.appfwk.apps.report.models.Report.add_section"><code class="xref py py-meth docutils literal"><span class="pre">Report.add_section()</span></code></a>.  This ensures that the the section is
+properly attached to the report.</p>
+<dl class="method">
+<dt id="steelscript.appfwk.apps.report.models.Report.add_section">
+<code class="descclassname">Report.</code><code class="descname">add_section</code><span class="sig-paren">(</span><em>title=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#steelscript.appfwk.apps.report.models.Report.add_section" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a new section associated with this report.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>title</strong> (<em>str</em>) &#8211; Title for the section.  Defaults to
+<code class="docutils literal"><span class="pre">section&lt;n&gt;</span></code>.</td>
+</tr>
+</tbody>
+</table>
+<p>See <a class="reference internal" href="#steelscript.appfwk.apps.report.models.Section.create" title="steelscript.appfwk.apps.report.models.Section.create"><code class="xref py py-meth docutils literal"><span class="pre">Section.create()</span></code></a> for a complete description
+and a list of valid <code class="docutils literal"><span class="pre">kwargs</span></code>.</p>
+</dd></dl>
+
+<dl class="classmethod">
+<dt id="steelscript.appfwk.apps.report.models.Section.create">
+<em class="property">classmethod </em><code class="descclassname">Section.</code><code class="descname">create</code><span class="sig-paren">(</span><em>report</em>, <em>title=''</em>, <em>position=None</em>, <em>section_keywords=None</em>, <em>default_field_mode=None</em>, <em>keyword_field_modes=None</em><span class="sig-paren">)</span><a class="headerlink" href="#steelscript.appfwk.apps.report.models.Section.create" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a Section of a report and define field modes.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>report</strong> &#8211; the report this section applies to</li>
+<li><strong>title</strong> (<em>str</em>) &#8211; section title to display</li>
+<li><strong>position</strong> (<em>float</em>) &#8211; relative position for ordering on display,
+if None (default), this will be added as the last
+section of the current report</li>
+<li><strong>default_field_mode</strong> &#8211; the default mode for how to
+handle fields.  If None (default), <code class="docutils literal"><span class="pre">INHERIT</span></code> will be used</li>
+<li><strong>keyword_field_modes</strong> &#8211; dict of keyword to mode to
+override the <code class="docutils literal"><span class="pre">default_field_mode</span></code>.  Each entry in this
+dict will result in a SectionFieldMode object</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+<div class="section" id="adding-widgets-to-a-report">
+<h3>9.8.2.2. Adding Widgets to a Report<a class="headerlink" href="#adding-widgets-to-a-report" title="Permalink to this headline">¶</a></h3>
+<p>Widget objects are Django model instances and backed by the database.
+All widgets must be bound to a section.</p>
+<p>The preferred method for creating widgets is to use
+<a class="reference internal" href="#steelscript.appfwk.apps.report.models.Section.add_widget" title="steelscript.appfwk.apps.report.models.Section.add_widget"><code class="xref py py-meth docutils literal"><span class="pre">Section.add_widget()</span></code></a> or
+<a class="reference internal" href="#steelscript.appfwk.apps.report.models.Report.add_widget" title="steelscript.appfwk.apps.report.models.Report.add_widget"><code class="xref py py-meth docutils literal"><span class="pre">Report.add_widget()</span></code></a>.</p>
+<dl class="method">
+<dt id="steelscript.appfwk.apps.report.models.Section.add_widget">
+<code class="descclassname">Section.</code><code class="descname">add_widget</code><span class="sig-paren">(</span><em>cls</em>, <em>table</em>, <em>title</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#steelscript.appfwk.apps.report.models.Section.add_widget" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a new widget associated with this section</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>cls</strong> &#8211; UI class that will be used to render this widget</li>
+<li><strong>table</strong> &#8211; Table providing data for this widget</li>
+<li><strong>title</strong> (<em>str</em>) &#8211; Display title for this widget</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<p>See the specific <code class="docutils literal"><span class="pre">cls.create()</span></code> method for additional kwargs.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="steelscript.appfwk.apps.report.models.Report.add_widget">
+<code class="descclassname">Report.</code><code class="descname">add_widget</code><span class="sig-paren">(</span><em>cls</em>, <em>table</em>, <em>title</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#steelscript.appfwk.apps.report.models.Report.add_widget" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a new widget associated with the last section added.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>cls</strong> &#8211; UI class that will be used to render this widget</li>
+<li><strong>table</strong> &#8211; Table providing data for this widget</li>
+<li><strong>title</strong> (<em>str</em>) &#8211; Display title for this widget</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<p>See the specific <code class="docutils literal"><span class="pre">cls.create()</span></code> method for additional kwargs.</p>
+</dd></dl>
+
+<p>The <code class="docutils literal"><span class="pre">cls</span></code> parameter to the <code class="docutils literal"><span class="pre">add_widget</span></code> method is the class
+reference for the specific UI.  The following UI widget classes are
+currently supported:</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="51%" />
+<col width="49%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">UI Widget Class</th>
+<th class="head">Description</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td><a class="reference internal" href="#tablewidget"><span>yui3.TableWidget</span></a></td>
+<td>Table of rows and columns</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#chartwidget"><span>yui3.ChartWidget</span></a></td>
+<td>Generic YUI3 chart widget, base for Bar/Line</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="#barwidget"><span>yui3.BarWidget</span></a></td>
+<td>Vertical bar chart</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#linewidget"><span>yui3.LineWidget</span></a></td>
+<td>Line chart, X-Axis is labels, Y-Axis is values</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="#piewidget"><span>yui3.PieWidget</span></a></td>
+<td>Pie Charts</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#timeserieswidget"><span>yui3.TimeSeriesWidget</span></a></td>
+<td>Line chart where X-Axis is time/date</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="#mapwidget"><span>maps.MapWidget</span></a></td>
+<td>Overlay data on a map</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#raw-tablewidget"><span>raw.TableWidget</span></a></td>
+<td>Unprocessed raw data display (testing/debug)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="yui3-tablewidget">
+<span id="tablewidget"></span><h3>9.8.2.3. <code class="xref py py-class docutils literal"><span class="pre">yui3.TableWidget</span></code><a class="headerlink" href="#yui3-tablewidget" title="Permalink to this headline">¶</a></h3>
+<dl class="classmethod">
+<dt id="steelscript.appfwk.apps.report.modules.yui3.TableWidget.create">
+<em class="property">classmethod </em><code class="descclassname">TableWidget.</code><code class="descname">create</code><span class="sig-paren">(</span><em>section</em>, <em>table</em>, <em>title</em>, <em>width=6</em>, <em>cols=None</em>, <em>rows=1000</em>, <em>height=300</em><span class="sig-paren">)</span><a class="headerlink" href="#steelscript.appfwk.apps.report.modules.yui3.TableWidget.create" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a widget displaying data in a two dimensional table.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>width</strong> (<em>int</em>) &#8211; Width of the widget in columns (1-12, default 6)</li>
+<li><strong>height</strong> (<em>int</em>) &#8211; Height of the widget in pixels (default 300)</li>
+<li><strong>rows</strong> (<em>int</em>) &#8211; Number of rows to display (default 1000)</li>
+<li><strong>cols</strong> (<em>list</em>) &#8211; List of columns by name to include.  If None,
+the default, include all data columns.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+<div class="section" id="yui3-chartwidget">
+<span id="chartwidget"></span><h3>9.8.2.4. <code class="xref py py-class docutils literal"><span class="pre">yui3.ChartWidget</span></code><a class="headerlink" href="#yui3-chartwidget" title="Permalink to this headline">¶</a></h3>
+<dl class="classmethod">
+<dt id="steelscript.appfwk.apps.report.modules.yui3.ChartWidget.create">
+<em class="property">classmethod </em><code class="descclassname">ChartWidget.</code><code class="descname">create</code><span class="sig-paren">(</span><em>section</em>, <em>table</em>, <em>title</em>, <em>width=6</em>, <em>rows=10</em>, <em>height=300</em>, <em>keycols=None</em>, <em>valuecols=None</em>, <em>charttype='line'</em>, <em>dynamic=False</em><span class="sig-paren">)</span><a class="headerlink" href="#steelscript.appfwk.apps.report.modules.yui3.ChartWidget.create" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a widget displaying data as a chart.</p>
+<p>This class is typically not used directly, but via LineWidget
+or BarWidget subclasses</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>width</strong> (<em>int</em>) &#8211; Width of the widget in columns (1-12, default 6)</li>
+<li><strong>height</strong> (<em>int</em>) &#8211; Height of the widget in pixels (default 300)</li>
+<li><strong>rows</strong> (<em>int</em>) &#8211; Number of rows to display (default 10)</li>
+<li><strong>keycols</strong> (<em>list</em>) &#8211; List of key column names to use for x-axis labels</li>
+<li><strong>valuecols</strong> (<em>list</em>) &#8211; List of data columns to graph</li>
+<li><strong>charttype</strong> (<em>str</em>) &#8211; Type of chart, defaults to &#8216;line&#8217;.  This may be
+any YUI3 &#8216;type&#8217;</li>
+<li><strong>dynamic</strong> (<em>bool</em>) &#8211; columns will be added later from criteria if True</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+<div class="section" id="yui3-barwidget">
+<span id="barwidget"></span><h3>9.8.2.5. <code class="xref py py-class docutils literal"><span class="pre">yui3.BarWidget</span></code><a class="headerlink" href="#yui3-barwidget" title="Permalink to this headline">¶</a></h3>
+<dl class="classmethod">
+<dt id="steelscript.appfwk.apps.report.modules.yui3.BarWidget.create">
+<em class="property">classmethod </em><code class="descclassname">BarWidget.</code><code class="descname">create</code><span class="sig-paren">(</span><em>*args</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#steelscript.appfwk.apps.report.modules.yui3.BarWidget.create" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a widget displaying data as a bar chart.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>width</strong> (<em>int</em>) &#8211; Width of the widget in columns (1-12, default 6)</li>
+<li><strong>height</strong> (<em>int</em>) &#8211; Height of the widget in pixels (default 300)</li>
+<li><strong>rows</strong> (<em>int</em>) &#8211; Number of rows to display (default 10)</li>
+<li><strong>keycols</strong> (<em>list</em>) &#8211; List of key column names to use for x-axis labels</li>
+<li><strong>valuecols</strong> (<em>list</em>) &#8211; List of data columns to graph</li>
+<li><strong>charttype</strong> (<em>str</em>) &#8211; Type of chart, defaults to &#8216;line&#8217;.  This may be
+any YUI3 &#8216;type&#8217;</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+<div class="section" id="yui3-linewidget">
+<span id="linewidget"></span><h3>9.8.2.6. <code class="xref py py-class docutils literal"><span class="pre">yui3.LineWidget</span></code><a class="headerlink" href="#yui3-linewidget" title="Permalink to this headline">¶</a></h3>
+<dl class="classmethod">
+<dt id="steelscript.appfwk.apps.report.modules.yui3.LineWidget.create">
+<em class="property">classmethod </em><code class="descclassname">LineWidget.</code><code class="descname">create</code><span class="sig-paren">(</span><em>*args</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#steelscript.appfwk.apps.report.modules.yui3.LineWidget.create" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a widget displaying data as a line chart.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>width</strong> (<em>int</em>) &#8211; Width of the widget in columns (1-12, default 6)</li>
+<li><strong>height</strong> (<em>int</em>) &#8211; Height of the widget in pixels (default 300)</li>
+<li><strong>rows</strong> (<em>int</em>) &#8211; Number of rows to display (default 10)</li>
+<li><strong>keycols</strong> (<em>list</em>) &#8211; List of key column names to use for x-axis labels</li>
+<li><strong>valuecols</strong> (<em>list</em>) &#8211; List of data columns to graph</li>
+<li><strong>charttype</strong> (<em>str</em>) &#8211; Type of chart, defaults to &#8216;line&#8217;.  This may be
+any YUI3 &#8216;type&#8217;</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+<div class="section" id="yui3-piewidget">
+<span id="piewidget"></span><h3>9.8.2.7. <code class="xref py py-class docutils literal"><span class="pre">yui3.PieWidget</span></code><a class="headerlink" href="#yui3-piewidget" title="Permalink to this headline">¶</a></h3>
+<dl class="classmethod">
+<dt id="steelscript.appfwk.apps.report.modules.yui3.PieWidget.create">
+<em class="property">classmethod </em><code class="descclassname">PieWidget.</code><code class="descname">create</code><span class="sig-paren">(</span><em>section</em>, <em>table</em>, <em>title</em>, <em>width=6</em>, <em>rows=10</em>, <em>height=300</em><span class="sig-paren">)</span><a class="headerlink" href="#steelscript.appfwk.apps.report.modules.yui3.PieWidget.create" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a widget displaying data in a pie chart.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>width</strong> (<em>int</em>) &#8211; Width of the widget in columns (1-12, default 6)</li>
+<li><strong>height</strong> (<em>int</em>) &#8211; Height of the widget in pixels (default 300)</li>
+<li><strong>rows</strong> (<em>int</em>) &#8211; Number of rows to display (default 10)</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<p>The labels are taken from the Table key column (the first key,
+if the table has multiple key columns defined).  The pie
+widget values are taken from the sort column.</p>
+</dd></dl>
+
+</div>
+<div class="section" id="yui3-timeserieswidget">
+<span id="timeserieswidget"></span><h3>9.8.2.8. <code class="xref py py-class docutils literal"><span class="pre">yui3.TimeSeriesWidget</span></code><a class="headerlink" href="#yui3-timeserieswidget" title="Permalink to this headline">¶</a></h3>
+<dl class="classmethod">
+<dt id="steelscript.appfwk.apps.report.modules.yui3.TimeSeriesWidget.create">
+<em class="property">classmethod </em><code class="descclassname">TimeSeriesWidget.</code><code class="descname">create</code><span class="sig-paren">(</span><em>section</em>, <em>table</em>, <em>title</em>, <em>width=6</em>, <em>height=300</em>, <em>stacked=False</em>, <em>cols=None</em>, <em>altaxis=None</em>, <em>bar=False</em><span class="sig-paren">)</span><a class="headerlink" href="#steelscript.appfwk.apps.report.modules.yui3.TimeSeriesWidget.create" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a widget displaying time-series data in a line or bar chart</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>width</strong> (<em>int</em>) &#8211; Width of the widget in columns (1-12, default 6)</li>
+<li><strong>height</strong> (<em>int</em>) &#8211; Height of the widget in pixels (default 300)</li>
+<li><strong>stacked</strong> (<em>bool</em>) &#8211; If True, show multiple series as stacked</li>
+<li><strong>cols</strong> (<em>list</em>) &#8211; List of columns by name to graph.  If None,
+the default, graph all data columns.</li>
+<li><strong>altaxis</strong> (<em>list</em>) &#8211; List of columns to graph using the
+alternate Y-axis</li>
+<li><strong>bar</strong> (<em>bool</em>) &#8211; If True, show time series in a bar chart.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<p>As an example, the following will graph four columns of data:</p>
+<div class="highlight-python"><div class="highlight"><pre>section.add_widget(yui3.TimeSeriesWidget, &#39;Bytes and Packets&#39;,
+                   stacked=True, width=12, height=450,
+                   cols=[&#39;bytes&#39;, &#39;rtxbytes&#39;,
+                         &#39;packets&#39;, &#39;rtxpackets&#39;],
+                   altaxis=[&#39;packets&#39;, rtxpackets&#39;])
+</pre></div>
+</div>
+<p>The columns &#8216;bytes&#8217; and &#8216;rtxbytes&#8217; will be graphed against the left
+Y-axis, &#8216;packets&#8217; and &#8216;rtxpackets&#8217; on the right (alternate) Y-axis.</p>
+</dd></dl>
+
+</div>
+<div class="section" id="maps-mapwidget">
+<span id="mapwidget"></span><h3>9.8.2.9. <code class="xref py py-class docutils literal"><span class="pre">maps.MapWidget</span></code><a class="headerlink" href="#maps-mapwidget" title="Permalink to this headline">¶</a></h3>
+<dl class="classmethod">
+<dt id="steelscript.appfwk.apps.report.modules.maps.MapWidget.create">
+<em class="property">classmethod </em><code class="descclassname">MapWidget.</code><code class="descname">create</code><span class="sig-paren">(</span><em>section</em>, <em>table</em>, <em>title</em>, <em>width=6</em>, <em>height=300</em>, <em>lat_col=None</em>, <em>long_col=None</em>, <em>val_col=None</em>, <em>label_col=None</em>, <em>min_bounds=None</em><span class="sig-paren">)</span><a class="headerlink" href="#steelscript.appfwk.apps.report.modules.maps.MapWidget.create" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a widget displaying data overlayed on a map.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>width</strong> (<em>int</em>) &#8211; Width of the widget in columns (1-12, default 6)</li>
+<li><strong>height</strong> (<em>int</em>) &#8211; Height of the widget in pixels (default 300)</li>
+<li><strong>lat_col, long_col</strong> (<em>float</em>) &#8211; are optional pairs of columns
+indicating the latitude and longitude values of data to
+plot.  If these are omitted, the first column with the
+attribute &#8216;iskey&#8217; will be used as the means for
+determining where to plot.</li>
+<li><strong>val_column</strong> (<em>str/col</em>) &#8211; the data column to graph, defaults to
+the first non-key column found assigned to the table.</li>
+<li><strong>name_column</strong> (<em>str/col</em>) &#8211; column to use for marker labels
+when when defining lat/long columns.</li>
+<li><strong>min_bounds</strong> (<em>tuple</em>) &#8211; tuple of (lat, lng) points
+representing the minimum extents that the map should
+include.  Useful to avoid the close zoomed-in effect when
+two close-in points would be plotted.  For example, to
+have continental US always shown, the argument could be:
+<code class="docutils literal"><span class="pre">((33.184833,</span> <span class="pre">-116.999540),</span> <span class="pre">(45.561302,</span> <span class="pre">-67.956573))</span></code></li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<p>Each column argument may be a Column object or the string name.</p>
+</dd></dl>
+
+</div>
+<div class="section" id="raw-tablewidget">
+<span id="id1"></span><h3>9.8.2.10. <code class="xref py py-class docutils literal"><span class="pre">raw.TableWidget</span></code><a class="headerlink" href="#raw-tablewidget" title="Permalink to this headline">¶</a></h3>
+<dl class="classmethod">
+<dt id="steelscript.appfwk.apps.report.modules.raw.TableWidget.create">
+<em class="property">classmethod </em><code class="descclassname">TableWidget.</code><code class="descname">create</code><span class="sig-paren">(</span><em>section</em>, <em>table</em>, <em>title</em>, <em>width=6</em>, <em>rows=1000</em>, <em>height=300</em><span class="sig-paren">)</span><a class="headerlink" href="#steelscript.appfwk.apps.report.modules.raw.TableWidget.create" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a widget displaying data in a two dimensional table.</p>
+<p>This is similar to <code class="docutils literal"><span class="pre">yui3.TableWidget</span></code> except the key and data
+values are minimally formatted to show raw data values.  Usually
+only used for testing and debug.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>width</strong> (<em>int</em>) &#8211; Width of the widget in columns (1-12, default 6)</li>
+<li><strong>height</strong> (<em>int</em>) &#8211; Height of the widget in pixels (default 300)</li>
+<li><strong>rows</strong> (<em>int</em>) &#8211; Number of rows to display (default 10)</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../index.html">
+              <img class="logo" src="../_static/rb-ss-logo.png" alt="Logo"/>
+            </a></p>
+  <h3><a href="overview.html">SteelScript Application Framework</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">9.8. Reports, Sections and Widgets</a><ul>
+<li><a class="reference internal" href="#overview">9.8.1. Overview</a><ul>
+<li><a class="reference internal" href="#sample-report-source-file">9.8.1.1. Sample Report Source File</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#creating-a-report">9.8.2. Creating a Report</a><ul>
+<li><a class="reference internal" href="#adding-sections-to-a-report">9.8.2.1. Adding Sections to a Report</a></li>
+<li><a class="reference internal" href="#adding-widgets-to-a-report">9.8.2.2. Adding Widgets to a Report</a></li>
+<li><a class="reference internal" href="#yui3-tablewidget">9.8.2.3. <code class="docutils literal"><span class="pre">yui3.TableWidget</span></code></a></li>
+<li><a class="reference internal" href="#yui3-chartwidget">9.8.2.4. <code class="docutils literal"><span class="pre">yui3.ChartWidget</span></code></a></li>
+<li><a class="reference internal" href="#yui3-barwidget">9.8.2.5. <code class="docutils literal"><span class="pre">yui3.BarWidget</span></code></a></li>
+<li><a class="reference internal" href="#yui3-linewidget">9.8.2.6. <code class="docutils literal"><span class="pre">yui3.LineWidget</span></code></a></li>
+<li><a class="reference internal" href="#yui3-piewidget">9.8.2.7. <code class="docutils literal"><span class="pre">yui3.PieWidget</span></code></a></li>
+<li><a class="reference internal" href="#yui3-timeserieswidget">9.8.2.8. <code class="docutils literal"><span class="pre">yui3.TimeSeriesWidget</span></code></a></li>
+<li><a class="reference internal" href="#maps-mapwidget">9.8.2.9. <code class="docutils literal"><span class="pre">maps.MapWidget</span></code></a></li>
+<li><a class="reference internal" href="#raw-tablewidget">9.8.2.10. <code class="docutils literal"><span class="pre">raw.TableWidget</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="usingappfwk.html"
+                        title="previous chapter">9.7. Using the Application Framework</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="tables.html"
+                        title="next chapter">9.9. Tables</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/appfwk/reports.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script><h3>
+<a href="../license.html">License</a>
+</h3>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="tables.html" title="9.9. Tables"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="usingappfwk.html" title="9.7. Using the Application Framework"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">steelscript  documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../toc.html" >Table of Contents</a> &raquo;</li>
+          <li class="nav-item nav-item-2"><a href="toc.html" >9. SteelScript Application Framework</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2015 Riverbed Technology, Inc..
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>
