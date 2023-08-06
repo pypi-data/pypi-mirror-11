@@ -1,0 +1,2 @@
+OUTPUT="$(/usr/local/bin/mongod --dbpath /Users/ledoux/Documents/ShareYourSystem/Pythonlogy/ShareYourSystem/Standards/Interfacers/Pymongoer/data/db/)"
+echo "${OUTPUT}" > /Users/ledoux/Documents/ShareYourSystem/Pythonlogy/ShareYourSystem/Standards/Interfacers/Pymongoer/ProcessTemp.txt
