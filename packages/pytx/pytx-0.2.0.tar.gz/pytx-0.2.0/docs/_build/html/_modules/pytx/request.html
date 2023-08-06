@@ -1,0 +1,386 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>pytx.request &mdash; pytx 0.1.3 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.1.3',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="pytx 0.1.3 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">pytx 0.1.3 documentation</a> &raquo;</li>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for pytx.request</h1><div class="highlight"><pre>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">requests</span>
+
+<span class="kn">import</span> <span class="nn">init</span>
+
+<span class="kn">from</span> <span class="nn">vocabulary</span> <span class="kn">import</span> <span class="n">ThreatExchange</span> <span class="k">as</span> <span class="n">t</span>
+<span class="kn">from</span> <span class="nn">errors</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">pytxFetchError</span><span class="p">,</span>
+    <span class="n">pytxValueError</span><span class="p">,</span>
+    <span class="n">pytxInitError</span>
+<span class="p">)</span>
+
+<div class="viewcode-block" id="Broker"><a class="viewcode-back" href="../../pytx.request.html#pytx.request.Broker">[docs]</a><span class="k">class</span> <span class="nc">Broker</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The Broker handles validation and submission of requests as well as</span>
+<span class="sd">    consumption and returning of the result. It is leveraged by the other</span>
+<span class="sd">    classes.</span>
+
+<span class="sd">    Since the Broker takes care of the entire request/response cycle, it can be</span>
+<span class="sd">    used on its own to interact with the ThreatExchange API without the need for</span>
+<span class="sd">    the other classes if a developer wishes to use it.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the object.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">init</span><span class="o">.</span><span class="n">__ACCESS_TOKEN__</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">pytxInitError</span><span class="p">(</span><span class="s">&quot;Must init() before instantiating&quot;</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="Broker.get_new"><a class="viewcode-back" href="../../pytx.request.html#pytx.request.Broker.get_new">[docs]</a>    <span class="k">def</span> <span class="nf">get_new</span><span class="p">(</span><span class="n">klass</span><span class="p">,</span> <span class="n">attrs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a new instance of klass.</span>
+
+<span class="sd">        :param klass: The class to create a new instance of.</span>
+<span class="sd">        :type klass: :class:</span>
+<span class="sd">        :param attrs: The attributes to set for this new instance.</span>
+<span class="sd">        :type attrs: dict</span>
+<span class="sd">        :returns: new instance of klass</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">n</span> <span class="o">=</span> <span class="n">klass</span><span class="p">(</span><span class="o">**</span><span class="n">attrs</span><span class="p">)</span>
+        <span class="n">n</span><span class="o">.</span><span class="n">_new</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">return</span> <span class="n">n</span>
+</div>
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="Broker.is_timestamp"><a class="viewcode-back" href="../../pytx.request.html#pytx.request.Broker.is_timestamp">[docs]</a>    <span class="k">def</span> <span class="nf">is_timestamp</span><span class="p">(</span><span class="n">timestamp</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Verifies the timestamp provided is a valid timestamp.</span>
+
+<span class="sd">        Valid timestamps are based on PHP&#39;s &quot;strtotime&quot; function. As of right</span>
+<span class="sd">        now even with python&#39;s &quot;dateutil&quot; library there are some strtotime valid</span>
+<span class="sd">        strings that do not validate properly. Until such a time as this can</span>
+<span class="sd">        become accurate and robust enough to have feature parity with strtotime,</span>
+<span class="sd">        this will always return True and leave proper timestamps to the API</span>
+<span class="sd">        user.</span>
+
+<span class="sd">        :param timestamp: Value to verify is a timestamp.</span>
+<span class="sd">        :type timestamp: str</span>
+<span class="sd">        :returns: True</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">return</span> <span class="bp">True</span>
+</div>
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="Broker.validate_limit"><a class="viewcode-back" href="../../pytx.request.html#pytx.request.Broker.validate_limit">[docs]</a>    <span class="k">def</span> <span class="nf">validate_limit</span><span class="p">(</span><span class="n">limit</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Verifies the limit provided is valid and within the max limit Facebook</span>
+<span class="sd">        will allow you to use.</span>
+
+<span class="sd">        :param limit: Value to verify is a valid limit.</span>
+<span class="sd">        :type limit: int, str</span>
+<span class="sd">        :returns: :class:`pytxValueError` if invalid.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="nb">int</span><span class="p">(</span><span class="n">limit</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">pytxValueError</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+        <span class="k">return</span>
+</div>
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="Broker.sanitize_strict"><a class="viewcode-back" href="../../pytx.request.html#pytx.request.Broker.sanitize_strict">[docs]</a>    <span class="k">def</span> <span class="nf">sanitize_strict</span><span class="p">(</span><span class="n">strict_text</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        If strict_text is provided, sanitize it.</span>
+
+<span class="sd">        &#39;true&#39; will be used if strict_text is in [True, &#39;true&#39;, &#39;True&#39;, 1].</span>
+<span class="sd">        &#39;false&#39; will be used if strict_text is in [False, &#39;false&#39;, &#39;False&#39;, 0].</span>
+
+<span class="sd">        If we receive any other value strict_text will be set to None and</span>
+<span class="sd">        ignored when building the GET request.</span>
+
+<span class="sd">        :param strict_text: The value to sanitize.</span>
+<span class="sd">        :type strict_text: bool, str, int</span>
+<span class="sd">        :returns: str, None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">strict_text</span> <span class="ow">in</span> <span class="p">(</span><span class="bp">True</span><span class="p">,</span> <span class="s">&#39;true&#39;</span><span class="p">,</span> <span class="s">&#39;True&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">strict</span> <span class="o">=</span> <span class="s">&#39;true&#39;</span>
+        <span class="k">elif</span> <span class="n">strict_text</span> <span class="ow">in</span> <span class="p">(</span><span class="bp">False</span><span class="p">,</span> <span class="s">&#39;false&#39;</span><span class="p">,</span> <span class="s">&#39;False&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="n">strict</span> <span class="o">=</span> <span class="s">&#39;false&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">strict</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">return</span> <span class="n">strict</span>
+</div>
+    <span class="nd">@staticmethod</span>
+<div class="viewcode-block" id="Broker.handle_results"><a class="viewcode-back" href="../../pytx.request.html#pytx.request.Broker.handle_results">[docs]</a>    <span class="k">def</span> <span class="nf">handle_results</span><span class="p">(</span><span class="n">resp</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Handle the results of a request.</span>
+
+<span class="sd">        :param resp: The HTTP response.</span>
+<span class="sd">        :type resp: response object</span>
+<span class="sd">        :returns: dict (using json.loads())</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">resp</span><span class="o">.</span><span class="n">status_code</span> <span class="o">!=</span> <span class="mi">200</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">pytxFetchError</span><span class="p">(</span><span class="s">&quot;Response code: </span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">resp</span><span class="o">.</span><span class="n">status_code</span><span class="p">,</span>
+                                                            <span class="n">resp</span><span class="o">.</span><span class="n">text</span><span class="p">))</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">results</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">resp</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">pytxFetchError</span><span class="p">(</span><span class="s">&quot;Unable to convert response to JSON.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">results</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="Broker.validate_get"><a class="viewcode-back" href="../../pytx.request.html#pytx.request.Broker.validate_get">[docs]</a>    <span class="k">def</span> <span class="nf">validate_get</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">since</span><span class="p">,</span> <span class="n">until</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Executes validation for the GET parameters: limit, since, until.</span>
+
+<span class="sd">        :param limit: The limit to validate.</span>
+<span class="sd">        :type limit: int, str</span>
+<span class="sd">        :param since: The since timestamp to validate.</span>
+<span class="sd">        :type since: str</span>
+<span class="sd">        :param until: The until timestamp to validate.</span>
+<span class="sd">        :type until: str</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">since</span><span class="p">:</span>
+            <span class="n">cls</span><span class="o">.</span><span class="n">is_timestamp</span><span class="p">(</span><span class="n">since</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">until</span><span class="p">:</span>
+            <span class="n">cls</span><span class="o">.</span><span class="n">is_timestamp</span><span class="p">(</span><span class="n">until</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">limit</span><span class="p">:</span>
+            <span class="n">cls</span><span class="o">.</span><span class="n">validate_limit</span><span class="p">(</span><span class="n">limit</span><span class="p">)</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="Broker.build_get_parameters"><a class="viewcode-back" href="../../pytx.request.html#pytx.request.Broker.build_get_parameters">[docs]</a>    <span class="k">def</span> <span class="nf">build_get_parameters</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">strict_text</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">type_</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">threat_type</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                             <span class="n">fields</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">since</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">until</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Validate arguments and convert them into GET parameters.</span>
+
+<span class="sd">        :param text: The text used for limiting the search.</span>
+<span class="sd">        :type text: str</span>
+<span class="sd">        :param strict_text: Whether we should use strict searching.</span>
+<span class="sd">        :type strict_text: bool, str, int</span>
+<span class="sd">        :param type_: The Indicator type to limit to.</span>
+<span class="sd">        :type type_: str</span>
+<span class="sd">        :param threat_type: The Threat type to limit to.</span>
+<span class="sd">        :type threat_type: str</span>
+<span class="sd">        :param fields: Select specific fields to pull</span>
+<span class="sd">        :type fields: str, list</span>
+<span class="sd">        :param limit: The maximum number of objects to return.</span>
+<span class="sd">        :type limit: int, str</span>
+<span class="sd">        :param since: The timestamp to limit the beginning of the search.</span>
+<span class="sd">        :type since: str</span>
+<span class="sd">        :param until: The timestamp to limit the end of the search.</span>
+<span class="sd">        :type until: str</span>
+<span class="sd">        :returns: dict</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">cls</span><span class="o">.</span><span class="n">validate_get</span><span class="p">(</span><span class="n">limit</span><span class="p">,</span> <span class="n">since</span><span class="p">,</span> <span class="n">until</span><span class="p">)</span>
+        <span class="n">strict</span> <span class="o">=</span> <span class="n">cls</span><span class="o">.</span><span class="n">sanitize_strict</span><span class="p">(</span><span class="n">strict_text</span><span class="p">)</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="n">text</span><span class="p">:</span>
+            <span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">TEXT</span><span class="p">]</span> <span class="o">=</span> <span class="n">text</span>
+        <span class="k">if</span> <span class="n">strict</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">STRICT_TEXT</span><span class="p">]</span> <span class="o">=</span> <span class="n">strict</span>
+        <span class="k">if</span> <span class="n">type_</span><span class="p">:</span>
+            <span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">TYPE</span><span class="p">]</span> <span class="o">=</span> <span class="n">type_</span>
+        <span class="k">if</span> <span class="n">threat_type</span><span class="p">:</span>
+            <span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">THREAT_TYPE</span><span class="p">]</span> <span class="o">=</span> <span class="n">threat_type</span>
+        <span class="k">if</span> <span class="n">fields</span><span class="p">:</span>
+            <span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">FIELDS</span><span class="p">]</span> <span class="o">=</span> <span class="s">&#39;,&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">fields</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fields</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="k">else</span> <span class="n">fields</span>
+        <span class="k">if</span> <span class="n">limit</span><span class="p">:</span>
+            <span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">LIMIT</span><span class="p">]</span> <span class="o">=</span> <span class="n">limit</span>
+        <span class="k">if</span> <span class="n">since</span><span class="p">:</span>
+            <span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">SINCE</span><span class="p">]</span> <span class="o">=</span> <span class="n">since</span>
+        <span class="k">if</span> <span class="n">until</span><span class="p">:</span>
+            <span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">UNTIL</span><span class="p">]</span> <span class="o">=</span> <span class="n">until</span>
+        <span class="k">return</span> <span class="n">params</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="Broker.get"><a class="viewcode-back" href="../../pytx.request.html#pytx.request.Broker.get">[docs]</a>    <span class="k">def</span> <span class="nf">get</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Send a GET request.</span>
+
+<span class="sd">        :param url: The URL to send the GET request to.</span>
+<span class="sd">        :type url: str</span>
+<span class="sd">        :param params: The GET parameters to send in the request.</span>
+<span class="sd">        :type params: dict</span>
+<span class="sd">        :returns: dict (using json.loads())</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">params</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+
+        <span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">ACCESS_TOKEN</span><span class="p">]</span> <span class="o">=</span> <span class="n">init</span><span class="o">.</span><span class="n">__ACCESS_TOKEN__</span>
+        <span class="n">resp</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">cls</span><span class="o">.</span><span class="n">handle_results</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="Broker.post"><a class="viewcode-back" href="../../pytx.request.html#pytx.request.Broker.post">[docs]</a>    <span class="k">def</span> <span class="nf">post</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Send a POST request.</span>
+
+<span class="sd">        :param url: The URL to send the POST request to.</span>
+<span class="sd">        :type url: str</span>
+<span class="sd">        :param params: The POST parameters to send in the request.</span>
+<span class="sd">        :type params: dict</span>
+<span class="sd">        :returns: dict (using json.loads())</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">params</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+
+        <span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">ACCESS_TOKEN</span><span class="p">]</span> <span class="o">=</span> <span class="n">init</span><span class="o">.</span><span class="n">__ACCESS_TOKEN__</span>
+        <span class="n">resp</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">cls</span><span class="o">.</span><span class="n">handle_results</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="Broker.delete"><a class="viewcode-back" href="../../pytx.request.html#pytx.request.Broker.delete">[docs]</a>    <span class="k">def</span> <span class="nf">delete</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Send a DELETE request.</span>
+
+<span class="sd">        :param url: The URL to send the DELETE request to.</span>
+<span class="sd">        :type url: str</span>
+<span class="sd">        :param params: The DELETE parameters to send in the request.</span>
+<span class="sd">        :type params: dict</span>
+<span class="sd">        :returns: dict (using json.loads())</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">params</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+
+        <span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">ACCESS_TOKEN</span><span class="p">]</span> <span class="o">=</span> <span class="n">init</span><span class="o">.</span><span class="n">__ACCESS_TOKEN__</span>
+        <span class="n">resp</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">cls</span><span class="o">.</span><span class="n">handle_results</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="Broker.get_generator"><a class="viewcode-back" href="../../pytx.request.html#pytx.request.Broker.get_generator">[docs]</a>    <span class="k">def</span> <span class="nf">get_generator</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">klass</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">total</span><span class="p">,</span> <span class="n">to_dict</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generator for managing GET requests. For each GET request it will yield</span>
+<span class="sd">        the next object in the results until there are no more objects. If the</span>
+<span class="sd">        GET response contains a &#39;next&#39; value in the &#39;paging&#39; section, the</span>
+<span class="sd">        generator will automatically fetch the next set of results and continue</span>
+<span class="sd">        the process until the total limit has been reached or there is no longer</span>
+<span class="sd">        a &#39;next&#39; value.</span>
+
+<span class="sd">        :param url: The URL to send the GET request to.</span>
+<span class="sd">        :type url: str</span>
+<span class="sd">        :param total: The total number of objects to return (-1 to disable).</span>
+<span class="sd">        :type total: None, int</span>
+<span class="sd">        :param to_dict: Return a dictionary instead of an instantiated class.</span>
+<span class="sd">        :type to_dict: bool</span>
+<span class="sd">        :param params: The GET parameters to send in the request.</span>
+<span class="sd">        :type params: dict</span>
+<span class="sd">        :returns: Generator</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">params</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">total</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">total</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">NO_TOTAL</span>
+        <span class="k">if</span> <span class="n">total</span> <span class="o">==</span> <span class="n">t</span><span class="o">.</span><span class="n">MIN_TOTAL</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="bp">None</span>
+        <span class="n">next_</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">while</span> <span class="n">next_</span><span class="p">:</span>
+            <span class="n">results</span> <span class="o">=</span> <span class="n">cls</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">data</span> <span class="ow">in</span> <span class="n">results</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">DATA</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">total</span> <span class="o">==</span> <span class="n">t</span><span class="o">.</span><span class="n">MIN_TOTAL</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">StopIteration</span>
+                <span class="k">if</span> <span class="n">to_dict</span><span class="p">:</span>
+                    <span class="k">yield</span> <span class="n">data</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">yield</span> <span class="n">cls</span><span class="o">.</span><span class="n">get_new</span><span class="p">(</span><span class="n">klass</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+                <span class="n">total</span> <span class="o">-=</span> <span class="n">t</span><span class="o">.</span><span class="n">DEC_TOTAL</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">next_</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">PAGING</span><span class="p">][</span><span class="n">t</span><span class="o">.</span><span class="n">NEXT</span><span class="p">]</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="n">next_</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="k">if</span> <span class="n">next_</span><span class="p">:</span>
+                <span class="n">url</span> <span class="o">=</span> <span class="n">next_</span>
+                <span class="n">params</span> <span class="o">=</span> <span class="p">{}</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">pytx 0.1.3 documentation</a> &raquo;</li>
+          <li><a href="../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2015, Mike Goffin.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2b3.
+    </div>
+  </body>
+</html>
