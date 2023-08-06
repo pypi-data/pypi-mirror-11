@@ -1,0 +1,125 @@
+#!/usr/bin/env python
+
+"""
+goverlap
+
+goverlap is an ontology term enrichment analyzer
+(Visit github.com/endrebak/goverlap for examples, docs and help.)
+
+Usage:
+    goverlap --genes-a=A [--genes-b=B] [--experiment=EXP] [--species=SPE] [--ontologies=ONT] [--limit=LIM] [--ncpus=CPU] [--verbosity=VRB]
+    goverlap --help
+
+Arguments:
+    -a A --genes-a=A         newline-separated list of the genes in experiment A
+
+Options:
+    -h --help                show this message
+    -b B --genes-b=B         newline-separated list of the genes in experiment B
+    -s SPE --species=SPE     species to do analysis on (human, mouse or rat) [default: human]
+    -o ONT --ontologies=ONT  comma-separated list of ontologies [default: CC,MF,BP,KEGG]
+    -l LIM --limit=LIM       max percent of total genes allowed to be associated with the category [default: 0.25]
+    -x EXP --experiment=EXP  newline-separated list of all the genes in the experiment
+    -v VRB --verbosity VRB   options: quiet, info, debug [default: info]
+    -n CPU --ncpus=CPU       number of cores used [default: 1]
+
+Note:
+    The gene names need to be of the kind called "external_gene_name"/"associated gene name" in BioMart.
+    If they are in any other format, you need to use a BioMart id converter to convert them to this format.
+    (see BioMart.org or github.com/endrebak/biomartian)
+"""
+
+from __future__ import print_function
+from docopt import docopt
+from ebs.args import turn_docopt_arg_names_into_valid_var_names
+
+def get_args_data():
+
+    """Validate and massage docopt cl-args."""
+
+    args = turn_docopt_arg_names_into_valid_var_names(docopt(__doc__))
+
+    # Read input files into a list
+    genes_a, genes_b = args["genes_a"], args["genes_b"]
+    gene_vectors = [_read_input_table(genes_a)]
+
+    if genes_b:
+        gene_vectors.append(_read_input_table(genes_b))
+
+    # remove one vector if they are equal
+    if _are_vectors_equal(gene_vectors):
+        gene_vectors = gene_vectors[:1]
+
+    experiment_genes = []
+    if args["experiment"]:
+        experiment_genes = _read_input_table(args["experiment"])
+
+
+
+    ontologies = args["ontologies"].split(",")
+    valid_ontologies = ["CC", "BP", "MF", "KEGG"]
+    _assert_ontologies_valid(ontologies, valid_ontologies)
+
+    # set the verbosity level
+    _set_verbosity_level(args["verbosity"])
+
+
+    species_to_ensembl_map = {"rat": "rnorvegicus_gene_ensembl",
+                          "human": "hsapiens_gene_ensembl",
+                          "mouse": "mmusculus_gene_ensembl"}
+    dataset = args["species"]
+    if dataset in species_to_ensembl_map:
+        dataset = species_to_ensembl_map[dataset]
+
+    nb_cpus = int(args["ncpus"] or 1)
+
+    max_genes_prct_limit = float(args["limit"] or 0.25)
+
+    return ontologies, dataset, gene_vectors, experiment_genes, nb_cpus, max_genes_prct_limit
+
+
+def _are_vectors_equal(gene_vectors):
+    if len(gene_vectors) == 2:
+        vector_a, vector_b = gene_vectors
+        return set(vector_a.str.upper()) == set(vector_b.str.upper())
+    else:
+        return True
+
+def _read_input_table(name):
+
+    """Read an input file that is merely a list of \n-separated gene names."""
+    import pandas as pd
+    return pd.read_table(name, squeeze=True, names=["Gene"]).drop_duplicates()
+
+
+def _assert_ontologies_valid(ontologies, valid_ontologies):
+    """Make sure that requested ontologies are supported."""
+
+    "Not all input ontologies ({}) in the list of valid ontologies {}" \
+    .format(ontologies, ",".join(valid_ontologies))
+
+
+def _set_verbosity_level(verbosity):
+
+    import logging
+    import sys
+    # just so case does not matter
+    verbosity = verbosity.lower()
+
+    if verbosity == "debug":
+        level = logging.DEBUG
+    elif verbosity == "quiet":
+        level = logging.ERROR
+    else: # "info" or misspelled
+        level = logging.INFO
+
+    logging.basicConfig(level=level, format='%(message)s (Time: %(asctime)s)',
+                        datefmt='%a, %d %b %Y %H:%M:%S', stream=sys.stderr)
+
+if __name__ == "__main__":
+
+    ontology_to_root, dataset, gene_vectors, genes_experiment, nb_processes, max_genes_prct_limit = get_args_data()
+
+    from go_overlap.main import main
+
+    main(ontology_to_root, dataset, gene_vectors, genes_experiment, nb_processes, max_genes_prct_limit)
