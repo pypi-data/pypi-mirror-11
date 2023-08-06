@@ -1,0 +1,221 @@
+Metadata-Version: 1.1
+Name: launchkey-twisted
+Version: 1.0.0
+Summary: LaunchKey Asynchronous SDK for Twisted
+Home-page: https://launchkey.com
+Author: LaunchKey
+Author-email: support@launchkey.com
+License: MIT
+Description: LaunchKey Twisted SDK
+        =====================
+        
+        .. image:: https://travis-ci.org/LaunchKey/launchkey-python-twisted.svg?branch=master
+            :target: https://travis-ci.org/LaunchKey/launchkey-python-twisted
+        
+        Overview
+        --------
+        
+        The LaunchKey Twisted library allows for asynchronous communication with the LaunchKey Engine API
+        via a Python library and Twisted. The public interface is the same as the
+        `synchronous SDK <https://github.com/LaunchKey/launchkey-python>`_ with the two exceptions:
+        
+        1.  The first argument of the init script for launchkey_twisted.TwistedAPI is a
+            `Twisted Web Client Agent <https://twistedmatrix.com/documents/current/api/twisted.web.client.Agent.html>`_.
+        
+        2.  All public methods return
+            `Twisted Deferred <https://twistedmatrix.com/documents/current/api/twisted.internet.defer.Deferred.html>`_
+            objects.
+        
+        Installation
+        ------------
+        
+        .. code-block:: bash
+        
+            $ easy_install launchkey-twisted
+        
+        
+        or
+        
+        .. code-block:: bash
+        
+            $ pip install launchkey-twisted
+        
+        
+        The following example is a functional representation of a simple session based launch request and subsequent
+        de-orbit if applicable.  *The use of polling is not suggested for production server based implementations.*
+        
+        .. code-block:: python
+        
+            import sys
+            from twisted.python import log
+            from twisted.internet import task, reactor, defer
+            from twisted.web.client import Agent
+            from launchkey_twisted import TwistedAPI, PendingResponse
+        
+            # agent is needed to link the SDK to the reactor as an HTTP client
+            agent = Agent(reactor)
+        
+            # app_key will be provided in the dashboard
+            app_key = 1234567890
+        
+            # app_secret will be provided in the dashboard once, or a new one may be generated
+            app_secret = "abcdefghijklmnopqrstuvwxyz123456"
+        
+        
+            # private key location will will be the path to the private key file you received from the dashboard or the
+            # private key file you used to generate the public key you uploaded to the dashboard
+            private_key_location = "/path/to/private.key"
+        
+            # Your LaunchKey username
+            username = "myusername"
+        
+            # Poll interval determines the delay in seconds between poll requests
+            poll_interval = 1.0
+        
+            # Log out delay determines the delay in seconds between an accepted authentication and logout
+            log_out_delay = 3.0
+        
+            # If you are having issues, set this to true for verbose logging onthe reactor
+            debug = False
+        
+        
+            def handle_auth_response(auth_request):
+                """
+                Receives the auth_request identifier and begin the polling process
+                :param auth_request: Identifier for this authentication request returned by the LaunchKey Engine API
+                :return: Deferred
+                """
+                print("Authentication request successfully initiated with identifier: {0}".format(auth_request))
+                return poll_for_user_repsonse(auth_request)
+        
+        
+            def poll_for_user_repsonse(auth_request):
+                """
+                Schedule the next poll operation.   Adds callback for success and error situations
+                :param auth_request: Identifier for this authentication request returned by the LaunchKey Engine API
+                :return: Deferred
+                """
+                print("Poll for user response in {0} seconds".format(poll_interval))
+                d = task.deferLater(reactor, poll_interval, api.poll_request, auth_request)
+                d.addCallback(handle_poll_response, auth_request)
+                d.addErrback(handle_poll_error)
+                return d
+        
+        
+            def handle_poll_error(failure):
+                """
+                Trap PendingResponse errors and schedule another poll
+                :param failure:
+                :return: Deferred
+                """
+                failure.trap(PendingResponse)
+                return poll_for_user_repsonse(failure.value.auth_request)
+        
+        
+            def handle_poll_response(response, auth_request):
+                """
+                Receive the poll response and the original auth_request to validate the poll response package and detyermine the
+                outcome.
+                :param response: Poll response object
+                :param auth_request: Identifier for this authentication request returned by the LaunchKey Engine API
+                :return: Deferred
+                """
+                print("User response received, checking the response package")
+                deferred = api.is_authorized(auth_request, response['auth'])
+                deferred.addCallback(handle_is_authorized_response, auth_request)
+                return deferred
+        
+        
+            def handle_is_authorized_response(authorized, auth_request):
+                """
+                Receive the is_authorized response and schedule the logout if authorized
+                :param authorized: Boolean value depicting the users response to the auth_request.
+                (True: accepted | False: declined)
+                :param auth_request: Identifier for this authentication request returned by the LaunchKey Engine API
+                :return: Deferred
+                """
+                if authorized:
+                    print("User accepted, scheduling logout for {0} seconds from now".format(log_out_delay))
+                    deferred = task.deferLater(reactor, log_out_delay, log_user_out, auth_request)
+                else:
+                    print("User declined")
+                    deferred = defer.succeed(True)
+        
+                return deferred
+        
+        
+            def log_user_out(auth_request):
+                """
+                End the user session for the provided authentication request
+                :param auth_request: Identifier for this authentication request returned by the LaunchKey Engine API
+                :return: Deferred
+                """
+                print("Logging user out")
+                deferred = api.logout(auth_request)
+                deferred.addCallback(done)
+                return deferred
+        
+        
+            def handle_error(failure):
+                """
+                Print an error
+                :param failure:
+                :return:
+                """
+                print("Completed with error: ", failure)
+                return failure
+        
+        
+            def done(*args):
+                """
+                Stop the reactor
+                :param args:
+                :return:
+                """
+                reactor.stop()
+                print("Reactor stopped")
+        
+        
+            agent = Agent(reactor)
+        
+            api = TwistedAPI(
+                agent,
+                app_key,
+                app_secret,
+                open(private_key_location, "r").read()
+            )
+        
+            print("Starting authentication request for user: {0}".format(username))
+            auth = api.authorize(username, True)
+            auth.addCallback(handle_auth_response)
+            auth.addErrback(handle_error)
+            auth.addBoth(done)
+        
+            if debug:
+                log.startLogging(sys.stderr)
+        
+            print("Starting reactor")
+            reactor.run()
+        
+        Tests
+        -----
+        
+        .. code-block:: bash
+        
+            $ python setup.py nosetests
+        
+        Contributing
+        ------------
+        
+        1. Fork it
+        2. Create your feature branch (`git checkout -b my-new-feature`)
+        3. Commit your changes (`git commit -am 'Add some feature'`)
+        4. Push to the branch (`git push origin my-new-feature`)
+        5. Create new Pull Request
+        
+Platform: UNKNOWN
+Classifier: Programming Language :: Python
+Classifier: Framework :: Twisted
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
