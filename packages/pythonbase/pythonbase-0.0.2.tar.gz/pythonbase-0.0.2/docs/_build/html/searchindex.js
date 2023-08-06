@@ -1,0 +1,1 @@
+Search.setIndex({envversion:42,terms:{content:1,packag:1,modul:1,doc:0,pythonbas:0},objtypes:{"0":"py:module"},objnames:{"0":["py","module","Python module"]},filenames:["index","modules","pythonbase"],titles:["Pythonbase","pythonbase","pythonbase package"],objects:{"":{pythonbase:[2,0,0,"-"]}},titleterms:{content:2,pythonbas:[1,2],modul:2,packag:2}})
