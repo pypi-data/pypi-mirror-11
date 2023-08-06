@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <meta name="description" content="MultiQC: A modular tool to aggregate results from bioinformatics analyses across many samples into a single report">
+  <meta name="author" content="MultiQC">
+  <title>{{ report['title'] + ': ' if report['title'] != None }}MultiQC Report</title>
+
+  <link href="assets/css/bootstrap.min.css" rel="stylesheet">
+  {%- for m in modules %}{% if m.css and m.css|length > 0 -%}{% for css_href in m.css %}
+  <link href="{{ css_href }}" rel="stylesheet">
+  {%- endfor %}{% endif %}{% endfor %}
+  <link href="assets/css/default_multiqc.css" rel="stylesheet">
+
+  <script src="assets/js/jquery-1.11.3.min.js"></script>
+  <script src="assets/js/jquery-ui.min.js"></script>
+  <script src="assets/js/bootstrap.min.js"></script>
+  <script src="assets/js/highcharts.js"></script>
+  <script src="http://code.highcharts.com/modules/exporting.js"></script>
+  <script src="assets/js/chroma.min.js"></script>
+  <script src="assets/js/multiqc.js"></script>
+  {%- for m in modules %}{% if m.js and m.js|length > 0 -%}{% for js_href in m.js %}
+  <script src="{{ js_href }}"></script>
+  {%- endfor %}{% endif %}{% endfor %}
+</head>
+<body>
+
+<div class="side-nav">
+  <h1><a href="#"><img src="assets/img/MultiQC_logo.png" title="MultiQC"></a></h1>
+  <ul class="mqc-nav">
+    {% if report['general_stats']['headers']|length > 0 %}
+    <li><a href="#general_stats">General Stats</a></li>
+    {% endif -%}
+    {% for m in modules %}
+    <li>
+      <a href="#{{ m.anchor }}">{{ m.name }}</a>
+      <ul>
+      {% for s in m.sections -%}
+        <li><a href="#{{ s['anchor'] }}">{{ s['name']|striptags }}</a></li>
+      {%- endfor %}
+      </ul>
+    </li>
+    {% endfor %}
+  </ul>
+  <div id="mqc_cols" class="mqc_filter_section">
+    <h5>Highlight samples:</h5>
+    <form class="form-inline" id="mqc_color_form">
+      <input id="mqc_colour_filter" type="text" placeholder="Custom Pattern" class="form-control input-sm">
+      <input id="mqc_colour_filter_color" type="color" value="#e41a1c" class="form-control input-sm">
+      <button type="submit" id="mqc_colour_filter_update" class="btn btn-default btn-sm">+</button>
+    </form>
+    <ul id="mqc_col_filters" class="mqc_filters"></ul>
+    <small class="mqc_regex_mode">Regex mode <strong>off</strong></small>
+  </div>
+  <div id="mqc_hidesamples" class="mqc_filter_section">
+    <h5>Hide samples:</h5>
+    <form class="form-inline" id="mqc_hidesamples_form">
+      <input id="mqc_hidesamples_filter" type="text" placeholder="Custom Pattern" class="form-control input-sm">
+      <button type="submit" id="mqc_hidesamples_filter_update" class="btn btn-default btn-sm">+</button>
+    </form>
+    <ul id="mqc_hidesamples_filters" class="mqc_filters"></ul>
+    <small class="mqc_regex_mode">Regex mode <strong>off</strong></small>
+  </div>
+</div>
+
+<div class="mainpage">
+
+  <h1 id="page_title"><a href="https://github.com/ewels/MultiQC" target="_blank"><img src="assets/img/MultiQC_logo.png" title="MultiQC"></a></h1>
+  {{ '<h2>'+report['title']+'</h2>' if report['title'] != None }}
+  <p class="lead">A modular tool to aggregate results from bioinformatics analyses across many samples into a single report.</p>
+  <p>Report generated on {{ report['creation_date'] }} based on data in <code>{{ report['analysis_dir'] }}</code></p>
+  <p>Report location: <code>{{ report['output_dir'] }}/multiqc_report.html</code></p>
+
+  {% if report['general_stats']['headers']|length > 0 %}
+  <h2 id="general_stats">General Statistics</h2>
+  <div class="table-responsive">
+    <table id="general_stats_table" class="table table-hover table-bordered table-condensed table-nostretch">
+      <thead>
+        <tr>
+          <th></th>
+          {%- for k, h in report['general_stats']['headers'].iteritems() %}
+            {{ h }}
+          {%- endfor -%}
+        </tr>
+      </thead>
+      <tbody>
+        {% for sn, r in report['general_stats']['rows']|dictsort %}
+        <tr>
+          <th>{{ sn }}</th>
+          {%- for k, h in report['general_stats']['headers'].iteritems() %}
+            {{ r[k] if r[k] else '<td></td>' }}
+          {%- endfor -%}
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% for m in modules %}
+    <h2 id="{{ m.anchor }}">{{ m.name }}</h2>
+    {{ m.intro if m.intro }}
+    {% for s in m.sections %}
+      <div class="mqc-section">
+        <h3 id="{{ s['anchor'] }}">{{ s['name'] }}</h3>
+        {{ s['content'] if s['content'] }}
+        {{ '<hr>' if not loop.last }}
+      </div>
+    {% endfor %}
+    {{ '<hr>' if not loop.last }}
+  {% endfor %}
+
+</div>
+
+<div class="footer">
+  <div class="container-fluid">
+    <p>
+      <a href="http://www.scilifelab.se/" target="_blank" class="pull-right"><img src="assets/img/SciLifeLab.png" style="height:41px;"></a>
+      <strong><a href="https://github.com/ewels/MultiQC" target="_blank">MultiQC</a></strong> -
+      Written by <a href="http://phil.ewels.co.uk" target="_blank">Phil Ewels</a>, available on <a href="https://github.com/ewels/MultiQC" target="_blank">GitHub</a>.</p>
+    <p>The report uses <a href="http://www.highcharts.com/" target="_blank">HighCharts</a>, <a href="https://jquery.com/" target="_blank">jQuery</a>,
+       <a href="http://getbootstrap.com/" target="_blank">Bootstrap</a> and <a href="https://github.com/gka/chroma.js" target="_blank">chroma.js</a></p>
+  </div>
+</div>
+
+</body>
+</html>
