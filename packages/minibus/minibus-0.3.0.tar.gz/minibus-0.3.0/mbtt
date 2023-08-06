@@ -1,0 +1,275 @@
+#!/usr/bin/env python
+"""
+mbtt - MiniBus Topic Tool
+"""
+import argparse
+from minibus import MiniBusSocketClient
+import uuid
+import json
+import jsonschema
+import sys
+sys.DONT_WRITE_BYTECODE = True
+
+class TopicTool(object):
+    def __init__(self, args):
+        self.args = args
+
+        self.pub = None
+        self.caller = None
+        if self.args.cmd == "echo":
+            self.subscribe(self.args.topic, self.args.schema, self.print_callback, headers=True)
+        if self.args.cmd == "pub":
+            self.subscribe(self.args.topic, self.args.schema, self.pub_confirm_callback)
+            self.pub = self.publisher(self.args.topic, self.args.schema)
+
+        if self.args.cmd == "clients":
+            self.caller = self.service_client("/__minibus__/__listclients__",
+                                              {"type": "null"}, {"type": "string"},
+                                              self.clients_callback, self.clients_callback)
+            self.clients = list()
+            self.callerid = None
+        if self.args.cmd == "publishers":
+            self.caller = self.service_client("/__minibus__/__publishers__",
+                                              {"type": "null"}, {"type": "array"},
+                                              self.print_service_callback, self.print_service_callback)
+        if self.args.cmd == "subscribers":
+            self.caller = self.service_client("/__minibus__/__subscribers__",
+                                              {"type": "null"}, {"type": "array"},
+                                              self.print_service_callback, self.print_service_callback)
+        if self.args.cmd == "services":
+            self.caller = self.service_client("/__minibus__/__service_servers__",
+                                              {"type": "null"}, {"type": "array"},
+                                              self.print_service_callback, self.print_service_callback)
+
+    def print_callback(self, header, data):
+        if self.args.headers:
+            print header
+        print data
+
+    def print_service_callback(self, idstr, data):
+        print data
+
+    def pub_confirm_callback(self, data):
+        """ exits program after confirming that data was sent """
+        if str(data) == str(self.args.data):
+            self.closedown()
+
+    def run(self):
+        if self.pub:
+            try:
+                self.pub(self.args.data)
+            except jsonschema.exceptions.ValidationError as e:
+                print e
+                self.closedown()
+
+        elif self.caller:
+            try:
+                self.callerid = self.caller(None)
+            except jsonschema.exceptions.ValidationError as e:
+                print e
+                self.closedown()
+
+        if (not self.pub) and self.args.socket:
+            # Sockets need to be spun while twisted doesn't
+            self.spin()
+            self.closedown()
+
+
+try:
+    from minibus import MiniBusTwistedClient
+    class TwistedTopicTool(MiniBusTwistedClient, TopicTool):
+        def __init__(self, args):
+            MiniBusTwistedClient.__init__(self, name=args.name, cryptokey=args.cryptokey)
+            TopicTool.__init__(self, args)
+
+            # These functions don't have definitive ends to them because we don't know
+            # how many responses we will get. So just timeout after about a second.
+            if self.args.cmd in ["clients", "publishers", "subscribers", "services"]:
+                from twisted.internet import reactor
+                reactor.callLater(1, self.exit_)
+
+        @MiniBusTwistedClient.inlineServiceCallbacks
+        def clients_callback(self, idstr, data):
+            client_info = list()
+            client_info.append(data)
+            if self.args.hostnames:
+                get_hostname = self.service_func_client("/__minibus__/%s/__hostname__" % data, {"type": "null"}, {"type": "string"})
+                hostname = yield get_hostname(None)
+
+            if self.args.pids:
+                get_pid = self.service_func_client("/__minibus__/%s/__pid__" % data, 
+                                                   {"type": "null"}, 
+                                                   {"type": "integer"})
+                pid = yield get_pid(None)
+
+            if self.args.publishers:
+                get_publishers = self.service_func_client("/__minibus__/%s/__publishers__" % data, 
+                                                          {"type": "null"}, 
+                                                          {"type": "array"})
+                publishers = yield get_publishers(None)
+
+            if self.args.subscribers:
+                get_subscribers = self.service_func_client("/__minibus__/%s/__subscribers__" % data, 
+                                                          {"type": "null"}, 
+                                                          {"type": "array"})
+                subscribers = yield get_subscribers(None)
+
+            if self.args.services:
+                get_services = self.service_func_client("/__minibus__/%s/__service_servers__" % data, 
+                                                          {"type": "null"}, 
+                                                          {"type": "array"})
+                services = yield get_services(None)
+
+            print client_info[0]+":"
+            if self.args.pids:
+                print "  PID: %d" % pid
+            if self.args.hostnames:
+                print "  HOSTNAME: %s" % hostname
+            if self.args.publishers:
+                print "  PUBLISHES:"
+                for p in publishers:
+                    print "\t%s" % p
+            if self.args.subscribers:
+                print "  SUBSCRIBES:"
+                for s in subscribers:
+                    print "\t%s" % s
+            if self.args.services:
+                print "  SERVICES:"
+                for s in services:
+                    print "\t%s" % s
+            print ""
+
+        def closedown(self):
+            self.exit_()
+except Exception:
+    class TwistedTopicTool(object):
+        def __init__(self, args):
+            print "Unable to load Twisted Libraries. Are they installed?"
+            exit(1)
+
+
+class SocketTopicTool(MiniBusSocketClient, TopicTool):
+    def __init__(self, args):
+        MiniBusSocketClient.__init__(self, name=args.name, cryptokey=args.cryptokey)
+        TopicTool.__init__(self, args)
+
+        if self.args.cmd in ["clients", "publishers", "subscribers", "services"]:
+            import threading
+            threading.Timer(1.0, self.closedown).start()
+
+
+    def clients_callback(self, idstr, data):
+        if self.args.hostnames:
+            get_hostname = self.service_func_client("/__minibus__/%s/__hostname__" % data, {"type": "null"}, {"type": "string"})
+            hostname = get_hostname(None)
+
+        if self.args.pids:
+            get_pid = self.service_func_client("/__minibus__/%s/__pid__" % data, 
+                                               {"type": "null"}, 
+                                               {"type": "integer"})
+            pid = get_pid(None)
+
+        if self.args.publishers:
+            get_publishers = self.service_func_client("/__minibus__/%s/__publishers__" % data, 
+                                                      {"type": "null"}, 
+                                                      {"type": "array"})
+            publishers = get_publishers(None)
+
+        if self.args.subscribers:
+            get_subscribers = self.service_func_client("/__minibus__/%s/__subscribers__" % data, 
+                                                      {"type": "null"}, 
+                                                      {"type": "array"})
+            subscribers = get_subscribers(None)
+
+        if self.args.services:
+            get_services = self.service_func_client("/__minibus__/%s/__service_servers__" % data, 
+                                                      {"type": "null"}, 
+                                                      {"type": "array"})
+            services = get_services(None)
+
+        print data+":"
+        if self.args.pids:
+            print "  PID: %d" % pid
+        if self.args.hostnames:
+            print "  HOSTNAME: %s" % hostname
+        if self.args.publishers:
+            print "  PUBLISHES:"
+            for p in publishers:
+                print "\t%s" % p
+        if self.args.subscribers:
+            print "  SUBSCRIBES:"
+            for s in subscribers:
+                print "\t%s" % s
+        if self.args.services:
+            print "  SERVICES:"
+            for s in services:
+                print "\t%s" % s
+        print ""
+
+
+    def closedown(self):
+        self.close()
+        exit(0)
+
+
+def multi_find_replace(text, patterns):
+    """ Finds and replaces multiple different strings in a piece of text.
+    text(str) : the text to do the find and replace inside.
+    patterns(dict) : a dictionary with keys being text to be replace by their values
+    Written by Andrew Clark 2011-05-11
+    http://stackoverflow.com/a/6117124
+    """
+    import re
+    rep = patterns
+    rep = dict((re.escape(k), v) for k,v in rep.iteritems())
+    pattern = re.compile("|".join(rep.keys()))
+    return pattern.sub(lambda m: rep[re.escape(m.group(0))], text)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser("mbtt", description="MiniBus Topic Tool")
+    parser.add_argument("--socket", action="store_true", help="uses socket interface instead of twisted")
+    parser.add_argument("--name", type=str, default="mbtt-%s" % format(uuid.uuid4().fields[0], '02X'), help="MiniBus Client Name")
+    parser.add_argument("--cryptokey", type=str, default=None, help="Encrypt data using this key")
+    subparsers = parser.add_subparsers(dest="cmd")
+
+    parser_echo = subparsers.add_parser('echo', help="listen to topic")
+    parser_echo.add_argument("topic", type=str, help="topic pattern to listen to")
+    parser_echo.add_argument("--schema", type=str, default="", help="topic schema")
+    parser_echo.add_argument("--headers", action="store_true", help="Show topic headers")
+
+    parser_pub = subparsers.add_parser('pub', help="publish to topic")
+    parser_pub.add_argument("topic", type=str, help="topic pattern to listen to")
+    parser_pub.add_argument("data", type=str, help="data to send - must be json")
+    parser_pub.add_argument("--schema", type=str, default="", help="topic schema")
+
+    parser_clients = subparsers.add_parser('clients', help="list clients")
+    parser_clients.add_argument("--hostnames", action="store_true", help="show hostnames")
+    parser_clients.add_argument("--pids", action="store_true", help="show pids")
+    parser_clients.add_argument("--publishers", action="store_true", help="show publishers")
+    parser_clients.add_argument("--subscribers", action="store_true", help="show subscribers")
+    parser_clients.add_argument("--services", action="store_true", help="show services")
+
+    parser_publishers = subparsers.add_parser('publishers', help="list publishers")
+
+    parser_publishers = subparsers.add_parser('subscribers', help="list subscribers")
+
+    parser_publishers = subparsers.add_parser('services', help="list services")
+
+    args = parser.parse_args()
+    if "schema" in args.__dict__.keys():
+        if args.schema == "":
+            args.schema = dict()
+        else:
+            # swap " and ' symbols in schema
+            args.schema = multi_find_replace(args.schema, {"\"": "'", "'": "\""})
+            args.schema = json.loads(args.schema)
+
+    if args.cmd =="pub" and args.data == "null":
+        args.data = None
+
+    if args.socket:
+        tt = SocketTopicTool(args)
+        tt.run()
+    else:
+        tt = TwistedTopicTool(args)
+        tt.exec_()
