@@ -1,0 +1,533 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+            "http://www.w3.org/TR/REC-html40/loose.dtd">
+<HTML>
+<HEAD>
+
+<META http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+<META name="GENERATOR" content="hevea 1.07">
+<TITLE>
+Sequence Input/Output
+</TITLE>
+</HEAD>
+<BODY >
+<A HREF="Tutorial004.html"><IMG SRC ="previous_motif.gif" ALT="Previous"></A>
+<A HREF="index.html"><IMG SRC ="contents_motif.gif" ALT="Up"></A>
+<A HREF="Tutorial006.html"><IMG SRC ="next_motif.gif" ALT="Next"></A>
+<HR>
+
+<H1><A NAME="htoc26">Chapter&nbsp;4</A>&nbsp;&nbsp;Sequence Input/Output</H1>
+<A NAME="chapter:Bio.SeqIO"></A>
+In this chapter we'll discuss in more detail the <CODE>Bio.SeqIO</CODE> module, which was briefly introduced in Chapter&nbsp;<A HREF="Tutorial003.html#chapter:quick-start">2</A>. This is a relatively new interface, added in Biopython 1.43, which aims to provide a simple interface for working with assorted sequence file formats in a uniform way.<BR>
+<BR>
+The ``catch'' is that you have to work with <CODE>SeqRecord</CODE> ojects - which contain a <CODE>Seq</CODE> object (as described in Chapter&nbsp;<A HREF="Tutorial004.html#chapter:Bio.Seq">3</A>) plus annotation like an identifier and description. We'll introduce the basics of <CODE>SeqRecord</CODE> object in this chapter, but see Section&nbsp;<A HREF="Tutorial010.html#sec:advanced-seq">9.1</A> for more details.<BR>
+<BR>
+<A NAME="toc19"></A>
+<H2><A NAME="htoc27">4.1</A>&nbsp;&nbsp;Parsing or Reading Sequences</H2>
+The workhorse function <CODE>Bio.SeqIO.parse()</CODE> is used to read in sequence data as SeqRecord objects. This function expects two arguments:
+<OL type=1><LI>
+The first argument is a <I>handle</I> to read the data from. A handle is typically a file opened for reading, but could be the output from a command line program, or data downloaded from the internet (see Section&nbsp;<A HREF="#sec:SeqIO_Online">4.2</A>). See Section&nbsp;<A HREF="Tutorial012.html#sec:appendix-handles">11.1</A> for more about handles.
+<LI>The second argument is a lower case string specifying sequence format -- we don't try and guess the file format for you!
+</OL>
+This returns an <I>iterator</I> which gives <CODE>SeqRecord</CODE> objects. Iterators are typically used in a for loop.<BR>
+<BR>
+Sometimes you'll find yourself dealing with files which contain only a single record. For this situation Biopython 1.45 introduced the function <CODE>Bio.SeqIO.read()</CODE>. Again, this takes a handle and format as arguments. Provided there is one and only one record, this is returned as a <CODE>SeqRecord</CODE> object.<BR>
+<BR>
+
+<H3><A NAME="htoc28">4.1.1</A>&nbsp;&nbsp;Reading Sequence Files</H3>
+In general <CODE>Bio.SeqIO.parse()</CODE> is used to read in sequence files as <CODE>SeqRecord</CODE> objects, and is typically used with a for loop like this:
+<PRE>
+from Bio import SeqIO
+handle = open("ls_orchid.fasta")
+for seq_record in SeqIO.parse(handle, "fasta") :
+    print seq_record.id
+    print repr(seq_record.seq)
+    print len(seq_record.seq)
+handle.close()
+</PRE>
+The above example is repeated from the introduction in Section&nbsp;<A HREF="Tutorial003.html#sec:sequence-parsing">2.4</A>, and will load the orchid DNA sequences in the FASTA format file <A HREF="http://biopython.org/DIST/docs/tutorial/examples/ls_orchid.fasta">ls_orchid.fasta</A>. If instead you wanted to load a GenBank format file like <A HREF="http://biopython.org/DIST/docs/tutorial/examples/ls_orchid.gbk">ls_orchid.gbk</A> then all you need to do is change the filename and the format string:
+<PRE>
+from Bio import SeqIO
+handle = open("ls_orchid.gbk")
+for seq_record in SeqIO.parse(handle, "genbank") :
+    print seq_record.id
+    print seq_record.seq
+    print len(seq_record.seq)
+handle.close()
+</PRE>
+Similarly, if you wanted to read in a file in another file format, then assuming <CODE>Bio.SeqIO.parse()</CODE> supports it you would just need to change the format string as appropriate, for example ``swiss'' for SwissProt files or ``embl'' for EMBL text files. There is a full listing on the wiki page (<A HREF="http://biopython.org/wiki/SeqIO"><TT>http://biopython.org/wiki/SeqIO</TT></A>).<BR>
+<BR>
+
+<H3><A NAME="htoc29">4.1.2</A>&nbsp;&nbsp;Iterating over the records in a sequence file</H3>
+In the above examples, we have usually used a for loop to iterate over all the records one by one. You can use the for loop with all sorts of Python objects (including lists, tuples and strings) which support the iteration interface.<BR>
+<BR>
+The object returned by <CODE>Bio.SeqIO</CODE> is actually an iterator which returns <CODE>SeqRecord</CODE> objects. You get to see each record in turn, but once and only once. The plus point is that an iterator can save you memory when dealing with large files.<BR>
+<BR>
+Instead of using a for loop, can also use the <CODE>.next()</CODE> method of an iterator to step through the entries, like this:
+<PRE>
+from Bio import SeqIO
+handle = open("ls_orchid.fasta")
+record_iterator = SeqIO.parse(handle, "fasta")
+
+first_record = record_iterator.next()
+print first_record.id
+print first_record.description
+
+second_record = record_iterator.next()
+print second_record.id
+print second_record.description
+
+handle.close()
+</PRE>
+Note that if you try and use <CODE>.next()</CODE> and there are no more results, you'll either get back the special Python object <CODE>None</CODE> or a <CODE>StopIteration</CODE> exception.<BR>
+<BR>
+One special case to consider is when your sequence files have multiple records, but you only want the first one. In this situation the following code is very concise:
+<PRE>
+from Bio import SeqIO
+first_record  = SeqIO.parse(open("ls_orchid.gbk"), "genbank").next()
+</PRE>
+A word of warning here -- using the <CODE>.next()</CODE> method like this will silently ignore any additional records in the file.
+If your files have <I>one and only one</I> record, like some of the online examples later in this chapter, or a GenBank file for a single chromosome, then use the new <CODE>Bio.SeqIO.read()</CODE> function instead.
+This will check there are no extra unexpected records present.<BR>
+<BR>
+
+<H3><A NAME="htoc30">4.1.3</A>&nbsp;&nbsp;Getting a list of the records in a sequence file</H3>
+In the previous section we talked about the fact that <CODE>Bio.SeqIO.parse()</CODE> gives you a <CODE>SeqRecord</CODE> iterator, and that you get the records one by one. Very often you need to be able to access the records in any order. The Python <I>list</I> data type is perfect for this, and we can turn the record iterator into a list of <CODE>SeqRecord</CODE> objects using the built-in Python function <CODE>list()</CODE> like so:
+<PRE>
+from Bio import SeqIO
+handle = open("ls_orchid.gbk")
+records = list(SeqIO.parse(handle, "genbank"))
+handle.close()
+
+print "Found %i records" % len(records)
+
+print "The last record"
+last_record = records[-1] #using Python's list tricks
+print last_record.id
+print repr(last_record.seq)
+print len(last_record.seq)
+
+print "The first record"
+first_record = records[0] #remember, Python counts from zero
+print first_record.id
+print repr(first_record.seq)
+print len(first_record.seq)
+</PRE>
+Giving:
+<PRE>
+Found 94 records
+The last record
+Z78439.1
+Seq('CATTGTTGAGATCACATAATAATTGATCGAGTTAATCTGGAGGATCTGTTTACT...GCC', IUPACAmbiguousDNA())
+592
+The first record
+Z78533.1
+Seq('CGTAACAAGGTTTCCGTAGGTGAACCTGCGGAAGGATCATTGATGAGACCGTGG...CGC', IUPACAmbiguousDNA())
+740
+</PRE>
+You can of course still use a for loop with a list of <CODE>SeqRecord</CODE> objects. Using a list is much more flexible than an iterator (for example, you can determine the number of records from the length of the list), but does need more memory because it will hold all the records in memory at once.<BR>
+<BR>
+
+<H3><A NAME="htoc31">4.1.4</A>&nbsp;&nbsp;Extracting data</H3>
+Suppose you wanted to extract a list of the species from the <A HREF="http://biopython.org/DIST/docs/tutorial/examples/ls_orchid.gbk">ls_orchid.gbk</A> GenBank file. Let's have a close look at the first record in the file and see where the species gets stored:
+<PRE>
+from Bio import SeqIO
+record_iterator = SeqIO.parse(open("ls_orchid.gbk"), "genbank")
+first_record = record_iterator.next()
+print first_record
+</PRE>
+That should give something like this:
+<PRE>
+ID: Z78533.1
+Name: Z78533
+Desription: C.irapeanum 5.8S rRNA gene and ITS1 and ITS2 DNA.
+/source=Cypripedium irapeanum
+/taxonomy=['Eukaryota', 'Viridiplantae', 'Streptophyta', ..., 'Cypripedium']
+/keywords=['5.8S ribosomal RNA', '5.8S rRNA gene', 'internal transcribed spacer', 'ITS1', 'ITS2']
+/references=[...]
+/accessions=['Z78533']
+/data_file_division=PLN
+/date=30-NOV-2006
+/organism=Cypripedium irapeanum
+/gi=2765658
+Seq('CGTAACAAGGTTTCCGTAGGTGAACCTGCGGAAGGATCATTGATGAGACCGTGG...CGC', IUPACAmbiguousDNA())
+</PRE>
+The information we want, <EM>Cypripedium irapeanum</EM>, is held in the annotations dictionary under `source' and `organism', which we can access like this:
+<PRE>
+print first_record.annotations["source"]
+</PRE>
+or:
+<PRE>
+print first_record.annotations["organism"]
+</PRE>
+In general, `organism' is used for the scientific name (in latin, e.g. <I>Arabidopsis thaliana</I>),
+while `source' will often be the common name (e.g. thale cress). In this example, as is often the case,
+the two fields are identical. <BR>
+<BR>
+Now let's go through all the records, building up a list of the species each orchid sequence is from:
+<PRE>
+from Bio import SeqIO
+handle = open("ls_orchid.gbk")
+all_species = []
+for seq_record in SeqIO.parse(handle, "genbank") :
+    all_species.append(seq_record.annotations["organism"])
+handle.close()
+print all_species
+</PRE>
+Another way of writing this code is to use a list comprehension (introduced in Python 2.0) like this:
+<PRE>
+from Bio import SeqIO
+all_species = [seq_record.annotations["organism"] for seq_record in \
+               SeqIO.parse(open("ls_orchid.gbk"), "genbank")]
+print all_species
+</PRE>
+In either case, the result is:
+<PRE>
+['Cypripedium irapeanum', 'Cypripedium californicum', ..., 'Paphiopedilum barbatum']
+</PRE>
+Great. That was pretty easy because GenBank files are annotated in a standardised way. Now, let's suppose you wanted to extract a list of the species from your FASTA file, rather than the GenBank file. The bad news is you will have to write some code to extract the data you want from the record's description line - if the information is in the file in the first place!<BR>
+<BR>
+For this example, notice that if you break up the description line at the spaces, then the species is there as field number one (field zero is the record identifier). That means we can do this:
+<PRE>
+from Bio import SeqIO
+handle = open("ls_orchid.fasta")
+all_species = []
+for seq_record in SeqIO.parse(handle, "fasta") :
+    all_species.append(seq_record.description.split()[1])
+handle.close()
+print all_species
+</PRE>
+This gives:
+<PRE>
+['C.irapeanum', 'C.californicum', 'C.fasciculatum', 'C.margaritaceum', ..., 'P.barbatum']
+</PRE>
+The concise alternative using list comprehensions (Python 2.0 or later) would be:
+<PRE>
+from Bio import SeqIO
+all_species == [seq_record.description.split()[1] for seq_record in \
+                SeqIO.parse(open("ls_orchid.fasta"), "fasta")]
+print all_species
+</PRE>
+In general, extracting information from the FASTA description line is not very nice. If you can get your sequences in a well annotated file format like GenBank or EMBL, then this sort of annotation information is much easier to deal with.<BR>
+<BR>
+<A NAME="toc20"></A>
+<H2><A NAME="htoc32">4.2</A>&nbsp;&nbsp;Parsing sequences from the net</H2>
+<A NAME="sec:SeqIO_Online"></A>
+In the previous section, we looked at parsing sequence data from a file handle.
+We hinted that handles are not always from files, and in this section we'll use handles to internet connections to download sequences.<BR>
+<BR>
+
+<H3><A NAME="htoc33">4.2.1</A>&nbsp;&nbsp;Parsing GenBank records from the net</H3>
+<A NAME="sec:SeqIO_GenBank_Online"></A>
+Section&nbsp;<A HREF="Tutorial009.html#genbank-retrieval">8.2.1</A> covers fetching sequences from GenBank in more depth, including how to do searches to get lists of GI numbers, but for now let's just connect to the NCBI and get a few orchid proteins from GenBank using their GI numbers:
+<PRE>
+from Bio import GenBank
+from Bio import SeqIO
+handle = GenBank.download_many(["6273291", "6273290", "6273289"])
+for seq_record in SeqIO.parse(handle, "genbank") :
+    print seq_record.id, seq_record.description[:50] + "..."
+    print "Sequence length %i," % len(seq_record.seq),
+    print "%i features," % len(seq_record.features),
+    print "from: %s" % seq_record.annotations['source']
+handle.close()
+</PRE>
+That should give the following output:
+<PRE>
+AF191665.1 Opuntia marenae rpl16 gene; chloroplast gene for c...
+Sequence length 902, 3 features, from: chloroplast Opuntia marenae
+AF191664.1 Opuntia clavata rpl16 gene; chloroplast gene for c...
+Sequence length 899, 3 features, from: chloroplast Grusonia clavata
+AF191663.1 Opuntia bradtiana rpl16 gene; chloroplast gene for...
+Sequence length 899, 3 features, from: chloroplast Opuntia bradtianaa
+</PRE>
+Suppose you only want to download a single record? When you expect the handle to contain one and only one record, in Biopython 1.45 or later you can use the <CODE>Bio.SeqIO.read()</CODE> function:
+<PRE>
+from Bio import GenBank
+from Bio import SeqIO
+handle = GenBank.download_many(["6273291"])
+seq_record = SeqIO.read(handle, "genbank")
+handle.close()
+</PRE>
+
+<H3><A NAME="htoc34">4.2.2</A>&nbsp;&nbsp;Parsing SwissProt sequences from the net</H3>
+<A NAME="sec:SeqIO_ExPASy_and_SwissProt"></A>
+Now let's use a handle to download a SwissProt file from ExPASy, something covered in more depth in Chapter&nbsp;<A HREF="Tutorial008.html#chapter:swiss_prot">7</A>.
+As mentioned above, the <CODE>Bio.SeqIO.read()</CODE> function is included in Biopython 1.45 or later.
+<PRE>
+from Bio import ExPASy
+from Bio import SeqIO
+handle = ExPASy.get_sprot_raw("O23729")
+seq_record = SeqIO.read(handle, "swiss")
+handle.close()
+print seq_record.id
+print seq_record.name
+print seq_record.description
+print repr(seq_record.seq)
+print len(seq_record.seq)
+print seq_record.annotations['keywords']
+</PRE>
+Assuming your network connection is OK, you should get back:
+<PRE>
+O23729
+CHS3_BROFI
+Chalcone synthase 3 (EC 2.3.1.74) (Naringenin-chalcone synthase 3).
+Seq('MAPAMEEIRQAQRAEGPAAVLAIGTSTPPNALYQADYPDYYFRITKSEHLTELK...GAE', ProteinAlphabet())
+394
+['Acyltransferase', 'Flavonoid biosynthesis', 'Transferase']
+</PRE>
+<A NAME="toc21"></A>
+<H2><A NAME="htoc35">4.3</A>&nbsp;&nbsp;Sequence files as Dictionaries</H2>
+The next thing that we'll do with our ubiquitous orchid files is to show how to index them and access them like a database using the Python <I>dictionary</I> datatype (like a hash in Perl). This is very useful for large files where you only need to access certain elements of the file, and makes for a nice quick 'n dirty database.<BR>
+<BR>
+You can use the function <CODE>SeqIO.to_dict()</CODE> to make a SeqRecord dictionary (in memory). By default this will use each record's identifier (i.e. the <CODE>.id</CODE> attribute) as the key. Let's try this using our GenBank file:
+<PRE>
+from Bio import SeqIO
+handle = open("ls_orchid.gbk")
+orchid_dict = SeqIO.to_dict(SeqIO.parse(handle, "genbank"))
+handle.close()
+</PRE>
+Since this variable <CODE>orchid_dict</CODE> is an ordinary Python dictionary, we can look at all of the keys we have available:
+<PRE>
+&gt;&gt;&gt; print orchid_dict.keys()
+['Z78484.1', 'Z78464.1', 'Z78455.1', 'Z78442.1', 'Z78532.1', 'Z78453.1', ..., 'Z78471.1']
+</PRE>
+We can access a single <CODE>SeqRecord</CODE> object via the keys and manipulate the object as normal:
+<PRE>
+&gt;&gt;&gt; seq_record = orchid_dict["Z78475.1"]
+&gt;&gt;&gt; print seq_record.description
+P.supardii 5.8S rRNA gene and ITS1 and ITS2 DNA
+&gt;&gt;&gt; print repr(seq_record.seq)
+Seq('CGTAACAAGGTTTCCGTAGGTGAACCTGCGGAAGGATCATTGTTGAGATCACAT...GGT', IUPACAmbiguousDNA())
+</PRE>
+So, it is very easy to create an in memory ``database'' of our GenBank records. Next we'll try this for the FASTA file instead.<BR>
+<BR>
+
+<H3><A NAME="htoc36">4.3.1</A>&nbsp;&nbsp;Specifying the dictionary keys</H3>
+Using the same code as above, but for the FASTA file instead:
+<PRE>
+from Bio import SeqIO
+handle = open("ls_orchid.fasta")
+orchid_dict = SeqIO.to_dict(SeqIO.parse(handle, "fasta"))
+handle.close()
+print orchid_dict.keys()
+</PRE>
+This time the keys are:
+<PRE>
+['gi|2765596|emb|Z78471.1|PDZ78471', 'gi|2765646|emb|Z78521.1|CCZ78521', ...
+ ..., 'gi|2765613|emb|Z78488.1|PTZ78488', 'gi|2765583|emb|Z78458.1|PHZ78458']
+</PRE>
+You should recognise these strings from when we parsed the FASTA file earlier in Section&nbsp;<A HREF="Tutorial003.html#sec:fasta-parsing">2.4.1</A>. Suppose you would rather have something else as the keys - like the accesion numbers. This brings us nicely to <CODE>SeqIO.to_dict()</CODE>'s optional argument <CODE>key_function</CODE>, which lets you define what to use as the dictionary key for your records.<BR>
+<BR>
+First you must write your own function to return the key you want (as a string) when given a <CODE>SeqRecord</CODE> object. In general, the details of function will depend on the sort of input records you are dealing with. But for our orchids, we can just split up the record's identifier using the ``pipe'' character (the vertical line) and return the fourth entry (field three):
+<PRE>
+def get_accession(record) :
+    """"Given a SeqRecord, return the accession number as a string
+  
+    e.g. "gi|2765613|emb|Z78488.1|PTZ78488" -&gt; "Z78488.1"
+    """
+    parts = record.id.split("|")
+    assert len(parts) == 5 and parts[0] == "gi" and parts[2] == "emb"
+    return parts[3]
+</PRE>
+Then we can give this function to the <CODE>SeqIO.to_dict()</CODE> function to use in building the dictionary:
+<PRE>
+from Bio import SeqIO
+handle = open("ls_orchid.fasta")
+orchid_dict = SeqIO.to_dict(SeqIO.parse(handle, "fasta"), key_function=get_accession)
+handle.close()
+print orchid_dict.keys()
+</PRE>
+Finally, as desired, the new dictionary keys:
+<PRE>
+&gt;&gt;&gt; print orchid_dict.keys()
+['Z78484.1', 'Z78464.1', 'Z78455.1', 'Z78442.1', 'Z78532.1', 'Z78453.1', ..., 'Z78471.1']
+</PRE>
+Not too complicated, I hope!<BR>
+<BR>
+
+<H3><A NAME="htoc37">4.3.2</A>&nbsp;&nbsp;Indexing a dictionary using the SEGUID checksum</H3>
+To give another example of working with dictionaries of SeqRecord objects, we'll use the SEGUID checksum function (added in Biopython 1.44). This is a relatively recent checksum, and collisions should be very rare (i.e. two different sequences with the same checksum), an improvement on the CRC64 checksum.<BR>
+<BR>
+Once again, working with the orchids GenBank file:
+<PRE>
+from Bio import SeqIO
+from Bio.SeqUtils.CheckSum import seguid
+for record in SeqIO.parse(open("ls_orchid.gbk"), "genbank") :
+    print record.id, seguid(record.seq)
+</PRE>
+This should give:
+<PRE>
+Z78533.1 JUEoWn6DPhgZ9nAyowsgtoD9TTo
+Z78532.1 MN/s0q9zDoCVEEc+k/IFwCNF2pY
+...
+Z78439.1 H+JfaShya/4yyAj7IbMqgNkxdxQ
+</PRE>
+Now, recall the <CODE>Bio.SeqIO.to_dict()</CODE> function's <CODE>key_function</CODE> argument expects a function which turns a SeqRecord into a string. We can't use the <CODE>seguid()</CODE> function directly because it expects to be given a Seq object (or a string). However, we can use python's <CODE>lambda</CODE> feature to create a ``one off'' function to give to <CODE>Bio.SeqIO.to_dict()</CODE> instead:
+<PRE>
+from Bio import SeqIO
+from Bio.SeqUtils.CheckSum import seguid
+seguid_dict = SeqIO.to_dict(SeqIO.parse(open("ls_orchid.gbk"), "genbank"),
+                            lambda rec : seguid(rec.seq))
+record = seguid_dict["MN/s0q9zDoCVEEc+k/IFwCNF2pY"]
+print record.id
+print record.description
+</PRE>
+That should have retrieved the record <TT>Z78532.1</TT>, the second entry in the file.<BR>
+<BR>
+<A NAME="toc22"></A>
+<H2><A NAME="htoc38">4.4</A>&nbsp;&nbsp;Writing Sequence Files</H2>
+We've talked about using <CODE>Bio.SeqIO.parse()</CODE> for sequence input (reading files), and now we'll look at <CODE>Bio.SeqIO.write()</CODE> which is for sequence output (writing files). This is a function taking three arguments: some <CODE>SeqRecord</CODE> objects, a handle to write to, and a sequence format.<BR>
+<BR>
+Here is an example, where we start by creating a few <CODE>SeqRecord</CODE> objects the hard way (by hand, rather than by loading them from a file):
+<PRE>
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+from Bio.Alphabet import generic_protein
+
+rec1 = SeqRecord(Seq("MMYQQGCFAGGTVLRLAKDLAENNRGARVLVVCSEITAVTFRGPSETHLDSMVGQALFGD" \
+                    +"GAGAVIVGSDPDLSVERPLYELVWTGATLLPDSEGAIDGHLREVGLTFHLLKDVPGLISK" \
+                    +"NIEKSLKEAFTPLGISDWNSTFWIAHPGGPAILDQVEAKLGLKEEKMRATREVLSEYGNM" \
+                    +"SSAC", generic_protein),
+                 id="gi|14150838|gb|AAK54648.1|AF376133_1",
+                 description="chalcone synthase [Cucumis sativus]")
+
+rec2 = SeqRecord(Seq("YPDYYFRITNREHKAELKEKFQRMCDKSMIKKRYMYLTEEILKENPSMCEYMAPSLDARQ" \
+                    +"DMVVVEIPKLGKEAAVKAIKEWGQ", generic_protein),
+                 id="gi|13919613|gb|AAK33142.1|",
+                 description="chalcone synthase [Fragaria vesca subsp. bracteata]")
+
+rec3 = SeqRecord(Seq("MVTVEEFRRAQCAEGPATVMAIGTATPSNCVDQSTYPDYYFRITNSEHKVELKEKFKRMC" \
+                    +"EKSMIKKRYMHLTEEILKENPNICAYMAPSLDARQDIVVVEVPKLGKEAAQKAIKEWGQP" \
+                    +"KSKITHLVFCTTSGVDMPGCDYQLTKLLGLRPSVKRFMMYQQGCFAGGTVLRMAKDLAEN" \
+                    +"NKGARVLVVCSEITAVTFRGPNDTHLDSLVGQALFGDGAAAVIIGSDPIPEVERPLFELV" \
+                    +"SAAQTLLPDSEGAIDGHLREVGLTFHLLKDVPGLISKNIEKSLVEAFQPLGISDWNSLFW" \
+                    +"IAHPGGPAILDQVELKLGLKQEKLKATRKVLSNYGNMSSACVLFILDEMRKASAKEGLGT" \
+                    +"TGEGLEWGVLFGFGPGLTVETVVLHSVAT", generic_protein),
+                 id="gi|13925890|gb|AAK49457.1|",
+                 description="chalcone synthase [Nicotiana tabacum]")
+               
+my_records = [rec1, rec2, rec3]
+</PRE>
+Now we have a list of <CODE>SeqRecord</CODE> objects, we'll write them to a FASTA format file:
+<PRE>
+from Bio import SeqIO
+handle = open("my_example.faa", "w")
+SeqIO.write(my_records, handle, "fasta")
+handle.close()
+</PRE>
+And if you open this file in your favourite text editor it should look like this:
+<PRE>
+&gt;gi|14150838|gb|AAK54648.1|AF376133_1 chalcone synthase [Cucumis sativus]
+MMYQQGCFAGGTVLRLAKDLAENNRGARVLVVCSEITAVTFRGPSETHLDSMVGQALFGD
+GAGAVIVGSDPDLSVERPLYELVWTGATLLPDSEGAIDGHLREVGLTFHLLKDVPGLISK
+NIEKSLKEAFTPLGISDWNSTFWIAHPGGPAILDQVEAKLGLKEEKMRATREVLSEYGNM
+SSAC
+&gt;gi|13919613|gb|AAK33142.1| chalcone synthase [Fragaria vesca subsp. bracteata]
+YPDYYFRITNREHKAELKEKFQRMCDKSMIKKRYMYLTEEILKENPSMCEYMAPSLDARQ
+DMVVVEIPKLGKEAAVKAIKEWGQ
+&gt;gi|13925890|gb|AAK49457.1| chalcone synthase [Nicotiana tabacum]
+MVTVEEFRRAQCAEGPATVMAIGTATPSNCVDQSTYPDYYFRITNSEHKVELKEKFKRMC
+EKSMIKKRYMHLTEEILKENPNICAYMAPSLDARQDIVVVEVPKLGKEAAQKAIKEWGQP
+KSKITHLVFCTTSGVDMPGCDYQLTKLLGLRPSVKRFMMYQQGCFAGGTVLRMAKDLAEN
+NKGARVLVVCSEITAVTFRGPNDTHLDSLVGQALFGDGAAAVIIGSDPIPEVERPLFELV
+SAAQTLLPDSEGAIDGHLREVGLTFHLLKDVPGLISKNIEKSLVEAFQPLGISDWNSLFW
+IAHPGGPAILDQVELKLGLKQEKLKATRKVLSNYGNMSSACVLFILDEMRKASAKEGLGT
+TGEGLEWGVLFGFGPGLTVETVVLHSVAT
+</PRE>
+
+<H3><A NAME="htoc39">4.4.1</A>&nbsp;&nbsp;Converting between sequence file formats</H3>
+In previous example we used a list of <CODE>SeqRecord</CODE> objects as input to the <CODE>Bio.SeqIO.write()</CODE> function, but it will also accept a <CODE>SeqRecord</CODE> interator like we get from <CODE>Bio.SeqIO.parse()</CODE> -- this lets us do file conversion very succinctly. For this example we'll read in the GenBank format file <A HREF="http://biopython.org/DIST/docs/tutorial/examples/ls_orchid.gbk">ls_orchid.gbk</A> and write it out in FASTA format:
+<PRE>
+from Bio import SeqIO
+in_handle = open("ls_orchid.gbk", "r")
+out_handle = open("my_example.fasta", "w")
+SeqIO.write(SeqIO.parse(in_handle, "genbank"), out_handle, "fasta")
+in_handle.close()
+out_handle.close()
+</PRE>
+You <I>can</I> in fact do this in one line, by being lazy about closing the file handles. This is arguably bad style, but it is very concise:
+<PRE>
+from Bio import SeqIO
+SeqIO.write(SeqIO.parse(open("ls_orchid.gbk"), "genbank"), open("my_example.faa", "w"), "fasta")
+</PRE>
+
+<H3><A NAME="htoc40">4.4.2</A>&nbsp;&nbsp;Converting a file of sequences to their reverse complements</H3>
+Suppose you had a file of nucleotide sequences, and you wanted to turn it into a file containing their reverse complement sequences. This time a little bit of work is required to transform the SeqRecords we get from our input file into something suitable for saving to our output file.<BR>
+<BR>
+To start with, we'll use <CODE>Bio.SeqIO.parse()</CODE> to load some nucleotide
+sequences from a file, then print out their reverse complements using
+the <CODE>Seq</CODE> object's built in <CODE>.reverse_complement()</CODE> method (see Section&nbsp;<A HREF="Tutorial004.html#sec:seq-reverse-complement">3.5</A>):
+<PRE>
+from Bio import SeqIO
+in_handle = open("ls_orchid.gbk")
+for record in SeqIO.parse(in_handle, "genbank") :
+    print record.id
+    print record.seq.reverse_complement().tostring()
+in_handle.close()
+</PRE>
+Now, if we want to save these reverse complements to a file, we'll need to make <CODE>SeqRecord</CODE> objects.
+For this I think its most elegant to write our own function, where we can decide how to name our
+new records:
+<PRE>
+from Bio.SeqRecord import SeqRecord
+
+def make_rc_record(record) :
+    """Returns a new SeqRecord with the reverse complement sequence"""
+    rc_rec = SeqRecord(seq = record.seq.reverse_complement(), \
+             id = "rc_" + record.id, \
+             name = "rc_" + record.name, \
+             description = "reverse complement")
+    return rc_rec
+</PRE>
+We can then use this to turn the input records into reverse complement records ready for output. If you don't mind about having all the records in memory at once, then the python <CODE>map()</CODE> function is a very intuitive way of doing this:
+<PRE>
+from Bio import SeqIO
+
+in_handle = open("ls_orchid.fasta", "r")
+records = map(make_rc_record, SeqIO.parse(in_handle, "fasta"))
+in_handle.close()
+
+out_handle = open("rev_comp.fasta", "w")
+SeqIO.write(records, out_handle, "fasta")
+out_handle.close()
+</PRE>
+This is an excellent place to demonstrate the power of list comprehensions (added to Python 2.0) which in their simplest are a long-winded equivalent to using <CODE>map()</CODE>, like this:
+<PRE>
+records = [make_rc_record(rec) for rec in SeqIO.parse(in_handle, "fasta")]
+</PRE>
+Now list comprehensions have a nice trick up their sleaves, you can add a conditional statement:
+<PRE>
+records = [make_rc_record(rec) for rec in SeqIO.parse(in_handle, "fasta") if len(rec.seq) &lt; 700]
+</PRE>
+That would create an in memory list of reverse complement records where the sequence length was under 700 base pairs. However, if you are using Python 2.4 or later, we can do exactly the same with a generator expression - but with the advantage that this does not create a list of all the records in memory at once:
+<PRE>
+records = (make_rc_record(rec) for rec in SeqIO.parse(in_handle, "fasta") if len(rec.seq) &lt; 700)
+</PRE>
+If you like compact code, and don't mind being lax about closing file handles, we can reduce this to one long line:
+<PRE>
+from Bio import SeqIO
+SeqIO.write((make_rc_record(rec) for rec in \
+            SeqIO.parse(open("ls_orchid.fasta", "r"), "fasta") if len(rec.seq) &lt; 700), \
+            open("rev_comp.fasta", "w"), "fasta")
+</PRE>
+Personally, I think the above snippet of code is a little too compact, and I find the following much easier to read:
+<PRE>
+from Bio import SeqIO
+records = (make_rc_record(rec) for rec in \
+           SeqIO.parse(open("ls_orchid.fasta", "r"), "fasta") \
+           if len(rec.seq) &lt; 700)
+SeqIO.write(records, open("rev_comp.fasta", "w"), "fasta")
+</PRE>
+or, for Python 2.3 or older,
+<PRE>
+from Bio import SeqIO
+records = [make_rc_record(rec) for rec in \
+           SeqIO.parse(open("ls_orchid.fasta", "r"), "fasta") \
+           if len(rec.seq) &lt; 700]
+SeqIO.write(records, open("rev_comp.fasta", "w"), "fasta")
+</PRE>
+<HR>
+<A HREF="Tutorial004.html"><IMG SRC ="previous_motif.gif" ALT="Previous"></A>
+<A HREF="index.html"><IMG SRC ="contents_motif.gif" ALT="Up"></A>
+<A HREF="Tutorial006.html"><IMG SRC ="next_motif.gif" ALT="Next"></A>
+</BODY>
+</HTML>
