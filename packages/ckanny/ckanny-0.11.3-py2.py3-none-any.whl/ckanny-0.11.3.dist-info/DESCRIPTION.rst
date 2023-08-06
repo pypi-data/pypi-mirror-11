@@ -1,0 +1,198 @@
+# ckanny
+
+## Introduction
+
+ckanny is a [command line interface](#cli) for interacting with remote and local [CKAN](http://ckan.org/) instances. Under the hood, it uses [ckanutils](https://github.com/reubano/ckanutils).
+
+With ckanny, you can
+
+- Download a CKAN resource
+- Update a CKAN DataStore from data in the FileStore
+- Copy a FileStore resource from one CKAN instance to another
+- and much more...
+
+ckanny performs smart updates by computing the hash of a file and will only update the datastore if the file has changed. This allows you to schedule a script to run on a frequent basis, e.g., `@hourly` via a cron job, without updating the CKAN instance unnecessarily.
+
+## Requirements
+
+ckanny has been tested on the following configuration:
+
+- MacOS X 10.9.5
+- Python 2.7.9
+
+ckanny requires the following in order to run properly:
+
+- [Python >= 2.7](http://www.python.org/download) (MacOS X comes with python preinstalled)
+
+## Installation
+
+(You are using a [virtualenv](http://www.virtualenv.org/en/latest/index.html), right?)
+
+     sudo pip install ckanny
+
+## CLI
+
+ckanny comes with a built in command line interface `ckanny`.
+
+### Usage
+
+     ckanny [<namespace>.]<command> [<args>]
+
+### Examples
+
+*show help*
+
+    ckanny -h
+
+```bash
+usage: ckanny [<namespace>.]<command> [<args>]
+
+positional arguments:
+  command     the command to run
+
+optional arguments:
+  -h, --help  show this help message and exit
+
+available commands:
+  ver                      Show ckanny version
+
+  [ds]
+    delete                 Deletes a datastore table
+    update                 Updates a datastore table based on the current filestore resource
+    upload                 Uploads a file to a datastore table
+
+  [fs]
+    fetch                  Downloads a filestore resource
+    migrate                Copies a filestore resource from one ckan instance to another
+    upload                 Uploads a file to the filestore of an existing resource
+```
+
+*show version*
+
+    ckanny ver
+
+*fetch a resource*
+
+    ckanny fs.fetch -k <CKAN_API_KEY> -r <CKAN_URL> <resource_id>
+
+*show fs.fetch help*
+
+    ckanny fs.fetch -h
+
+
+```bash
+usage: ckanny fs.fetch
+       [-h] [-q] [-n] [-c CHUNKSIZE_BYTES] [-u UA] [-k API_KEY] [-r REMOTE]
+       [-d DESTINATION]
+       [resource_id]
+
+Downloads a filestore resource
+
+positional arguments:
+  resource_id           the resource id
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -q, --quiet           suppress debug statements
+  -n, --name-from-id    Use resource id for filename
+  -c CHUNKSIZE_BYTES, --chunksize-bytes CHUNKSIZE_BYTES
+                        number of bytes to read/write at a time (default:
+                        1048576)
+  -u UA, --ua UA        the user agent (uses `CKAN_USER_AGENT` ENV if
+                        available) (default: None)
+  -k API_KEY, --api-key API_KEY
+                        the api key (uses `CKAN_API_KEY` ENV if available)
+                        (default: None)
+  -r REMOTE, --remote REMOTE
+                        the remote ckan url (uses `CKAN_REMOTE_URL` ENV if
+                        available) (default: None)
+  -d DESTINATION, --destination DESTINATION
+                        the destination folder or file path (default:
+                        .)
+```
+
+## Configuration
+
+ckanny will use the following [Environment Variables](http://www.cyberciti.biz/faq/set-environment-variable-linux/) if set:
+
+Environment Variable|Description
+--------------------|-----------
+CKAN_API_KEY|Your CKAN API Key
+CKAN_REMOTE_URL|Your CKAN instance remote url
+CKAN_USER_AGENT|Your user agent
+
+## Hash Table
+
+In order to support file hashing, ckanny creates a hash table resource called `hash_table.csv` with the following schema:
+
+field|type
+------|----
+datastore_id|text
+hash|text
+
+By default the hash table resource will be placed in the package `hash_table`. ckanny will create this package if it doesn't exist. Optionally, you can set the hash table package in the command line with the `-H, --hash-table` option, or in a Python file as the `hash_table` keyword argument to `api.CKAN`.
+
+Example:
+
+    ckanny ds.update -H custom_hash_table 36f33846-cb43-438e-95fd-f518104a32ed
+
+## Scripts
+
+ckanny comes with a built in task manager `manage.py` and a `Makefile`.
+
+### Setup
+
+    pip install -r dev-requirements.txt
+
+### Examples
+
+*Run python linter and nose tests*
+
+```bash
+manage lint
+manage test
+```
+
+Or if `make` is more your speed...
+
+```bash
+make lint
+make test
+```
+
+## Contributing
+
+View [CONTRIBUTING.rst](https://github.com/reubano/ckanny/blob/master/CONTRIBUTING.rst)
+
+## License
+
+ckanny is distributed under the [MIT License](http://opensource.org/licenses/MIT), the same as [ckanutils](https://github.com/reubano/ckanutils).
+
+
+=========
+Changelog
+=========
+
+Here you can find the recent changes to ckanny..
+
+.. changelog::
+    :version: dev
+    :released: Ongoing
+
+    .. change::
+        :tags:  docs
+
+        Updated CHANGES.
+
+.. changelog::
+    :version: 0.1.0
+    :released: 2015-06-12
+
+    .. change::
+        :tags: project
+
+        First release on PyPi.
+
+.. todo:: vim: set filetype=rst:
+
+
