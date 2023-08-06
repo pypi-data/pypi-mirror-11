@@ -1,0 +1,89 @@
+<configure
+    xmlns="http://namespaces.zope.org/zope"
+    xmlns:i18n="http://namespaces.zope.org/i18n"
+    xmlns:five="http://namespaces.zope.org/five"
+    xmlns:plone="http://namespaces.plone.org/plone"
+    xmlns:genericsetup="http://namespaces.zope.org/genericsetup"
+    i18n_domain="ploneintranet.todo">
+
+    <!-- Zope2 initialization -->
+    <five:registerPackage package="." initialize=".initialize" />
+
+    <!-- Include configuration for dependencies listed in setup.py -->
+    <includeDependencies package="." />
+
+    <!-- Register the installation GenericSetup extension profile -->
+    <genericsetup:registerProfile
+        name="default"
+        title="Plone Intranet: -- [Todo]"
+        directory="profiles/default"
+        description="Extension profile for ploneintranet.todo."
+        provides="Products.GenericSetup.interfaces.EXTENSION"
+        />
+
+    <genericsetup:registerProfile
+        name="uninstall"
+        title="Plone Intranet: -- [Todo uninstall]"
+        directory="profiles/uninstall"
+        description="Extension profile for ploneintranet.todo."
+        provides="Products.GenericSetup.interfaces.EXTENSION"
+        />
+
+  <genericsetup:importStep
+      name="ploneintranet.todo.uninstall"
+      title="Plone Intranet Todo: uninstall steps"
+      description="Various uninstall steps that are not handled by GS import/export handlers."
+      handler="ploneintranet.todo.uninstall.uninstall" />
+
+    <include package="plone.behavior" file="meta.zcml" />
+    <include package="plone.directives.form" />
+    <include package="plone.directives.form" file="meta.zcml" />
+
+    <plone:behavior
+        title="MustRead"
+        description="MustRead behavior"
+        provides=".behaviors.IMustRead"
+        factory="plone.behavior.AnnotationStorage"
+        marker=".behaviors.IMustReadMarker"
+        />
+
+    <plone:behavior
+        title="Todo"
+        description="Todo behavior"
+        provides=".behaviors.ITodo"
+        for=".behaviors.ITodoMarker"
+        />
+
+    <plone:behavior
+        title="Milestone"
+        description="Milestone this task belongs to"
+        provides=".behaviors.IMilestone"
+        for=".behaviors.IMilestoneMarker"
+        />
+
+    <include package=".portlets" />
+    <include package=".browser" />
+
+    <utility
+        provides="ploneintranet.todo.interfaces.ITodoUtility"
+        factory=".todo_utility.TodoUtility"
+        />
+
+    <adapter name="due" factory=".indexers.due" />
+
+    <subscriber for=".behaviors.IMustReadMarker
+                     zope.lifecycleevent.interfaces.IObjectModifiedEvent"
+                handler=".handlers.mark" />
+
+    <subscriber for=".behaviors.IMustReadMarker
+                     zope.lifecycleevent.interfaces.IObjectRemovedEvent"
+                handler=".handlers.on_delete" />
+
+    <subscriber for=".behaviors.ITodoMarker
+                     zope.lifecycleevent.interfaces.IObjectModifiedEvent"
+                handler=".handlers.todo_set_role" />
+
+    <subscriber for=".behaviors.ITodoMarker
+                     zope.lifecycleevent.interfaces.IObjectAddedEvent"
+                handler=".handlers.todo_set_role" />
+</configure>
