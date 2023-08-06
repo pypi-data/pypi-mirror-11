@@ -1,0 +1,135 @@
+#!/usr/bin/env python
+import argparse
+import logging
+import sys
+import signal
+import os
+import time
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-info", default=False, action="store_true")
+parser.add_argument("-init_db", default=False, action="store_true")
+parser.add_argument("-path", default=False, action="store_true")
+parser.add_argument("-start", default=True, action="store_true")
+parser.add_argument("-stop", default=False, action="store_true")
+parser.add_argument("-responseId", default=None)
+parser.add_argument("-command", default=False)
+parser.add_argument("-jobId", default=-1, type=int)
+parser.add_argument("-status")
+parser.add_argument("-recursive", default=False, action="store_true")
+args = parser.parse_args()
+
+if args.start:
+    #
+    # create jobber directory in home
+    jobberDir = os.path.join(os.path.expanduser("~"), ".jobber")
+    logDir = os.path.join(jobberDir, "log")
+
+    if not os.path.isdir(jobberDir):
+        sys.stderr.write("Creating jobber directory in $HOME: %s\n" % (jobberDir))
+        os.mkdir(jobberDir)
+    else:
+        sys.stderr.write("Jobber directory (%s) already exist\n" % (jobberDir))
+
+    # create log directory
+    if not os.path.isdir(logDir):
+        sys.stderr.write("Creating log directory in %s\n" % (logDir))
+        os.mkdir(logDir)
+    else:
+        sys.stderr.write("Log directory (%s) already exist\n" % (jobberDir))
+
+    if not os.path.exists(os.path.join(jobberDir, "config.py")):
+        sys.stderr.write("Creating configuration file: %s\n" % (os.path.join(jobberDir, "config.py")))
+        with open(os.path.join(jobberDir, "config.py"), 'w') as locconf:
+            locconf.write('import os\n\n'
+                          'jobberDir = os.path.join(os.path.expanduser("~"), ".jobber") # dont change\n'
+                          'logDir = os.path.join(jobberDir, "log") # dont change\n'
+                          '# By default Jobber uses sqlite in the ~/.jobber directory\n'
+                          'sqlite_path = os.path.join(jobberDir, "jobber.sqlite") # adjust this to change location of jobber sqlite database (if you use sqlite)\n'
+                          'drmaaMaxNrOfJobs = 1000 # adjust maximim number of jobs in that run simultaneously on the cluster\n'
+                          'defaultExecuter = "drmaa" # default exectuer: local or drmaa\n'
+                          '# If you use MySQL adjust these parameters:\n'
+                          '# db_host = "your_host" # The host of the mysql database\n'
+                          '# db_name = "database_name" # The name of the mysql database\n'
+                          '# db_password = "paSsWorD" # The password of the mysql database\n')
+            sys.stderr.write("Configuration file was created in %s\n" % (jobberDir))
+            sys.stderr.write("You can adjust it to change paths or use MySQL instead of SQLite\n")
+    if not os.path.exists(os.path.join(jobberDir, "executers.py")):
+        sys.stderr.write("Creating executers file: %s\n" % (os.path.join(jobberDir, "executers.py")))
+        with open(os.path.join(jobberDir, "executers.py"), 'w') as locex:
+            locex.write("# In this file you can define your own executers other than DRMAA and local\n"
+                        "# for an example of how to write an executer see the Localjobexecuter.DRMAAJobActor files\n"
+                        "# local_executers = {'your_executer': None}\n"
+                        """
+from Jobber import LocalJobExecuter, DRMAAJobExecuter
+
+executers = {"local": LocalJobExecuter.JobExecuter,
+             "drmaa": DRMAAJobExecuter.JobExecuter
+            }
+""")
+
+from Jobber import Settings
+
+if not os.path.exists(Settings.logDir):
+    os.makedirs(Settings.logDir)
+
+from Jobber import JobClient, JobExecuter
+from Jobber import JobController
+from Jobber import database
+
+if args.init_db:
+    db = database.getDB()
+    db.init()
+    database.releaseDB(db)
+    sys.exit(0)
+
+if args.info:
+    if args.jobId:
+        jid = args.jobId
+        dao = database.dao(database.getDB())
+        print JobExecuter.createLogDir(dao.getJobWithId(jid))
+    sys.exit(0)
+
+if args.command:
+    jobber = JobClient.Jobber()
+    if args.command == "delete":
+        jobber.delete(args.jobId)
+    elif args.command == "status":
+        jobber.changeStatus(args.jobId, args.status, args.recursive, args.responseId)
+    jobber.close()
+    sys.exit(0)
+
+
+pid_file = Settings.jobberDir + "/jobber.pid"
+
+if os.path.exists(pid_file):
+    fp = open(pid_file, "r")
+    try:
+        pid = int(fp.read())
+        fp.close()
+    except:
+        pid = 0
+
+if args.stop:
+    os.kill(pid, signal.SIGINT)
+    os.system("rm "+pid_file)
+    sys.exit(0)
+else:
+    if os.path.exists(pid_file):
+        sys.stderr.write("Jobber is already running\n")
+        sys.exit(1)
+
+
+
+fp = open(pid_file, "w")
+try:
+    fp.write(str(os.getpid()))
+    fp.flush()
+    fp.close()
+    jobber = JobController.Jobber()
+    jobber.start()
+    signal.signal(signal.SIGINT, lambda sig, frame: jobber.stop())
+    while jobber.running:
+        time.sleep(1)
+finally:
+    os.system("rm "+pid_file)

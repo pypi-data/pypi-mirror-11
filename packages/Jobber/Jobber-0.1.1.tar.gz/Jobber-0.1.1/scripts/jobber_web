@@ -1,0 +1,254 @@
+#!/usr/bin/env python
+"""
+Jobber web interface with Flask
+"""
+
+__date__ = "2015-05-26"
+__author__ = "Rafal Gumienny"
+__email__ = "r.gumienny@unibas.ch"
+__license__ = "GPL"
+
+# imports
+import sys
+import os
+import sys
+from Jobber import Settings, JobExecuter, Connection, JobDAO
+from flask import Flask, render_template, url_for, redirect, request
+from argparse import ArgumentParser, RawTextHelpFormatter
+
+
+parser = ArgumentParser(description=__doc__, formatter_class=RawTextHelpFormatter)
+parser.add_argument("-v",
+                    "--verbose",
+                    dest="verbose",
+                    action="store_true",
+                    default=False,
+                    help="Be loud!")
+parser.add_argument("--ip",
+                    dest="ip",
+                    default="0.0.0.0",
+                    help="IP to use, defaults to 0.0.0.0")
+parser.add_argument("--port",
+                    dest="port",
+                    type=int,
+                    default=5000,
+                    help="Port to use, defaults to 5000")
+
+try:
+    options = parser.parse_args()
+except Exception, e:
+    parser.print_help()
+
+# redefine a functions for writing to stdout and stderr to save some writting
+syserr = sys.stderr.write
+sysout = sys.stdout.write
+
+# app = Flask(__name__,
+#             static_folder=os.path.join(os.path.dirname(Connection.__file__), "web/static"),
+#             template_folder=os.path.join(os.path.dirname(Connection.__file__), "web/templates"))
+app = Flask(__name__,
+            static_folder=os.path.join("../Jobber/", "web/static"),
+            template_folder=os.path.join("../Jobber/", "web/templates"))
+app.debug = True
+db = JobDAO.JobDAO(Connection.createDB())
+
+def round_to_100_percent(number_set, digit_after_decimal=2):
+    """
+        This function take a list of number and return a list of percentage, which represents the portion of each number in sum of all numbers
+        Moreover, those percentages are adding up to 100%!!!
+        Notice: the algorithm we are using here is 'Largest Remainder'
+        The down-side is that the results won't be accurate, but they are never accurate anyway:)
+    """
+    #TODO take care of 0 division error
+    try:
+        unround_numbers = [x / float(sum(number_set)) * 100 * 10 ** digit_after_decimal for x in number_set]
+    except ZeroDivisionError:
+        return [0.0 for i in number_set]
+    decimal_part_with_index = sorted([(index, unround_numbers[index] % 1) for index in range(len(unround_numbers))], key=lambda y: y[1], reverse=True)
+    remainder = 100 * 10 ** digit_after_decimal - sum([int(x) for x in unround_numbers])
+    index = 0
+    while remainder > 0:
+        unround_numbers[decimal_part_with_index[index][0]] += 1
+        remainder -= 1
+        index = (index + 1) % len(number_set)
+    return [int(x) / float(10 ** digit_after_decimal) for x in unround_numbers]
+
+@app.route('/')
+def home():
+    pipelines = db.getPipelines()
+    return render_template("index.html", pipelines=pipelines)
+
+@app.route('/logs')
+def logs():
+    """
+        These files will be showed:
+        MessageHandler.log
+        JobController.log
+        DRMAAJobExecuter.log
+        main.log
+    """
+    display_lines = 20
+    log_path = "{settings_path}/".format(settings_path=Settings.logDir)
+    # main log file
+    try:
+        with open(os.path.join(log_path, "main.log")) as err:
+            main_file = "".join(err.readlines()[-display_lines:][::-1])
+    except IOError:
+        main_file = "Cannot find main.log file"
+    if main_file == "":
+        main_file = "The main.log file is empty"
+
+    # MessageHandler
+    try:
+        with open(os.path.join(log_path, "MessageHandler.log")) as mh:
+            handler_file = "".join(mh.readlines()[-display_lines:][::-1])
+    except IOError:
+        handler_file = "Cannot find MessageHandler.log file"
+    if handler_file == "":
+        handler_file = "The MessageHandler.log file is empty"
+
+    # JobController
+    try:
+        with open(os.path.join(log_path, "JobController.log")) as mh:
+            controller_file = "".join(mh.readlines()[-display_lines:][::-1])
+    except IOError:
+        controller_file = "Cannot find JobController.log file"
+    if controller_file == "":
+        controller_file = "The JobController.log file is empty"
+
+    # DRMAAJobExecuter
+    try:
+        with open(os.path.join(log_path, "DRMAAJobExecuter.log")) as mh:
+            executer_file = "".join(mh.readlines()[-display_lines:][::-1])
+    except IOError:
+        executer_file = "Cannot find DRMAAJobExecuter.log file"
+    if executer_file == "":
+        executer_file = "The DRMAAJobExecuter.log file is empty"
+
+    return render_template("logs.html",
+                           main_log=main_file.replace("\n", "<br/>"),
+                           handler_log=handler_file.replace("\n", "<br/>"),
+                           controller_log=controller_file.replace("\n", "<br/>"),
+                           executer_log=executer_file.replace("\n", "<br/>"),
+                           )
+
+
+@app.route('/<int:pipeline_id>', methods=['GET', 'POST'])
+def pipeline(pipeline_id):
+    if request.method == "POST":
+        db.updateCommand(pipeline_id, request.form['job_command'])
+    pipeline_info = db.getJobInfo(pipeline_id)
+    job = db.getJobWithId(pipeline_id)
+    log_path = "{settings_path}/{parts}/{current_run}".format(settings_path=Settings.logDir,
+                                          parts=JobExecuter.jobIdToParts(pipeline_id).getPath(),
+                                          current_run=str(job.currentRun))
+    try:
+        with open(os.path.join(log_path, "err")) as err:
+            error_file = err.read()
+    except IOError:
+        error_file = "Cannot find ERROR log file"
+    if error_file == "":
+        error_file = "The STDERR file is empty"
+    try:
+        with open(os.path.join(log_path, "out")) as out:
+            out_file = out.read()
+    except IOError:
+        out_file = "Cannot find STDOUT log file"
+    if out_file == "":
+        out_file = "The STDOUT file is empty"
+    pipeline_members = db.getMembers(pipeline_id)
+    show_progress = False
+    is_group_job = db.isGroupJob(pipeline_id)
+    if is_group_job:
+        statuses = [db.getJobStatus(jobid) for jobid in db.getNoneGroupMembersRecursive(pipeline_id)]
+        num_finished = statuses.count('FINISHED')
+        num_running = statuses.count('RUNNING')
+        num_failed =  statuses.count('FAILED')
+        num_waiting = statuses.count('IDLE')
+        if len(statuses) > 0:
+            perc_fin, perc_run, perc_fail, perc_wait = [int(i) for i in round_to_100_percent([num_finished,
+                                                                                              num_running,
+                                                                                              num_failed,
+                                                                                              num_waiting], 0)]
+            num_total = len(statuses)
+            show_progress = True
+        else:
+            perc_fin = 1
+            perc_run = 1
+            perc_fail = 1
+            perc_wait = 1
+            num_finished = 1
+            num_running = 1
+            num_failed = 1
+            num_waiting = 1
+            num_total = 1
+    else:
+        perc_fin = 1
+        perc_run = 1
+        perc_fail = 1
+        perc_wait = 1
+        num_finished = 1
+        num_running = 1
+        num_failed = 1
+        num_waiting = 1
+        num_total = 1
+    return render_template("pipeline_details.html",
+                           pipeline=pipeline_info,
+                           members=pipeline_members,
+                           error_log=error_file.replace("\n", "<br/>"),
+                           out_log=out_file.replace("\n", "<br/>"),
+                           finished=perc_fin,
+                           failed=perc_fail,
+                           running=perc_run,
+                           waiting=perc_wait,
+                           show_progress=show_progress,
+                           num_finished=num_finished,
+                           num_total=num_total,
+                           is_group_job=is_group_job
+                           )
+
+@app.route('/restart/<int:pipeline_id>/<int:stay_on_page>')
+def restart(pipeline_id, stay_on_page):
+    db.sendChangeStatusJobMessage(pipeline_id, 'IDLE', 0)
+    if stay_on_page == 0:
+        return redirect(url_for('home'))
+    else:
+        return redirect(url_for('pipeline', pipeline_id=stay_on_page))
+
+@app.route('/restart_recursive/<int:pipeline_id>/<int:stay_on_page>')
+def restart_recursive(pipeline_id, stay_on_page):
+    db.sendChangeStatusJobMessage(pipeline_id, 'IDLE', 1)
+    if stay_on_page == 0:
+        return redirect(url_for('home'))
+    else:
+        return redirect(url_for('pipeline', pipeline_id=stay_on_page))
+
+@app.route('/cancel/<int:pipeline_id>/<int:stay_on_page>')
+def cancel(pipeline_id, stay_on_page):
+    db.sendChangeStatusJobMessage(pipeline_id, 'CANCELLED', 0)
+    if stay_on_page == 0:
+        return redirect(url_for('home'))
+    else:
+        return redirect(url_for('pipeline', pipeline_id=stay_on_page))
+
+@app.route('/finish/<int:pipeline_id>/<int:stay_on_page>')
+def finish(pipeline_id, stay_on_page):
+    db.sendChangeStatusJobMessage(pipeline_id, 'FINISHED', 0)
+    if stay_on_page == 0:
+        return redirect(url_for('home'))
+    else:
+        return redirect(url_for('pipeline', pipeline_id=stay_on_page))
+
+@app.route('/delete/<int:pipeline_id>/<int:stay_on_page>')
+def delete(pipeline_id, stay_on_page):
+    db.sendDeleteJobMessage(pipeline_id)
+    if stay_on_page == 0:
+        return redirect(url_for('home'))
+    else:
+        return redirect(url_for('pipeline', pipeline_id=stay_on_page))
+
+
+if __name__ == '__main__':
+    # app.run("131.152.25.12", 8886)
+    app.run(options.ip, options.port)
+
