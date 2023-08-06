@@ -1,0 +1,455 @@
+Metadata-Version: 1.0
+Name: pyonep
+Version: 0.13.5
+Summary: Python bindings for Exosite API over HTTP JSON RPC.
+Home-page: http://github.com/exosite-labs/pyonep
+Author: Exosite
+Author-email: labs@exosite.com
+License: UNKNOWN
+Description: About pyonep
+        ============
+        
+        The pyonep package is an API library with Python bindings to the 
+        following Exosite One Platform APIs:
+        
+        * [RPC API](https://github.com/exosite/docs/tree/master/rpc)
+        * [Provisioning/Device Management API](https://github.com/exosite/docs/tree/master/provision)
+        
+        Check out our docs on [Read The Docs](https://pyonep.readthedocs.org/).
+        
+        
+        __Warning__: version 0.13.4 requires changes to applications that used 
+        earlier versions of pyonep. See below for information about 
+        [migrating your applications from 0.12.x to 0.13.4](#migrating-to-0134)
+        
+        Note that this library does not support the HTTP Data Interface. See
+        below for more information.
+        
+        Supports Python 2.6 through 3.3.
+        
+        License is BSD, Copyright 2015, Exosite LLC (see LICENSE file)
+        
+        
+        Installation
+        ------------
+        
+        For installation instructions, check out [Read The Docs](https://pyonep.readthedocs.org/en/latest/install.html).
+        
+        
+        Tests
+        -----
+        
+        Before testing, you'll need the test requirements.
+        
+        ```bash
+        $ pip install -r test/requirements.txt
+        ...
+        ```
+        
+        Run all the tests in your current Python version.
+        
+        ```bash
+        $ ./test.sh --processes=2 --process-timeout=40
+        ```
+        
+        Run all the tests in every supported Python version:
+        
+        ```bash
+        $ time ./test.sh full --processes=2 --process-timeout=40
+        Starting test for py26
+        Starting test for py27
+        Starting test for py32
+        Starting test for py33
+        Starting test for py34
+        Waiting for tests to finish
+        All tests passed. Congratulations! :)
+        
+        real0m29.966s
+        user0m31.221s
+        sys0m5.684s
+        ```
+        
+        To run a single test in your current Python version:
+        
+        ```bash
+        $ nosetests -q -s test/test_rpc.py:TestRPC.test_move
+        ----------------------------------------------------------------------
+        Ran 1 test in 35.734s
+        
+        OK
+        ```
+        
+        Occasionally this error happens. Deleting .tox directories helps.
+        
+        ```bash
+        ...
+          File "/Users/danw/prj/exosite/pyonep/.tox-py26/py26/lib/python2.6/site-packages/coverage/data.py", line 202, in combine_parallel_data
+              os.remove(full_path)
+              OSError: [Errno 2] No such file or directory: '/Users/danw/prj/exosite/pyonep/.coverage.civet.51448.095287'
+        ...
+        $ rm -rf .tox-py*
+        ```
+        
+        
+        Migrating to 0.13.4
+        -------------------
+        
+        Version 0.13.4 includes two breaking changes:
+        
+        - datastore.py is removed
+        - `rid` parameter is renamed to `resource`
+        
+        
+        
+        Migrating to 0.8.0
+        ------------------
+        
+        Version 0.8.0 includes some breaking changes to provision module API to provide more consistent return values and error information. To migrate an existing application to pyonep 0.8.0 you will need to make a few changes to the way provision methods are called.
+        
+        - Previously, methods in provision module either returned a.) `True` (success) or `False` (failure) or b.) `<response body string>` (success) or `None` (failure). HTTP response details (e.g. status code) were not available to the caller without turning on logging and parsing stdout. With 0.8.0 all methods return a `ProvisionResponse` object with the following properties:
+        
+            - `ProvisionResponse.body` is the response body, a string. The contents of this depend on the specific call, and may be of length 0. See [provision API documentation](https://github.com/exosite/docs/tree/master/provision) for details.
+            - `ProvisionResponse.status` is the HTTP status code
+            - `ProvisionResponse.isok` is a boolean representing whether the call succeeded (i.e. if the status code is < 400)
+        
+        - Previously all exceptions associated with a call were being caught but not rethrown. With 0.8.0, HTTP exceptions are thrown to the caller. For example, if no connection is available, previously this would have written a message to the log and returned `None`. Now, a subclass of [`HTTPException`](http://docs.python.org/2/library/httplib.html#httplib.HTTPException) is thrown to the caller. This allows the caller to take appropriate action based on exactly what happened.
+        
+        Here's an example of code based pyonep before 0.8.0:
+        ```
+        import pyonep
+        provision = pyonep.Provision('http://m2.exosite.com', manage_by_cik=False)
+        
+        # create a model
+        response = provision.model_create(vendortoken, model, clonerid, aliases=False)
+        if not response:
+            print('Unknown error occurred in model_create')
+        
+        # list models
+        model_list = provision.model_list(vendortoken)
+        if model_list is not None:
+            print(model_list)
+        else:
+            print('Unknown error occurred in model_list')
+        ```
+        
+        Here's how that would be written to work with 0.8.0+:
+        ```
+        import sys
+        import httplib
+        import pyonep
+        
+        # the leading 'http://' is now optional but should be omitted
+        provision = pyonep.Provision('m2.exosite.com', manage_by_cik=False)
+        
+        try:
+            # create a model
+            response = provision.model_create(vendortoken, model, clonerid, aliases=False)
+            if not response.isok:
+                print('Error in model_create: {0} {1}'.format(response.status(), response.reason()))
+        
+            # list models
+            response = provision.model_list(vendortoken)
+            if response.isok:
+                print(response.body)
+            else:
+                print('Error in model_list: {0} {1}'.format(response.status(), response.reason()))
+        except httplib.HTTPException:
+            ex = sys.exc_info()[1]
+            print('HTTPException: {0}'.format(ex))
+        ```
+        
+        You can also ask the provision module to raise an exception for HTTP statuses of 400 and above by passing `raise_api_exceptions=True` to the `Provision` constructore. This can consolidate code that handles API errors for a large number of provision calls. See the [provisioning example](examples/provisioning.py) to see how to do this.
+        
+        
+        History
+        =======
+        
+        0.13.5 (2015-09-21)
+        -------------------
+        
+        - recover from exceptions in onephttp (issue in 0.13.0 - 0.13.4)
+        
+        0.13.4 (2015-09-11)
+        -------------------
+        
+        - build docstrings for read the docs site
+        - more PEP8 work
+        
+        
+        0.13.3 (2015-09-11)
+        -------------------
+        
+        - fix another setup.py issue
+        
+        
+        0.13.2 (2015-09-11)
+        -------------------
+        
+        - remove setup.py dependency on requests
+        
+        
+        0.13.1 (2015-09-11)
+        -------------------
+        
+        - add requests to requirements
+        
+        0.13.0 (2015-09-10)
+        -------------------
+        
+        - switch from httplib to requests
+        - tests and testing improvements (tox, run in parallel)
+        - package-level imports and method docs for a better 
+          interpreter experience
+        - documentation site (http://pyonep.readthedocs.org)
+        
+        0.12.4 (2015-09-03)
+        -------------------
+        
+        - add move command
+        
+        0.12.3 (2015-08-30)
+        -------------------
+        
+        - keep consistent ID numbering in RPC calls, again
+          for testability
+        
+        0.12.2 (2015-08-30)
+        -------------------
+        
+        - use non-random IDs in RPC calls, for testability
+        
+        0.12.1 (2015-08-30)
+        -------------------
+        
+        - fix exception when testing with VCR.py
+        
+        0.12.0 (2015-08-14)
+        -------------------
+        
+        - use https by default
+        
+        0.11.3 (2015-07-14)
+        -------------------
+        
+        - use RID rather than sharecode by default, for backward compatibility.
+        
+        0.11.2 (2015-07-01)
+        -------------------
+        
+        - add manage_by_sharecode boolean to indicate whether sharecode or RID is 
+          used with create model
+        - fix provisioning example to use sharecode rather than RID
+        
+        0.11.1 (2015-04-03)
+        -------------------
+        
+        - add support for wait command
+        
+        0.11.0 (2015-02-26)
+        -------------------
+        
+        - (breaking change) Undoes the breaking change to listing() in 0.10.0. All 
+          old code will continue to call deprecated listing API. New code should 
+          pass `options={}` and `rid={'alias': ''}`. This only affects anyone who 
+          used 0.10.0.
+        
+        0.10.0 (2015-02-19)
+        -------------------
+        
+        - (breaking change) add rid to listing parameters. Pass {'alias': ''}
+          to match previous behavior.
+        
+        0.9.8 (2015-01-29)
+        ------------------
+        
+        - add protected parameter for content_create
+        
+        
+        0.9.7 (2014-12-18)
+        ------------------
+        
+        - set __repr__ for ProvisionException, too
+        - support passing entire auth dict in place of CIK
+        
+        0.9.6 (2014-11-16)
+        ------------------
+        
+        - sensible output when printing ProvisionException
+        
+        0.9.5 (2014-11-16)
+        ------------------
+        
+        - turn off response body encoding for non utf-8 responses
+          (e.g. for model content)
+        
+        0.9.4 (2014-11-15)
+        ------------------
+        
+        - fix urlencode for python3
+        
+        0.9.3 (2014-11-15)
+        ------------------
+        
+        - fix timeout and escape body for curl output
+        
+        0.9.2 (2014-11-15)
+        ------------------
+        
+        - support logging requests in curl format
+        
+        0.9.1 (2014-10-29)
+        ------------------
+        
+        - fix the way provision exceptions are pulled in
+        
+        0.9.0 (2014-09-19)
+        ------------------
+        
+        - use utf-8 for unicode support
+        
+        0.8.4 (2014-04-09)
+        ------------------
+        
+        - add support for recordbatch
+        
+        0.8.3 (2014-04-01)
+        ------------------
+        
+        - clear deferred requests on exception. 
+        
+        0.8.2 (2014-02-11)
+        ------------------
+        
+        - update formatting to fit Python style guide (PEP 8)
+        
+        0.8.1 (2014-02-11)
+        ------------------
+        
+        - support https, reuseconnection in provision.py
+        - don't log exceptions in onep.py, just raise them
+        - add example of onep.py error handling in examples/get_info.py
+        
+        0.8.0 (2014-02-05)
+        ------------------
+        
+        - return ProvisionResult from provision methods to provide more 
+          information about success/failure (breaking change)
+        - refactor provision.py to use httplib, and share code with onep.py.
+        - make version string available in pyonep.__version__, per PEP 396
+        
+        0.7.13 (2014-01-31)
+        -------------------
+        
+        - add support for flush options
+        
+        0.7.12 (2014-01-27)
+        -------------------
+        
+        - use generic RPC address
+        
+        0.7.11 (2013-12-13)
+        -------------------
+        
+        - support options for listing command
+        
+        0.7.10 (2013-12-07)
+        -------------------
+        
+        - add support for logging all request JSON
+        
+        0.7.9 (2013-12-03)
+        ------------------
+        
+        - add support for Python 3.x
+        
+        0.7.8 (2013-10-28)
+        -----------------
+        
+        - add reuseconnection for performance
+        
+        
+        0.7.7 (2013-9-26)
+        -----------------
+        
+        - add optional User-Agent string
+        
+        0.7.6 (2013-8-18)
+        -----------------
+        
+        - improved HTTP logging
+        
+        0.7.5 (2013-8-12)
+        -----------------
+        
+        - changed provisioning interface to manage by CIK 
+          rather than vendor token by default
+        - fixed writegroup command
+        - added example code
+        - improved documentation 
+        
+        0.7.4 (2013-7-22)
+        -----------------
+        
+        - fixed support for python 2.5
+        - added example of using onep.py directly
+        
+        0.7.3 (2013-7-19)
+        -----------------
+        
+        - fixed issue with format in python 2.6
+        - fixed exception messages
+        
+        0.7.2 (2013-7-19)
+        -----------------
+        
+        - updated provisioning library for api change to use "meta" field
+        - updated provisioning library to use vendor token by default
+        - improved logging 
+        - fixed issue record offset is 0 in datastore
+        - reverted back to using distutils for python 2.6 support
+        
+        0.7.1 (2013-7-18)
+        -----------------
+        
+        - merge a few bug fixes from Exosite internal repo
+        - remove comment command
+        - fix multiple command example 
+        
+        0.7.0 (2013-7-18)
+        -----------------
+        
+        - renamed onepv1lib package to pyonep
+        - renamed onep_exceptions back to exceptions
+        
+        0.6
+        ---
+        
+        - add usage command
+        
+        0.5
+        ---
+        
+        - add support for https
+        
+        0.4
+        ---
+        
+        - add support for sending multiple commands in a single request
+        
+        0.3
+        ---
+        
+        - add provisioning library
+        
+        0.2
+        ---
+        
+        - update example code
+        
+        0.1
+        ---
+        
+        - initial version
+        
+Keywords: exosite,onep,one platform,m2m
+Platform: UNKNOWN
