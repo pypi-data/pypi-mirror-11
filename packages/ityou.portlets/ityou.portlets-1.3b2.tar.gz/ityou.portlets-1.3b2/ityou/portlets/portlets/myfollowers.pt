@@ -1,0 +1,120 @@
+<dl class="portlet portletmyfollowers"
+    i18n:domain="ityou.portlets">
+
+    <dt class="portletHeader">
+        <span class="portletTopLeft"></span>
+        <span i18n:translate="your_followers">
+           Your Followers
+        </span>
+        <span class="portletTopRight"></span>
+    </dt>
+
+    <dd class="portletItem odd clearfix" id="followers-listing">
+        <ul>
+            <!-- via ajax -->    
+            <tal:comment condition="nothing">
+            # ------------------------------------------------------------------------------
+            # Template für das Portrait im My Follower Portlet
+            # ------------------------------------------------------------------------------
+            </tal:comment>
+        </ul>
+    </dd>
+
+    <!-- das muss in die registry .. -->
+    <script type="text/javascript">        
+        $(document).ready(function(){
+           
+            $.getJSON('@@ajax-datadigger', {"data":'followers'},function(json){   
+                
+                $("#followers-listing > ul").html(
+                    $("#user-followers-tmpl").render(json)    
+                );
+                
+                var $tmpl = $('#user-followers-tmpl'),
+                    $list = $('#followers-listing ul');
+            
+                // loop over data
+                $.each(json, $.proxy(function(key, value) {
+                    var $li = $list.find('li[data-id="' + value.id + '"]');
+
+                    // rendering if user is not in portlet
+                    if($li.length === 0) {
+                    	
+                        $li = $($tmpl.render(value));
+                        $li.appendTo(this.getSelector('list'));
+                    }
+                    
+                    //this.renderTooltip(value, $li);
+                    value.wioSendMsg = $.i18n._('wioSendMsg');
+                    //data.wioLastActivity = $.i18n._('wioLastActivity');
+                    if($li.find('.user-follower-box').length <= 0) {
+                        var tmpl = $('#user-followers-profile-tmpl');
+                        
+                        $li.find('.userprofile-box').append(tmpl.render(value));
+                    }
+
+                }, this));
+                
+                $('#followers-listing ul').on({
+
+                    mouseenter: $.proxy(function(e) {
+                        var $li = $(e.currentTarget).parents('li');
+                        
+                        if($li.find('.user-follower-box').length > 0) {
+                            $li.find('.userprofile-box').find('> div').each(function() {
+                                $(this).show();
+                            });
+                        }
+                    }, this),
+                    
+                    mouseleave: $.proxy(function(e) {
+                        var $li = $(e.currentTarget).parents('li');
+                        
+                        $li.find('.userprofile-box').find('> div').each(function() {
+                            $(this).hide();
+                        });
+                    }, this)
+                
+                }, '.portrait');
+
+            });
+        });
+        
+    </script>
+
+    <script type="text/x-jsrender" id="user-followers-tmpl">
+        <li data-id="{{:id}}">
+            <a class="portrait" href="{{:profile}}">
+                <img class="img-icon" src="{{:portrait}}">
+                <div class="userprofile-box"></div>
+            </a>
+        </li>
+    </script>
+    
+
+   <script type="text/x-jsrender" id="user-followers-profile-tmpl">
+        <div class="arrow-top"></div>
+        <div class="user-follower-box" title="{{:id}}">
+            <a href="{{:profile}}" title="{{:fullname}}">
+                <img class="img-portrait" src="{{:portrait_large}}">
+            </a>
+            
+            
+            <dl class="info-profile">
+                <dd>
+                    <a class="fullname" href="{{:profile}}"><strong>{{:fullname}}</strong></a>
+                </dd>
+                <dd>
+                    <a href="mailto:{{:email}}">{{:email}}</a>
+                </dd>
+                <dd tal:condition="view/imessage_installed">
+                    <a href="@@messages?sid={{:id}}">-> {{:wioSendMsg}}</a>
+                </dd>
+                <dd>
+               
+                </dd>
+            </dl>
+        </div>
+    </script>
+
+</dl>
