@@ -1,0 +1,160 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import click
+import readline
+import json
+import os
+from tabulate import tabulate
+import requests
+from functools import partial
+
+
+examples = [
+"dummy_08_stdf",
+"dummy_07_ksxx",
+"dummy_06_student",
+"dummy_05_sjst",
+"dummy_04_sjxx",
+"dummy_03_bjwh",        
+"dummy_02_school",      
+"dummy_01_xkwh",        
+"copy_dummy_03_bjwh",
+"copy_dummy_02_school",
+"copy_dummy_01_xkwh",
+"copy_08_stdf",
+"copy_07_ksxx",
+"copy_06_student",
+"copy_05_sjst",
+"copy_04_sjxx",
+"copy_03_bjwh",
+"copy_02_school",
+"copy_01_xkwh",
+"08_stdf",              
+"07_ksxx",
+"06_student",          
+"05_sjst",
+"04_sjxx",              
+"03_bjwh",              
+"02_school",            
+"01_xkwh"
+]
+
+
+class Ehc(object):
+    def __init__(self, svc_root):
+        self.svc_root = svc_root
+
+    def preload_tables(self, tables):
+        body = {
+            "default" : tables
+        }
+        r = requests.post(self.svc_root + "/preload",
+                          headers = {"x-auth-token" :" test"},
+                          data = json.dumps(body))
+        return r
+
+    def get_tables(self):
+        r = requests.get(self.svc_root + "/tables/default",
+                         headers = {"x-auth-token" :" test"})
+        return r.json()['tables']
+
+    def query(self, sql):
+        sql += " "
+        for e in examples:
+           sql = sql.replace(" %s "%e, " \"cache_default\".\"%s\" "%e)
+           sql = sql.replace(" %s;"%e, " \"cache_default\".\"%s\";"%e)
+        pgsql = sql
+        print pgsql
+        body = {
+            "query" : pgsql
+        }
+        r = requests.post(self.svc_root + "/topspeed",
+                          headers = {"x-auth-token" :" test"},
+                          data = json.dumps(body))
+        print r.content
+        #print r.json()
+        print tabulate(r.json()['data'])
+    def cmd_help(self, args):
+        print """
+help(h)        : this command
+show_tables(s) : show all the tables and status
+preload(p)     : preload table for topspeed query
+query(sql)     : topspeed query
+quit(q)        : quit
+"""
+
+    def cmd_preload(self, args):
+        r = self.preload_tables(args.split()[1:])
+        print r
+
+    def cmd_show_tables(self, args):
+        print tabulate(self.get_tables())
+
+    def query_loop(self, args):
+        while True:
+            line = raw_input('SQL> ')
+            if line in ['quit', 'q']:
+                break
+            if line:
+                print 'ENTERED: "%s"' % line
+                try:
+                    self.cmd_query(line)
+                except Exception as e:
+                    print "Exception Catched..."
+                    print e
+    def cmd_query(self, sql):
+        self.query(sql)
+
+
+@click.command()
+@click.option('--server', prompt='server root',
+              default="http://127.0.0.1:1234",
+              help='The root service for ehc shell(for example, "http://127.0.0.1:1234/"')
+def hello(server):
+
+    ehc = Ehc(server)
+    commands = {
+        "help" : ehc.cmd_help,
+        "h" : ehc.cmd_help,
+        "preload" : ehc.cmd_preload,
+        "p" : ehc.cmd_preload,
+        "show_tables" : ehc.cmd_show_tables,
+        "show tables" : ehc.cmd_show_tables,
+        "s" : ehc.cmd_show_tables,
+        "query": ehc.query_loop,
+        "sql": ehc.query_loop
+    }
+
+    readline.parse_and_bind('tab: complete')
+    # readline.parse_and_bind('set editing-mode vi')
+    ehc.cmd_help("")
+    while True:
+        line = raw_input('ehc shell> ')
+        if line:
+            print 'ENTERED: "%s"' % line
+
+            cmd = line.split()[0]
+            if cmd in commands:
+                try:
+                    commands[cmd](line)
+                except Exception as e:
+                    print "Exception Catched..."
+                    print e
+            else:
+                print "command not found"
+                ehc.cmd_help("")
+            # else:
+            #     try:
+            #         ehc.query(line)
+            #     except Exception as e:
+            #         print "Exception Catched..."
+            #         print e
+
+            if line in ['quit', "q"]:
+                break
+
+
+if __name__ == '__main__':
+    hello()
+
