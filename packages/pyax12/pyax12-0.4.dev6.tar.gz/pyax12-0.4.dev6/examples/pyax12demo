@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# PyAX-12
+
+# The MIT License
+#
+# Copyright (c) 2010,2015 Jeremie DECOCK (http://www.jdhp.org)
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
+"""
+A PyAX-12 demo.
+
+Control the position and the speed of the specified Dynamixel unit.
+"""
+
+from pyax12.argparse_default import common_argument_parser
+from pyax12.connection import Connection
+
+import tkinter as tk
+
+def main():
+    """
+    A PyAX-12 demo.
+
+    Control the position and the speed of the specified Dynamixel unit.
+    """
+
+    # Parse options
+    parser = common_argument_parser(desc=main.__doc__)
+    args = parser.parse_args()
+
+    # Connect to the serial port
+    serial_connection = Connection(args.port, args.baudrate, args.timeout)
+
+    # Tkinter GUI
+    root = tk.Tk()
+    root.geometry("150x500")   # Set the size of the "root" window
+
+    ###
+
+    def scale_cb(event=None):
+        """The tkinter scale callback: set the Dynamixel goal position to the
+        current scale value."""
+        position = position_scale.get() # Get the scale value, integer or float
+        speed = speed_scale.get()       # Get the scale value, integer or float
+
+        serial_connection.goto(args.dynamixel_id, position, speed)
+
+    servo_frame_txt = "Servo #" + str(args.dynamixel_id)
+    servo_frame = tk.LabelFrame(root, text=servo_frame_txt, padx=5, pady=5)
+    servo_frame.pack(fill=tk.Y, expand=1, padx=10, pady=10)
+
+    # Position
+    position_frame = tk.Frame(servo_frame)
+    position_frame.pack(fill=tk.Y, expand=1, side=tk.LEFT)
+
+    position_label = tk.Label(position_frame, text="Position")
+    position_label.pack(side=tk.TOP)
+
+    position_scale = tk.Scale(position_frame, from_=0, to=1023,
+                              orient=tk.VERTICAL, command=scale_cb)
+    position_scale.pack(fill=tk.Y, expand=1, side=tk.BOTTOM)
+
+    # Speed
+    speed_frame = tk.Frame(servo_frame)
+    speed_frame.pack(fill=tk.Y, expand=1, side=tk.RIGHT)
+
+    speed_label = tk.Label(speed_frame, text="Speed")
+    speed_label.pack(side=tk.TOP)
+
+    # Warning about the Dynamixel speed value: 0 is a special value.
+    # If speed=0 then the velocity is the largest possible for the applied
+    # voltage (cf. p.17).
+    speed_scale = tk.Scale(speed_frame, from_=1, to=1023,
+                           orient=tk.VERTICAL, command=scale_cb)
+    speed_scale.pack(fill=tk.Y, expand=1, side=tk.BOTTOM)
+
+    position_scale.set(512)         # Set the scale value
+    speed_scale.set(512)            # Set the scale value
+
+    ###
+
+    root.mainloop()
+
+    # Close the serial connection
+    serial_connection.close()
+
+
+if __name__ == '__main__':
+    main()
