@@ -1,0 +1,116 @@
+faodata
+=======
+
+A python interface to the FAO data.
+
+What is faodata?
+~~~~~~~~~~~~~~~~
+
+-  faodata is a simple python interface to find and request data from
+   the Food and Agriculture organization of the United Nations
+   (`FAO <http://faostat3.fao.org/home/E>`__).
+-  The package uses the `FAO API <http://api.data.fao.org/1.0/>`__.
+-  Country boundaries that are used to plot data are from `Natural Earth
+   (1:110m
+   resolution) <http://www.naturalearthdata.com/downloads/110m-cultural-vectors/>`__
+
+Installation
+~~~~~~~~~~~~
+
+``pip install faodata`` or download the `source
+code <https://bitbucket.org/jlerat/faodata>`__ and
+``python setup.py install``
+
+Basic use
+~~~~~~~~~
+
+To download data, the id of the database, dataset and fields are
+required:
+
+-  To get the list of FAO databases:
+
+   .. code:: Python
+
+       from faodata import faodownload
+       databases = faodownload.get_databases()
+
+-  To get the list of FAO datasets in a given database (e.g. faostat):
+
+   .. code:: python
+
+       database_id = 'faostat'
+       datasets = faodownload.get_datasets(database_id)
+
+-  To get the list of FAO fields in a given dataset (e.g. live-crop):
+
+   .. code:: python
+
+       database_id = 'faostat'
+       dataset_id = 'live-crop'
+       fields = faodownload.get_fields(database_id, dataset_id)
+
+When all the previous elements are known, the download procedure is
+
+.. code:: python
+
+    database_id = 'faostat'
+    dataset_id = 'live-prod'
+    field_id = 'm5111'
+
+    # Define the year (if None, all years are retrieved)
+    year = 2010
+
+    # Define country (if None, all countries are retrieved)
+    # The country id is the ISO3 code
+    # see https://en.wikipedia.org/wiki/ISO_3166-1_alpha-3 
+    country_id = None
+
+    # Get data
+    data = faodownload.get_data(database_id, dataset_id, field_id, country=country_id, year=year)
+
+When data is downloaded, it can be displayed on a world map
+
+.. code:: Python
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from mpl_toolkits import basemap
+    from faodata import faodownload, faomap
+
+    # Download data
+    database_id = 'faostat'
+    dataset_id = 'live-prod'
+    field_id = 'm5111'
+    year = 2013
+    data = faodownload.get_data(database_id, dataset_id, field_id, year=year)
+
+    # Select data
+    item = 'Cattle'
+    idx = data['Item'] == item
+    data = data.loc[idx, ['country', 'value']]
+
+    # Instantiate matplotlib and basemap objects
+    plt.close('all')
+    fig, ax = plt.subplots()
+    map = basemap.Basemap(projection='robin', 
+            lon_0=10, lat_0=50, ax = ax)
+
+    map.drawcoastlines(color='grey')
+    map.drawcountries(color='grey')
+
+    # Categorize data according to percentiles
+    cat = [np.percentile(data['value'], pp) 
+            for pp in range(10, 100, 10)]
+
+    # Draw plot
+    faomap.plot(map, data, cat, ndigits=0)
+
+    map.ax.legend(loc=3)
+    ax.set_title('%s population, %d' % (item, year),
+            fontsize=15)
+
+    # Add a footer to the figure to 
+    # indicate data source
+    faomap.mapfooter(fig, database_id, dataset_id, field_id)
+
+More examples in the 'examples' directory.
