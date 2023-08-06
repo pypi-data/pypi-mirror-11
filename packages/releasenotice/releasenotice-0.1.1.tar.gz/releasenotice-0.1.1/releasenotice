@@ -1,0 +1,49 @@
+#!/usr/bin/env python
+
+from slacker import Slacker
+import urllib2
+import argparse
+import ConfigParser
+import os
+import sys
+
+if __name__ == '__main__':
+
+    config = ConfigParser.ConfigParser()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--product', '-p', help='product to post a message about', required=True)
+    parser.add_argument('--version', '-v', help='product version to post a message about', required=True)
+    group_one = parser.add_mutually_exclusive_group()
+    group_one.add_argument('--config-file', '-c', help='path to config file')
+    group_one.add_argument('--http-config-file', '-w', help='http url to retrieve your config from')
+
+    cmd_args = parser.parse_args()
+
+    if not any([cmd_args.http_config_file, cmd_args.config_file]):
+        print "must specify either --config-file or --http-config-file"
+        sys.exit(1)
+
+    if cmd_args.http_config_file is not None:
+        res = urllib2.urlopen(cmd_args.http_config_file)
+        config.readfp(res)
+    else:
+        config.read(cmd_args.config_file)
+
+    message = config.get(cmd_args.product, "message")
+    message = message.replace('VERSION', cmd_args.version)
+
+    channel = config.get(cmd_args.product, "channel")
+    emoji = config.get(cmd_args.product, "emoji")
+    botname = config.get(cmd_args.product, "botname")
+
+    api_key_env = os.environ.get('SLACK_API_KEY')
+
+    if api_key_env is None:
+        api_key = config.get("slack", "api_key")
+    else:
+        api_key = api_key_env
+
+    slack = Slacker(api_key)
+
+    slack.chat.post_message(channel, message, username=botname, icon_emoji=emoji)
