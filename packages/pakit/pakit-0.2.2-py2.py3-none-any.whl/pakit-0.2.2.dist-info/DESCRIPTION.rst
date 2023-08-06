@@ -1,0 +1,43 @@
+PakIt is a package manager that builds directly off source.
+For More Information: https://github.com/starcraftman/pakit/
+
+Change Log:
+
+0.2.2
+  - Implement source caching for VCS.
+  - Add bash completion for pakit command.
+  - Smarter default cmd dir for recipes, during `build()` executes in `source`,
+    during `verify` executes in `link`
+  - `--list`: Shorten hash and list repo installed from.
+  - `--display` formatting fix.
+  - Added recipes: ack, cmake, ctags, git, hg, libjsoncpp, p7zip, unrar, zsh.
+  - Fix: Rare Command Failure
+
+0.2.1
+  - Bumping to ensure pip release works.
+  - README updated roadmap.
+
+0.2.0
+  - Add Doxygen build recipe.
+  - Add simple to follow demo & gif.
+  - Pakit now comes with a man page.
+  - Commands now have proper timeout & stdin support.
+  - Archives now support local URI as a path on system.
+  - Improved RecipeDB & added back user recipe support via `paths.recipes`.
+  - Add Archive support for tar.xz, rar and 7z
+  - Large testing overhaul & speedup with caching.
+  - Fix: Not all Archive temp files cleaned.
+
+0.1.4
+  - Fix UpdateTask, was broken and not noiced due to bad test
+  - Add better error handling for problems during InstallTask & UpdateTask
+
+0.1.2
+  - Add support for Python 3 versions in testing
+  - Add basic archive support (tar.gz, tar.bz2, zip)
+
+0.1.0
+  - Initial release
+
+
+
