@@ -1,0 +1,265 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Working with non-python tests</title>
+    
+    <link rel="stylesheet" href="../_static/flasky.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '2.7.3.dev376+ng06b1b69.d20150827',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../_static/pytest1favi.ico"/>
+    <link rel="top" title="None" href="../contents.html" />
+    <link rel="up" title="Usages and Examples" href="index.html" />
+    <link rel="next" title="Talks and Tutorials" href="../talks.html" />
+    <link rel="prev" title="Changing standard (Python) test discovery" href="pythoncollection.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+  
+  
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../talks.html" title="Talks and Tutorials"
+             accesskey="N">next</a></li>
+        <li class="right" >
+          <a href="pythoncollection.html" title="Changing standard (Python) test discovery"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../contents.html">pytest-2.7.3.dev376+ng06b1b69.d20150827</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="index.html" accesskey="U">Usages and Examples</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="working-with-non-python-tests">
+<span id="non-python-tests"></span><h1>Working with non-python tests<a class="headerlink" href="#working-with-non-python-tests" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="a-basic-example-for-specifying-tests-in-yaml-files">
+<span id="yaml-plugin"></span><h2>A basic example for specifying tests in Yaml files<a class="headerlink" href="#a-basic-example-for-specifying-tests-in-yaml-files" title="Permalink to this headline">¶</a></h2>
+<p>Here is an example <code class="docutils literal"><span class="pre">conftest.py</span></code> (extracted from Ali Afshnars special purpose <a class="reference external" href="http://bitbucket.org/aafshar/pytest-yamlwsgi/src/tip/pytest_yamlwsgi.py">pytest-yamlwsgi</a> plugin).   This <code class="docutils literal"><span class="pre">conftest.py</span></code> will  collect <code class="docutils literal"><span class="pre">test*.yml</span></code> files and will execute the yaml-formatted content as custom tests:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of conftest.py</span>
+
+<span class="kn">import</span> <span class="nn">pytest</span>
+
+<span class="k">def</span> <span class="nf">pytest_collect_file</span><span class="p">(</span><span class="n">parent</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">ext</span> <span class="o">==</span> <span class="s">&quot;.yml&quot;</span> <span class="ow">and</span> <span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&quot;test&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">YamlFile</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">parent</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">YamlFile</span><span class="p">(</span><span class="n">pytest</span><span class="o">.</span><span class="n">File</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">collect</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="kn">import</span> <span class="nn">yaml</span> <span class="c"># we need a yaml parser, e.g. PyYAML</span>
+        <span class="n">raw</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fspath</span><span class="o">.</span><span class="n">open</span><span class="p">())</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">spec</span> <span class="ow">in</span> <span class="n">raw</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">yield</span> <span class="n">YamlItem</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="p">,</span> <span class="n">spec</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">YamlItem</span><span class="p">(</span><span class="n">pytest</span><span class="o">.</span><span class="n">Item</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">parent</span><span class="p">,</span> <span class="n">spec</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">YamlItem</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">parent</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">spec</span> <span class="o">=</span> <span class="n">spec</span>
+
+    <span class="k">def</span> <span class="nf">runtest</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="c"># some custom test execution (dumb example follows)</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="o">!=</span> <span class="n">value</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">YamlException</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">repr_failure</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">excinfo</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; called when self.runtest() raises an exception. &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">excinfo</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="n">YamlException</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span>
+                <span class="s">&quot;usecase execution failed&quot;</span><span class="p">,</span>
+                <span class="s">&quot;   spec failed: </span><span class="si">%r</span><span class="s">: </span><span class="si">%r</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">excinfo</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">3</span><span class="p">],</span>
+                <span class="s">&quot;   no further details known at this point.&quot;</span>
+            <span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">reportinfo</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">fspath</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s">&quot;usecase: </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span>
+
+<span class="k">class</span> <span class="nc">YamlException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; custom exception for error reporting. &quot;&quot;&quot;</span>
+</pre></div>
+</div>
+<p>You can create a simple example file:</p>
+<div class="highlight-python"><div class="highlight"><pre># test_simple.yml
+ok:
+    sub1: sub1
+
+hello:
+    world: world
+    some: other
+</pre></div>
+</div>
+<p>and if you installed <a class="reference external" href="http://pypi.python.org/pypi/PyYAML/">PyYAML</a> or a compatible YAML-parser you can
+now execute the test specification:</p>
+<div class="highlight-python"><div class="highlight"><pre>nonpython $ py.test test_simple.yml
+======= test session starts ========
+platform linux2 -- Python 2.7.9, pytest-2.8.0.dev4, py-1.4.28, pluggy-0.3.0
+rootdir: $PWD/doc/en, inifile: pytest.ini
+collected 2 items
+
+test_simple.yml .F
+
+======= FAILURES ========
+_______ usecase: hello ________
+usecase execution failed
+   spec failed: &#39;some&#39;: &#39;other&#39;
+   no further details known at this point.
+======= 1 failed, 1 passed in 0.12 seconds ========
+</pre></div>
+</div>
+<p>You get one dot for the passing <code class="docutils literal"><span class="pre">sub1:</span> <span class="pre">sub1</span></code> check and one failure.
+Obviously in the above <code class="docutils literal"><span class="pre">conftest.py</span></code> you&#8217;ll want to implement a more
+interesting interpretation of the yaml-values.  You can easily write
+your own domain specific testing language this way.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last"><code class="docutils literal"><span class="pre">repr_failure(excinfo)</span></code> is called for representing test failures.
+If you create custom collection nodes you can return an error
+representation string of your choice.  It
+will be reported as a (red) string.</p>
+</div>
+<p><code class="docutils literal"><span class="pre">reportinfo()</span></code> is used for representing the test location and is also
+consulted when reporting in <code class="docutils literal"><span class="pre">verbose</span></code> mode:</p>
+<div class="highlight-python"><div class="highlight"><pre>nonpython $ py.test -v
+======= test session starts ========
+platform linux2 -- Python 2.7.9, pytest-2.8.0.dev4, py-1.4.28, pluggy-0.3.0 -- $PWD/.env/bin/python2.7
+rootdir: $PWD/doc/en, inifile: pytest.ini
+collecting ... collected 2 items
+
+test_simple.yml::ok PASSED
+test_simple.yml::hello FAILED
+
+======= FAILURES ========
+_______ usecase: hello ________
+usecase execution failed
+   spec failed: &#39;some&#39;: &#39;other&#39;
+   no further details known at this point.
+======= 1 failed, 1 passed in 0.12 seconds ========
+</pre></div>
+</div>
+<p>While developing your custom test collection and execution it&#8217;s also
+interesting to just look at the collection tree:</p>
+<div class="highlight-python"><div class="highlight"><pre>nonpython $ py.test --collect-only
+======= test session starts ========
+platform linux2 -- Python 2.7.9, pytest-2.8.0.dev4, py-1.4.28, pluggy-0.3.0
+rootdir: $PWD/doc/en, inifile: pytest.ini
+collected 2 items
+&lt;YamlFile &#39;example/nonpython/test_simple.yml&#39;&gt;
+  &lt;YamlItem &#39;ok&#39;&gt;
+  &lt;YamlItem &#39;hello&#39;&gt;
+
+=======  in 0.12 seconds ========
+</pre></div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../contents.html">
+              <img class="logo" src="../_static/pytest1.png" alt="Logo"/>
+            </a></p><h3><a href="../contents.html">Table Of Contents</a></h3>
+
+<ul>
+  <li><a href="../index.html">Home</a></li>
+  <li><a href="../contents.html">Contents</a></li>
+  <li><a href="../getting-started.html">Install</a></li>
+  <li><a href="index.html">Examples</a></li>
+  <li><a href="../customize.html">Customize</a></li>
+  <li><a href="../contact.html">Contact</a></li>
+  <li><a href="../talks.html">Talks/Posts</a></li>
+  <li><a href="../changelog.html">Changelog</a></li>
+</ul>
+  <hr>
+  <ul>
+<li><a class="reference internal" href="#">Working with non-python tests</a><ul>
+<li><a class="reference internal" href="#a-basic-example-for-specifying-tests-in-yaml-files">A basic example for specifying tests in Yaml files</a></li>
+</ul>
+</li>
+</ul>
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../contents.html">Documentation overview</a><ul>
+  <li><a href="index.html">Usages and Examples</a><ul>
+      <li>Previous: <a href="pythoncollection.html" title="previous chapter">Changing standard (Python) test discovery</a></li>
+      <li>Next: <a href="../talks.html" title="next chapter">Talks and Tutorials</a></li>
+  </ul></li>
+  </ul></li>
+</ul><h3>Useful Links</h3>
+<ul>
+  <li><a href="../index.html">The pytest Website</a></li>
+  <li><a href="../contributing.html">Contribution Guide</a></li>
+  <li><a href="https://pypi.python.org/pypi/pytest">pytest @ PyPI</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/">pytest @ GitHub</a></li>
+  <li><a href="http://pytest.org/latest/plugins_index/index.html">3rd party plugins</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/issues">Issue Tracker</a></li>
+  <li><a href="http://pytest.org/latest/pytest.pdf">PDF Documentation</a>
+</ul>
+
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+
+  <div class="footer">
+    &copy; Copyright 2015, holger krekel and pytest-dev team.
+    Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+  </div>
+  
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-7597274-13']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+  </body>
+</html>

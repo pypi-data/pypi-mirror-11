@@ -1,0 +1,234 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Fixture functions using “yield” / context manager integration</title>
+    
+    <link rel="stylesheet" href="_static/flasky.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '2.7.3.dev376+ng06b1b69.d20150827',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="shortcut icon" href="_static/pytest1favi.ico"/>
+    <link rel="top" title="None" href="contents.html" />
+    <link rel="up" title="pytest reference documentation" href="apiref.html" />
+    <link rel="next" title="Parametrizing fixtures and test functions" href="parametrize.html" />
+    <link rel="prev" title="pytest fixtures: explicit, modular, scalable" href="fixture.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+  
+  
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="parametrize.html" title="Parametrizing fixtures and test functions"
+             accesskey="N">next</a></li>
+        <li class="right" >
+          <a href="fixture.html" title="pytest fixtures: explicit, modular, scalable"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="contents.html">pytest-2.7.3.dev376+ng06b1b69.d20150827</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="apiref.html" accesskey="U">pytest reference documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="fixture-functions-using-yield-context-manager-integration">
+<span id="yieldfixture"></span><h1>Fixture functions using &#8220;yield&#8221; / context manager integration<a class="headerlink" href="#fixture-functions-using-yield-context-manager-integration" title="Permalink to this headline">¶</a></h1>
+<div class="versionadded">
+<p><span class="versionmodified">New in version 2.4.</span></p>
+</div>
+<p>pytest-2.4 allows fixture functions to seamlessly use a <code class="docutils literal"><span class="pre">yield</span></code> instead
+of a <code class="docutils literal"><span class="pre">return</span></code> statement to provide a fixture value while otherwise
+fully supporting all other fixture features.</p>
+<p>Let&#8217;s look at a simple standalone-example using the <code class="docutils literal"><span class="pre">yield</span></code> syntax:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of test_yield.py</span>
+
+<span class="kn">import</span> <span class="nn">pytest</span>
+
+<span class="nd">@pytest.yield_fixture</span>
+<span class="k">def</span> <span class="nf">passwd</span><span class="p">():</span>
+    <span class="k">print</span> <span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">setup before yield&quot;</span><span class="p">)</span>
+    <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="s">&quot;/etc/passwd&quot;</span><span class="p">)</span>
+    <span class="k">yield</span> <span class="n">f</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
+    <span class="k">print</span> <span class="p">(</span><span class="s">&quot;teardown after yield&quot;</span><span class="p">)</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">test_has_lines</span><span class="p">(</span><span class="n">passwd</span><span class="p">):</span>
+    <span class="k">print</span> <span class="p">(</span><span class="s">&quot;test called&quot;</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">passwd</span>
+</pre></div>
+</div>
+<p>In contrast to <a class="reference internal" href="fixture.html#finalization"><span>finalization through registering callbacks</span></a>, our fixture function used a <code class="docutils literal"><span class="pre">yield</span></code>
+statement to provide the lines of the <code class="docutils literal"><span class="pre">/etc/passwd</span></code> file.
+The code after the <code class="docutils literal"><span class="pre">yield</span></code> statement serves as the teardown code,
+avoiding the indirection of registering a teardown callback function.</p>
+<p>Let&#8217;s run it with output capturing disabled:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ py.test -q -s test_yield.py
+
+setup before yield
+test called
+.teardown after yield
+
+1 passed in 0.12 seconds
+</pre></div>
+</div>
+<p>We can also seamlessly use the new syntax with <code class="docutils literal"><span class="pre">with</span></code> statements.
+Let&#8217;s simplify the above <code class="docutils literal"><span class="pre">passwd</span></code> fixture:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of test_yield2.py</span>
+
+<span class="kn">import</span> <span class="nn">pytest</span>
+
+<span class="nd">@pytest.yield_fixture</span>
+<span class="k">def</span> <span class="nf">passwd</span><span class="p">():</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s">&quot;/etc/passwd&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="n">f</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">test_has_lines</span><span class="p">(</span><span class="n">passwd</span><span class="p">):</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">passwd</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">1</span>
+</pre></div>
+</div>
+<p>The file <code class="docutils literal"><span class="pre">f</span></code> will be closed after the test finished execution
+because the Python <code class="docutils literal"><span class="pre">file</span></code> object supports finalization when
+the <code class="docutils literal"><span class="pre">with</span></code> statement ends.</p>
+<p>Note that the yield fixture form supports all other fixture
+features such as <code class="docutils literal"><span class="pre">scope</span></code>, <code class="docutils literal"><span class="pre">params</span></code>, etc., thus changing existing
+fixture functions to use <code class="docutils literal"><span class="pre">yield</span></code> is straightforward.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">While the <code class="docutils literal"><span class="pre">yield</span></code> syntax is similar to what
+<a class="reference external" href="http://docs.python.org/library/contextlib.html#contextlib.contextmanager" title="(in Python v2.7)"><code class="xref py py-func docutils literal"><span class="pre">contextlib.contextmanager()</span></code></a> decorated functions
+provide, with pytest fixture functions the part after the
+&#8220;yield&#8221; will always be invoked, independently from the
+exception status of the test function which uses the fixture.
+This behaviour makes sense if you consider that many different
+test functions might use a module or session scoped fixture.</p>
+</div>
+<div class="section" id="discussion-and-future-considerations-feedback">
+<h2>Discussion and future considerations / feedback<a class="headerlink" href="#discussion-and-future-considerations-feedback" title="Permalink to this headline">¶</a></h2>
+<p>There are some topics that are worth mentioning:</p>
+<ul class="simple">
+<li>usually <code class="docutils literal"><span class="pre">yield</span></code> is used for producing multiple values.
+But fixture functions can only yield exactly one value.
+Yielding a second fixture value will get you an error.
+It&#8217;s possible we can evolve pytest to allow for producing
+multiple values as an alternative to current parametrization.
+For now, you can just use the normal
+<a class="reference internal" href="fixture.html#fixture-parametrize"><span>fixture parametrization</span></a>
+mechanisms together with <code class="docutils literal"><span class="pre">yield</span></code>-style fixtures.</li>
+<li>lastly <code class="docutils literal"><span class="pre">yield</span></code> introduces more than one way to write
+fixture functions, so what&#8217;s the obvious way to a newcomer?</li>
+</ul>
+<p>If you want to feedback or participate in discussion of the above
+topics, please join our <a class="reference internal" href="contact.html#contact-channels"><span>Contact channels</span></a>, you are most welcome.</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="contents.html">
+              <img class="logo" src="_static/pytest1.png" alt="Logo"/>
+            </a></p><h3><a href="contents.html">Table Of Contents</a></h3>
+
+<ul>
+  <li><a href="index.html">Home</a></li>
+  <li><a href="contents.html">Contents</a></li>
+  <li><a href="getting-started.html">Install</a></li>
+  <li><a href="example/index.html">Examples</a></li>
+  <li><a href="customize.html">Customize</a></li>
+  <li><a href="contact.html">Contact</a></li>
+  <li><a href="talks.html">Talks/Posts</a></li>
+  <li><a href="changelog.html">Changelog</a></li>
+</ul>
+  <hr>
+  <ul>
+<li><a class="reference internal" href="#">Fixture functions using &#8220;yield&#8221; / context manager integration</a><ul>
+<li><a class="reference internal" href="#discussion-and-future-considerations-feedback">Discussion and future considerations / feedback</a></li>
+</ul>
+</li>
+</ul>
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="contents.html">Documentation overview</a><ul>
+  <li><a href="apiref.html">pytest reference documentation</a><ul>
+      <li>Previous: <a href="fixture.html" title="previous chapter">pytest fixtures: explicit, modular, scalable</a></li>
+      <li>Next: <a href="parametrize.html" title="next chapter">Parametrizing fixtures and test functions</a></li>
+  </ul></li>
+  </ul></li>
+</ul><h3>Useful Links</h3>
+<ul>
+  <li><a href="index.html">The pytest Website</a></li>
+  <li><a href="contributing.html">Contribution Guide</a></li>
+  <li><a href="https://pypi.python.org/pypi/pytest">pytest @ PyPI</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/">pytest @ GitHub</a></li>
+  <li><a href="http://pytest.org/latest/plugins_index/index.html">3rd party plugins</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/issues">Issue Tracker</a></li>
+  <li><a href="http://pytest.org/latest/pytest.pdf">PDF Documentation</a>
+</ul>
+
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+
+  <div class="footer">
+    &copy; Copyright 2015, holger krekel and pytest-dev team.
+    Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+  </div>
+  
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-7597274-13']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+  </body>
+</html>

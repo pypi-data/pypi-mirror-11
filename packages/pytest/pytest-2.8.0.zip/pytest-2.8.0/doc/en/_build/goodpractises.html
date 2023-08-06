@@ -1,0 +1,425 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Good Integration Practices</title>
+    
+    <link rel="stylesheet" href="_static/flasky.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '2.7.3.dev376+ng06b1b69.d20150827',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="shortcut icon" href="_static/pytest1favi.ico"/>
+    <link rel="top" title="None" href="contents.html" />
+    <link rel="up" title="Getting started basics" href="overview.html" />
+    <link rel="next" title="Project examples" href="projects.html" />
+    <link rel="prev" title="Usage and Invocations" href="usage.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+  
+  
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="projects.html" title="Project examples"
+             accesskey="N">next</a></li>
+        <li class="right" >
+          <a href="usage.html" title="Usage and Invocations"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="contents.html">pytest-2.7.3.dev376+ng06b1b69.d20150827</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="overview.html" accesskey="U">Getting started basics</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="good-integration-practices">
+<span id="goodpractises"></span><h1>Good Integration Practices<a class="headerlink" href="#good-integration-practices" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="work-with-virtual-environments">
+<h2>Work with virtual environments<a class="headerlink" href="#work-with-virtual-environments" title="Permalink to this headline">¶</a></h2>
+<p>We recommend to use <a class="reference external" href="http://pypi.python.org/pypi/virtualenv">virtualenv</a> environments and use <a class="reference external" href="http://pypi.python.org/pypi/pip">pip</a>
+(or <a class="reference external" href="http://pypi.python.org/pypi/distribute">easy_install</a>) for installing your application and any dependencies
+as well as the <code class="docutils literal"><span class="pre">pytest</span></code> package itself.  This way you will get an isolated
+and reproducible environment.    Given you have installed <a class="reference external" href="http://pypi.python.org/pypi/virtualenv">virtualenv</a>
+and execute it from the command line, here is an example session for unix
+or windows:</p>
+<div class="highlight-python"><div class="highlight"><pre>virtualenv .   # create a virtualenv directory in the current directory
+
+source bin/activate  # on unix
+
+scripts/activate     # on Windows
+</pre></div>
+</div>
+<p>We can now install pytest:</p>
+<div class="highlight-python"><div class="highlight"><pre>pip install pytest
+</pre></div>
+</div>
+<p>Due to the <code class="docutils literal"><span class="pre">activate</span></code> step above the <code class="docutils literal"><span class="pre">pip</span></code> will come from
+the virtualenv directory and install any package into the isolated
+virtual environment.</p>
+</div>
+<div class="section" id="choosing-a-test-layout-import-rules">
+<h2>Choosing a test layout / import rules<a class="headerlink" href="#choosing-a-test-layout-import-rules" title="Permalink to this headline">¶</a></h2>
+<p><code class="docutils literal"><span class="pre">pytest</span></code> supports two common test layouts:</p>
+<ul>
+<li><p class="first">putting tests into an extra directory outside your actual application
+code, useful if you have many functional tests or for other reasons
+want to keep tests separate from actual application code (often a good
+idea):</p>
+<div class="highlight-python"><div class="highlight"><pre>setup.py   # your distutils/setuptools Python package metadata
+mypkg/
+    __init__.py
+    appmodule.py
+tests/
+    test_app.py
+    ...
+</pre></div>
+</div>
+</li>
+<li><p class="first">inlining test directories into your application package, useful if you
+have direct relation between (unit-)test and application modules and
+want to distribute your tests along with your application:</p>
+<div class="highlight-python"><div class="highlight"><pre>setup.py   # your distutils/setuptools Python package metadata
+mypkg/
+    __init__.py
+    appmodule.py
+    ...
+    test/
+        test_app.py
+        ...
+</pre></div>
+</div>
+</li>
+</ul>
+<p>Important notes relating to both schemes:</p>
+<ul>
+<li><p class="first"><strong>make sure that &#8220;mypkg&#8221; is importable</strong>, for example by typing once:</p>
+<div class="highlight-python"><div class="highlight"><pre>pip install -e .   # install package using setup.py in editable mode
+</pre></div>
+</div>
+</li>
+<li><p class="first"><strong>avoid &#8220;__init__.py&#8221; files in your test directories</strong>.
+This way your tests can run easily against an installed version
+of <code class="docutils literal"><span class="pre">mypkg</span></code>, independently from the installed package if it contains
+the tests or not.</p>
+</li>
+<li><p class="first">With inlined tests you might put <code class="docutils literal"><span class="pre">__init__.py</span></code> into test
+directories and make them installable as part of your application.
+Using the <code class="docutils literal"><span class="pre">py.test</span> <span class="pre">--pyargs</span> <span class="pre">mypkg</span></code> invocation pytest will
+discover where mypkg is installed and collect tests from there.
+With the &#8220;external&#8221; test you can still distribute tests but they
+will not be installed or become importable.</p>
+</li>
+</ul>
+<p>Typically you can run tests by pointing to test directories or modules:</p>
+<div class="highlight-python"><div class="highlight"><pre>py.test tests/test_app.py       # for external test dirs
+py.test mypkg/test/test_app.py  # for inlined test dirs
+py.test mypkg                   # run tests in all below test directories
+py.test                         # run all tests below current dir
+...
+</pre></div>
+</div>
+<p>Because of the above <code class="docutils literal"><span class="pre">editable</span> <span class="pre">install</span></code> mode you can change your
+source code (both tests and the app) and rerun tests at will.
+Once you are done with your work, you can <a class="reference internal" href="#use-tox">use tox</a> to make sure
+that the package is really correct and tests pass in all
+required configurations.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">You can use Python3 namespace packages (PEP420) for your application
+but pytest will still perform <a class="reference internal" href="#test-package-name">test package name</a> discovery based on the
+presence of <code class="docutils literal"><span class="pre">__init__.py</span></code> files.  If you use one of the
+two recommended file system layouts above but leave away the <code class="docutils literal"><span class="pre">__init__.py</span></code>
+files from your directories it should just work on Python3.3 and above.  From
+&#8220;inlined tests&#8221;, however, you will need to use absolute imports for
+getting at your application code.</p>
+</div>
+<div class="admonition note" id="test-package-name">
+<p class="first admonition-title">Note</p>
+<p>If <code class="docutils literal"><span class="pre">pytest</span></code> finds a &#8220;a/b/test_module.py&#8221; test file while
+recursing into the filesystem it determines the import name
+as follows:</p>
+<ul class="simple">
+<li>determine <code class="docutils literal"><span class="pre">basedir</span></code>: this is the first &#8220;upward&#8221; (towards the root)
+directory not containing an <code class="docutils literal"><span class="pre">__init__.py</span></code>.  If e.g. both <code class="docutils literal"><span class="pre">a</span></code>
+and <code class="docutils literal"><span class="pre">b</span></code> contain an <code class="docutils literal"><span class="pre">__init__.py</span></code> file then the parent directory
+of <code class="docutils literal"><span class="pre">a</span></code> will become the <code class="docutils literal"><span class="pre">basedir</span></code>.</li>
+<li>perform <code class="docutils literal"><span class="pre">sys.path.insert(0,</span> <span class="pre">basedir)</span></code> to make the test module
+importable under the fully qualified import name.</li>
+<li><code class="docutils literal"><span class="pre">import</span> <span class="pre">a.b.test_module</span></code> where the path is determined
+by converting path separators <code class="docutils literal"><span class="pre">/</span></code> into &#8221;.&#8221; characters.  This means
+you must follow the convention of having directory and file
+names map directly to the import names.</li>
+</ul>
+<p class="last">The reason for this somewhat evolved importing technique is
+that in larger projects multiple test modules might import
+from each other and thus deriving a canonical import name helps
+to avoid surprises such as a test modules getting imported twice.</p>
+</div>
+</div>
+<div class="section" id="use-tox-and-continuous-integration-servers">
+<span id="use-tox"></span><h2>Use tox and Continuous Integration servers<a class="headerlink" href="#use-tox-and-continuous-integration-servers" title="Permalink to this headline">¶</a></h2>
+<p>If you frequently release code and want to make sure that your actual
+package passes all tests you may want to look into <a class="reference external" href="http://testrun.org/tox">tox</a>, the
+virtualenv test automation tool and its <a class="reference external" href="http://testrun.org/tox/latest/example/pytest.html">pytest support</a>.
+Tox helps you to setup virtualenv environments with pre-defined
+dependencies and then executing a pre-configured test command with
+options.  It will run tests against the installed package and not
+against your source code checkout, helping to detect packaging
+glitches.</p>
+<p>If you want to use <a class="reference external" href="http://jenkins-ci.org/">Jenkins</a> you can use the <code class="docutils literal"><span class="pre">--junitxml=PATH</span></code> option
+to create a JUnitXML file that <a class="reference external" href="http://jenkins-ci.org/">Jenkins</a> can pick up and generate reports.</p>
+</div>
+<div class="section" id="deprecated-create-a-pytest-standalone-script">
+<span id="genscript-method"></span><span id="standalone"></span><h2>(deprecated) Create a pytest standalone script<a class="headerlink" href="#deprecated-create-a-pytest-standalone-script" title="Permalink to this headline">¶</a></h2>
+<p>If you are a maintainer or application developer and want people
+who don&#8217;t deal with python much to easily run tests you may generate
+a standalone <code class="docutils literal"><span class="pre">pytest</span></code> script:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">py</span><span class="o">.</span><span class="n">test</span> <span class="o">--</span><span class="n">genscript</span><span class="o">=</span><span class="n">runtests</span><span class="o">.</span><span class="n">py</span>
+</pre></div>
+</div>
+<p>This generates a <code class="docutils literal"><span class="pre">runtests.py</span></code> script which is a fully functional basic
+<code class="docutils literal"><span class="pre">pytest</span></code> script, running unchanged under Python2 and Python3.
+You can tell people to download the script and then e.g.  run it like this:</p>
+<div class="highlight-python"><div class="highlight"><pre>python runtests.py
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">You must have pytest and its dependencies installed as an sdist, not
+as wheels because genscript need the source code for generating a
+standalone script.</p>
+</div>
+</div>
+<div class="section" id="integrating-with-distutils-python-setup-py-test">
+<h2>Integrating with distutils / <code class="docutils literal"><span class="pre">python</span> <span class="pre">setup.py</span> <span class="pre">test</span></code><a class="headerlink" href="#integrating-with-distutils-python-setup-py-test" title="Permalink to this headline">¶</a></h2>
+<p>You can integrate test runs into your distutils or
+setuptools based project.  Use the <a class="reference internal" href="#genscript-method">genscript method</a>
+to generate a standalone <code class="docutils literal"><span class="pre">pytest</span></code> script:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">py</span><span class="o">.</span><span class="n">test</span> <span class="o">--</span><span class="n">genscript</span><span class="o">=</span><span class="n">runtests</span><span class="o">.</span><span class="n">py</span>
+</pre></div>
+</div>
+<p>and make this script part of your distribution and then add
+this to your <code class="docutils literal"><span class="pre">setup.py</span></code> file:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">from</span> <span class="nn">distutils.core</span> <span class="kn">import</span> <span class="n">setup</span><span class="p">,</span> <span class="n">Command</span>
+<span class="c"># you can also import from setuptools</span>
+
+<span class="k">class</span> <span class="nc">PyTest</span><span class="p">(</span><span class="n">Command</span><span class="p">):</span>
+    <span class="n">user_options</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">def</span> <span class="nf">initialize_options</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">finalize_options</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="kn">import</span> <span class="nn">subprocess</span>
+        <span class="kn">import</span> <span class="nn">sys</span>
+        <span class="n">errno</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">call</span><span class="p">([</span><span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span> <span class="s">&#39;runtests.py&#39;</span><span class="p">])</span>
+        <span class="k">raise</span> <span class="ne">SystemExit</span><span class="p">(</span><span class="n">errno</span><span class="p">)</span>
+
+
+<span class="n">setup</span><span class="p">(</span>
+    <span class="c">#...,</span>
+    <span class="n">cmdclass</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;test&#39;</span><span class="p">:</span> <span class="n">PyTest</span><span class="p">},</span>
+    <span class="c">#...,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>If you now type:</p>
+<div class="highlight-python"><div class="highlight"><pre>python setup.py test
+</pre></div>
+</div>
+<p>this will execute your tests using <code class="docutils literal"><span class="pre">runtests.py</span></code>. As this is a
+standalone version of <code class="docutils literal"><span class="pre">pytest</span></code> no prior installation whatsoever is
+required for calling the test command. You can also pass additional
+arguments to the subprocess-calls such as your test directory or other
+options.</p>
+</div>
+<div class="section" id="integration-with-setuptools-test-commands">
+<h2>Integration with setuptools test commands<a class="headerlink" href="#integration-with-setuptools-test-commands" title="Permalink to this headline">¶</a></h2>
+<p>Setuptools supports writing our own Test command for invoking pytest.
+Most often it is better to use <a class="reference external" href="http://testrun.org/tox">tox</a> instead, but here is how you can
+get started with setuptools integration:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="kn">from</span> <span class="nn">setuptools.command.test</span> <span class="kn">import</span> <span class="n">test</span> <span class="k">as</span> <span class="n">TestCommand</span>
+
+
+<span class="k">class</span> <span class="nc">PyTest</span><span class="p">(</span><span class="n">TestCommand</span><span class="p">):</span>
+    <span class="n">user_options</span> <span class="o">=</span> <span class="p">[(</span><span class="s">&#39;pytest-args=&#39;</span><span class="p">,</span> <span class="s">&#39;a&#39;</span><span class="p">,</span> <span class="s">&quot;Arguments to pass to py.test&quot;</span><span class="p">)]</span>
+
+    <span class="k">def</span> <span class="nf">initialize_options</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">TestCommand</span><span class="o">.</span><span class="n">initialize_options</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pytest_args</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">def</span> <span class="nf">finalize_options</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">TestCommand</span><span class="o">.</span><span class="n">finalize_options</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">test_args</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">test_suite</span> <span class="o">=</span> <span class="bp">True</span>
+
+    <span class="k">def</span> <span class="nf">run_tests</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c">#import here, cause outside the eggs aren&#39;t loaded</span>
+        <span class="kn">import</span> <span class="nn">pytest</span>
+        <span class="n">errno</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pytest_args</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="n">errno</span><span class="p">)</span>
+
+
+<span class="n">setup</span><span class="p">(</span>
+    <span class="c">#...,</span>
+    <span class="n">tests_require</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;pytest&#39;</span><span class="p">],</span>
+    <span class="n">cmdclass</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;test&#39;</span><span class="p">:</span> <span class="n">PyTest</span><span class="p">},</span>
+    <span class="p">)</span>
+</pre></div>
+</div>
+<p>Now if you run:</p>
+<div class="highlight-python"><div class="highlight"><pre>python setup.py test
+</pre></div>
+</div>
+<p>this will download <code class="docutils literal"><span class="pre">pytest</span></code> if needed and then run your tests
+as you would expect it to. You can pass a single string of arguments
+using the <code class="docutils literal"><span class="pre">--pytest-args</span></code> or <code class="docutils literal"><span class="pre">-a</span></code> command-line option. For example:</p>
+<div class="highlight-python"><div class="highlight"><pre>python setup.py test -a &quot;--durations=5&quot;
+</pre></div>
+</div>
+<p>is equivalent to running <code class="docutils literal"><span class="pre">py.test</span> <span class="pre">--durations=5</span></code>.</p>
+<div class="admonition seealso">
+<p class="first admonition-title">See also</p>
+<p class="last">For a more powerful solution, take a look at the
+<a class="reference external" href="https://pypi.python.org/pypi/pytest-runner">pytest-runner</a> plugin.</p>
+</div>
+</div>
+<div class="section" id="conventions-for-python-test-discovery">
+<span id="python-test-discovery"></span><span id="test-discovery"></span><h2>Conventions for Python test discovery<a class="headerlink" href="#conventions-for-python-test-discovery" title="Permalink to this headline">¶</a></h2>
+<p><code class="docutils literal"><span class="pre">pytest</span></code> implements the following standard test discovery:</p>
+<ul class="simple">
+<li>collection starts from paths specified in <a class="reference internal" href="customize.html#confval-testpaths"><code class="xref std std-confval docutils literal"><span class="pre">testpaths</span></code></a> if configured,
+otherwise from initial command line arguments which may be directories,
+filenames or test ids. If <a class="reference internal" href="customize.html#confval-testpaths"><code class="xref std std-confval docutils literal"><span class="pre">testpaths</span></code></a> is not configured and no
+directories or files were given in the command line, start collection from
+the current directory.</li>
+<li>recurse into directories, unless they match <a class="reference internal" href="customize.html#confval-norecursedirs"><code class="xref std std-confval docutils literal"><span class="pre">norecursedirs</span></code></a></li>
+<li><code class="docutils literal"><span class="pre">test_*.py</span></code> or <code class="docutils literal"><span class="pre">*_test.py</span></code> files, imported by their <a class="reference internal" href="#test-package-name">test package name</a>.</li>
+<li><code class="docutils literal"><span class="pre">Test</span></code> prefixed test classes (without an <code class="docutils literal"><span class="pre">__init__</span></code> method)</li>
+<li><code class="docutils literal"><span class="pre">test_</span></code> prefixed test functions or methods are test items</li>
+</ul>
+<p>For examples of how to customize your test discovery <a class="reference internal" href="example/pythoncollection.html"><em>Changing standard (Python) test discovery</em></a>.</p>
+<p>Within Python modules, <code class="docutils literal"><span class="pre">pytest</span></code> also discovers tests using the standard
+<a class="reference internal" href="unittest.html#unittest-testcase"><span>unittest.TestCase</span></a> subclassing technique.</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="contents.html">
+              <img class="logo" src="_static/pytest1.png" alt="Logo"/>
+            </a></p><h3><a href="contents.html">Table Of Contents</a></h3>
+
+<ul>
+  <li><a href="index.html">Home</a></li>
+  <li><a href="contents.html">Contents</a></li>
+  <li><a href="getting-started.html">Install</a></li>
+  <li><a href="example/index.html">Examples</a></li>
+  <li><a href="customize.html">Customize</a></li>
+  <li><a href="contact.html">Contact</a></li>
+  <li><a href="talks.html">Talks/Posts</a></li>
+  <li><a href="changelog.html">Changelog</a></li>
+</ul>
+  <hr>
+  <ul>
+<li><a class="reference internal" href="#">Good Integration Practices</a><ul>
+<li><a class="reference internal" href="#work-with-virtual-environments">Work with virtual environments</a></li>
+<li><a class="reference internal" href="#choosing-a-test-layout-import-rules">Choosing a test layout / import rules</a></li>
+<li><a class="reference internal" href="#use-tox-and-continuous-integration-servers">Use tox and Continuous Integration servers</a></li>
+<li><a class="reference internal" href="#deprecated-create-a-pytest-standalone-script">(deprecated) Create a pytest standalone script</a></li>
+<li><a class="reference internal" href="#integrating-with-distutils-python-setup-py-test">Integrating with distutils / <code class="docutils literal"><span class="pre">python</span> <span class="pre">setup.py</span> <span class="pre">test</span></code></a></li>
+<li><a class="reference internal" href="#integration-with-setuptools-test-commands">Integration with setuptools test commands</a></li>
+<li><a class="reference internal" href="#conventions-for-python-test-discovery">Conventions for Python test discovery</a></li>
+</ul>
+</li>
+</ul>
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="contents.html">Documentation overview</a><ul>
+  <li><a href="overview.html">Getting started basics</a><ul>
+      <li>Previous: <a href="usage.html" title="previous chapter">Usage and Invocations</a></li>
+      <li>Next: <a href="projects.html" title="next chapter">Project examples</a></li>
+  </ul></li>
+  </ul></li>
+</ul><h3>Useful Links</h3>
+<ul>
+  <li><a href="index.html">The pytest Website</a></li>
+  <li><a href="contributing.html">Contribution Guide</a></li>
+  <li><a href="https://pypi.python.org/pypi/pytest">pytest @ PyPI</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/">pytest @ GitHub</a></li>
+  <li><a href="http://pytest.org/latest/plugins_index/index.html">3rd party plugins</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/issues">Issue Tracker</a></li>
+  <li><a href="http://pytest.org/latest/pytest.pdf">PDF Documentation</a>
+</ul>
+
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+
+  <div class="footer">
+    &copy; Copyright 2015, holger krekel and pytest-dev team.
+    Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+  </div>
+  
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-7597274-13']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+  </body>
+</html>

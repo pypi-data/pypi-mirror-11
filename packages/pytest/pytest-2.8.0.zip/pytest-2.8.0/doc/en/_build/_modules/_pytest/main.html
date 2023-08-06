@@ -1,0 +1,871 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>_pytest.main</title>
+    
+    <link rel="stylesheet" href="../../_static/flasky.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '2.7.3.dev376+ng06b1b69.d20150827',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../_static/pytest1favi.ico"/>
+    <link rel="top" title="None" href="../../contents.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+  
+  
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="nav-item nav-item-0"><a href="../../contents.html">pytest-2.7.3.dev376+ng06b1b69.d20150827</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for _pytest.main</h1><div class="highlight"><pre>
+<span class="sd">&quot;&quot;&quot; core implementation of testing process: init, session, runtest loop. &quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">re</span>
+
+<span class="kn">import</span> <span class="nn">py</span>
+<span class="kn">import</span> <span class="nn">pytest</span><span class="o">,</span> <span class="nn">_pytest</span>
+<span class="kn">import</span> <span class="nn">os</span><span class="o">,</span> <span class="nn">sys</span><span class="o">,</span> <span class="nn">imp</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">MutableMapping</span> <span class="k">as</span> <span class="n">MappingMixin</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">UserDict</span> <span class="kn">import</span> <span class="n">DictMixin</span> <span class="k">as</span> <span class="n">MappingMixin</span>
+
+<span class="kn">from</span> <span class="nn">_pytest.runner</span> <span class="kn">import</span> <span class="n">collect_one_node</span>
+
+<span class="n">tracebackcutdir</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">local</span><span class="p">(</span><span class="n">_pytest</span><span class="o">.</span><span class="n">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">dirpath</span><span class="p">()</span>
+
+<span class="c"># exitcodes for the command line</span>
+<span class="n">EXIT_OK</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">EXIT_TESTSFAILED</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="n">EXIT_INTERRUPTED</span> <span class="o">=</span> <span class="mi">2</span>
+<span class="n">EXIT_INTERNALERROR</span> <span class="o">=</span> <span class="mi">3</span>
+<span class="n">EXIT_USAGEERROR</span> <span class="o">=</span> <span class="mi">4</span>
+<span class="n">EXIT_NOTESTSCOLLECTED</span> <span class="o">=</span> <span class="mi">5</span>
+
+<span class="n">name_re</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&quot;^[a-zA-Z_]\w*$&quot;</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">pytest_addoption</span><span class="p">(</span><span class="n">parser</span><span class="p">):</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">addini</span><span class="p">(</span><span class="s">&quot;norecursedirs&quot;</span><span class="p">,</span> <span class="s">&quot;directory patterns to avoid for recursion&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="s">&quot;args&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;.*&#39;</span><span class="p">,</span> <span class="s">&#39;CVS&#39;</span><span class="p">,</span> <span class="s">&#39;_darcs&#39;</span><span class="p">,</span> <span class="s">&#39;{arch}&#39;</span><span class="p">,</span> <span class="s">&#39;*.egg&#39;</span><span class="p">])</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">addini</span><span class="p">(</span><span class="s">&quot;testpaths&quot;</span><span class="p">,</span> <span class="s">&quot;directories to search for tests when no files or directories are given in the command line.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="s">&quot;args&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="p">[])</span>
+    <span class="c">#parser.addini(&quot;dirpatterns&quot;,</span>
+    <span class="c">#    &quot;patterns specifying possible locations of test files&quot;,</span>
+    <span class="c">#    type=&quot;linelist&quot;, default=[&quot;**/test_*.txt&quot;,</span>
+    <span class="c">#            &quot;**/test_*.py&quot;, &quot;**/*_test.py&quot;]</span>
+    <span class="c">#)</span>
+    <span class="n">group</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">getgroup</span><span class="p">(</span><span class="s">&quot;general&quot;</span><span class="p">,</span> <span class="s">&quot;running and selection options&quot;</span><span class="p">)</span>
+    <span class="n">group</span><span class="o">.</span><span class="n">_addoption</span><span class="p">(</span><span class="s">&#39;-x&#39;</span><span class="p">,</span> <span class="s">&#39;--exitfirst&#39;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_true&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+               <span class="n">dest</span><span class="o">=</span><span class="s">&quot;exitfirst&quot;</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;exit instantly on first error or failed test.&quot;</span><span class="p">),</span>
+    <span class="n">group</span><span class="o">.</span><span class="n">_addoption</span><span class="p">(</span><span class="s">&#39;--maxfail&#39;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s">&quot;num&quot;</span><span class="p">,</span>
+               <span class="n">action</span><span class="o">=</span><span class="s">&quot;store&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;maxfail&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;exit after first num failures or errors.&quot;</span><span class="p">)</span>
+    <span class="n">group</span><span class="o">.</span><span class="n">_addoption</span><span class="p">(</span><span class="s">&#39;--strict&#39;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_true&quot;</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;run pytest in strict mode, warnings become errors.&quot;</span><span class="p">)</span>
+    <span class="n">group</span><span class="o">.</span><span class="n">_addoption</span><span class="p">(</span><span class="s">&quot;-c&quot;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s">&quot;file&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;inifilename&quot;</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;load configuration from `file` instead of trying to locate one of the implicit configuration files.&quot;</span><span class="p">)</span>
+
+    <span class="n">group</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">getgroup</span><span class="p">(</span><span class="s">&quot;collect&quot;</span><span class="p">,</span> <span class="s">&quot;collection&quot;</span><span class="p">)</span>
+    <span class="n">group</span><span class="o">.</span><span class="n">addoption</span><span class="p">(</span><span class="s">&#39;--collectonly&#39;</span><span class="p">,</span> <span class="s">&#39;--collect-only&#39;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s">&quot;only collect tests, don&#39;t execute them.&quot;</span><span class="p">),</span>
+    <span class="n">group</span><span class="o">.</span><span class="n">addoption</span><span class="p">(</span><span class="s">&#39;--pyargs&#39;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s">&quot;try to interpret all arguments as python packages.&quot;</span><span class="p">)</span>
+    <span class="n">group</span><span class="o">.</span><span class="n">addoption</span><span class="p">(</span><span class="s">&quot;--ignore&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;append&quot;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s">&quot;path&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s">&quot;ignore path during collection (multi-allowed).&quot;</span><span class="p">)</span>
+    <span class="c"># when changing this to --conf-cut-dir, config.py Conftest.setinitial</span>
+    <span class="c"># needs upgrading as well</span>
+    <span class="n">group</span><span class="o">.</span><span class="n">addoption</span><span class="p">(</span><span class="s">&#39;--confcutdir&#39;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;confcutdir&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="s">&quot;dir&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s">&quot;only load conftest.py&#39;s relative to specified dir.&quot;</span><span class="p">)</span>
+    <span class="n">group</span><span class="o">.</span><span class="n">addoption</span><span class="p">(</span><span class="s">&#39;--noconftest&#39;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s">&quot;noconftest&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s">&quot;Don&#39;t load any conftest.py files.&quot;</span><span class="p">)</span>
+
+    <span class="n">group</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">getgroup</span><span class="p">(</span><span class="s">&quot;debugconfig&quot;</span><span class="p">,</span>
+        <span class="s">&quot;test session debugging and configuration&quot;</span><span class="p">)</span>
+    <span class="n">group</span><span class="o">.</span><span class="n">addoption</span><span class="p">(</span><span class="s">&#39;--basetemp&#39;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;basetemp&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s">&quot;dir&quot;</span><span class="p">,</span>
+               <span class="n">help</span><span class="o">=</span><span class="s">&quot;base temporary directory for this test run.&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">pytest_namespace</span><span class="p">():</span>
+    <span class="n">collect</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">Item</span><span class="o">=</span><span class="n">Item</span><span class="p">,</span> <span class="n">Collector</span><span class="o">=</span><span class="n">Collector</span><span class="p">,</span> <span class="n">File</span><span class="o">=</span><span class="n">File</span><span class="p">,</span> <span class="n">Session</span><span class="o">=</span><span class="n">Session</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">collect</span><span class="o">=</span><span class="n">collect</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">pytest_configure</span><span class="p">(</span><span class="n">config</span><span class="p">):</span>
+    <span class="n">pytest</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">config</span> <span class="c"># compatibiltiy</span>
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="o">.</span><span class="n">exitfirst</span><span class="p">:</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="o">.</span><span class="n">maxfail</span> <span class="o">=</span> <span class="mi">1</span>
+
+<span class="k">def</span> <span class="nf">wrap_session</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">doit</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Skeleton command line program&quot;&quot;&quot;</span>
+    <span class="n">session</span> <span class="o">=</span> <span class="n">Session</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+    <span class="n">session</span><span class="o">.</span><span class="n">exitstatus</span> <span class="o">=</span> <span class="n">EXIT_OK</span>
+    <span class="n">initstate</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">_do_configure</span><span class="p">()</span>
+            <span class="n">initstate</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">hook</span><span class="o">.</span><span class="n">pytest_sessionstart</span><span class="p">(</span><span class="n">session</span><span class="o">=</span><span class="n">session</span><span class="p">)</span>
+            <span class="n">initstate</span> <span class="o">=</span> <span class="mi">2</span>
+            <span class="n">doit</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">session</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">pytest</span><span class="o">.</span><span class="n">UsageError</span><span class="p">:</span>
+            <span class="k">raise</span>
+        <span class="k">except</span> <span class="ne">KeyboardInterrupt</span><span class="p">:</span>
+            <span class="n">excinfo</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">code</span><span class="o">.</span><span class="n">ExceptionInfo</span><span class="p">()</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">hook</span><span class="o">.</span><span class="n">pytest_keyboard_interrupt</span><span class="p">(</span><span class="n">excinfo</span><span class="o">=</span><span class="n">excinfo</span><span class="p">)</span>
+            <span class="n">session</span><span class="o">.</span><span class="n">exitstatus</span> <span class="o">=</span> <span class="n">EXIT_INTERRUPTED</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="n">excinfo</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">code</span><span class="o">.</span><span class="n">ExceptionInfo</span><span class="p">()</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">notify_exception</span><span class="p">(</span><span class="n">excinfo</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="p">)</span>
+            <span class="n">session</span><span class="o">.</span><span class="n">exitstatus</span> <span class="o">=</span> <span class="n">EXIT_INTERNALERROR</span>
+            <span class="k">if</span> <span class="n">excinfo</span><span class="o">.</span><span class="n">errisinstance</span><span class="p">(</span><span class="ne">SystemExit</span><span class="p">):</span>
+                <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;mainloop: caught Spurious SystemExit!</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">session</span><span class="o">.</span><span class="n">testsfailed</span><span class="p">:</span>
+                <span class="n">session</span><span class="o">.</span><span class="n">exitstatus</span> <span class="o">=</span> <span class="n">EXIT_TESTSFAILED</span>
+            <span class="k">elif</span> <span class="n">session</span><span class="o">.</span><span class="n">testscollected</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">session</span><span class="o">.</span><span class="n">exitstatus</span> <span class="o">=</span> <span class="n">EXIT_NOTESTSCOLLECTED</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">excinfo</span> <span class="o">=</span> <span class="bp">None</span>  <span class="c"># Explicitly break reference cycle.</span>
+        <span class="n">session</span><span class="o">.</span><span class="n">startdir</span><span class="o">.</span><span class="n">chdir</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">initstate</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">hook</span><span class="o">.</span><span class="n">pytest_sessionfinish</span><span class="p">(</span>
+                <span class="n">session</span><span class="o">=</span><span class="n">session</span><span class="p">,</span>
+                <span class="n">exitstatus</span><span class="o">=</span><span class="n">session</span><span class="o">.</span><span class="n">exitstatus</span><span class="p">)</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">_ensure_unconfigure</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">session</span><span class="o">.</span><span class="n">exitstatus</span>
+
+<span class="k">def</span> <span class="nf">pytest_cmdline_main</span><span class="p">(</span><span class="n">config</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">wrap_session</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">_main</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">_main</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">session</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; default command line protocol for initialization, session,</span>
+<span class="sd">    running tests and reporting. &quot;&quot;&quot;</span>
+    <span class="n">config</span><span class="o">.</span><span class="n">hook</span><span class="o">.</span><span class="n">pytest_collection</span><span class="p">(</span><span class="n">session</span><span class="o">=</span><span class="n">session</span><span class="p">)</span>
+    <span class="n">config</span><span class="o">.</span><span class="n">hook</span><span class="o">.</span><span class="n">pytest_runtestloop</span><span class="p">(</span><span class="n">session</span><span class="o">=</span><span class="n">session</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">pytest_collection</span><span class="p">(</span><span class="n">session</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">session</span><span class="o">.</span><span class="n">perform_collect</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">pytest_runtestloop</span><span class="p">(</span><span class="n">session</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">session</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="o">.</span><span class="n">collectonly</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">True</span>
+
+    <span class="k">def</span> <span class="nf">getnextitem</span><span class="p">(</span><span class="n">i</span><span class="p">):</span>
+        <span class="c"># this is a function to avoid python2</span>
+        <span class="c"># keeping sys.exc_info set when calling into a test</span>
+        <span class="c"># python2 keeps sys.exc_info till the frame is left</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">session</span><span class="o">.</span><span class="n">items</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">None</span>
+
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">session</span><span class="o">.</span><span class="n">items</span><span class="p">):</span>
+        <span class="n">nextitem</span> <span class="o">=</span> <span class="n">getnextitem</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+        <span class="n">item</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">hook</span><span class="o">.</span><span class="n">pytest_runtest_protocol</span><span class="p">(</span><span class="n">item</span><span class="o">=</span><span class="n">item</span><span class="p">,</span> <span class="n">nextitem</span><span class="o">=</span><span class="n">nextitem</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">session</span><span class="o">.</span><span class="n">shouldstop</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">session</span><span class="o">.</span><span class="n">Interrupted</span><span class="p">(</span><span class="n">session</span><span class="o">.</span><span class="n">shouldstop</span><span class="p">)</span>
+    <span class="k">return</span> <span class="bp">True</span>
+
+<span class="k">def</span> <span class="nf">pytest_ignore_collect</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">dirpath</span><span class="p">()</span>
+    <span class="n">ignore_paths</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">_getconftest_pathlist</span><span class="p">(</span><span class="s">&quot;collect_ignore&quot;</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="n">p</span><span class="p">)</span>
+    <span class="n">ignore_paths</span> <span class="o">=</span> <span class="n">ignore_paths</span> <span class="ow">or</span> <span class="p">[]</span>
+    <span class="n">excludeopt</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">getoption</span><span class="p">(</span><span class="s">&quot;ignore&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">excludeopt</span><span class="p">:</span>
+        <span class="n">ignore_paths</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="n">py</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">local</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">excludeopt</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">ignore_paths</span>
+
+<span class="k">class</span> <span class="nc">FSHookProxy</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fspath</span><span class="p">,</span> <span class="n">pm</span><span class="p">,</span> <span class="n">remove_mods</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fspath</span> <span class="o">=</span> <span class="n">fspath</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pm</span> <span class="o">=</span> <span class="n">pm</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">remove_mods</span> <span class="o">=</span> <span class="n">remove_mods</span>
+
+    <span class="k">def</span> <span class="nf">__getattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pm</span><span class="o">.</span><span class="n">subset_hook_caller</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">remove_plugins</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">remove_mods</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">x</span>
+        <span class="k">return</span> <span class="n">x</span>
+
+<span class="k">def</span> <span class="nf">compatproperty</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">fget</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># deprecated - use pytest.name</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">pytest</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nb">property</span><span class="p">(</span><span class="n">fget</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">NodeKeywords</span><span class="p">(</span><span class="n">MappingMixin</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">node</span> <span class="o">=</span> <span class="n">node</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parent</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="n">parent</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_markers</span> <span class="o">=</span> <span class="p">{</span><span class="n">node</span><span class="o">.</span><span class="n">name</span><span class="p">:</span> <span class="bp">True</span><span class="p">}</span>
+
+    <span class="k">def</span> <span class="nf">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_markers</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">parent</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">raise</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">keywords</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">__setitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_markers</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+
+    <span class="k">def</span> <span class="nf">__delitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;cannot delete key in keywords dict&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">seen</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_markers</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">parent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">seen</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">keywords</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="n">seen</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">__iter__</span><span class="p">())</span>
+
+    <span class="k">def</span> <span class="nf">keys</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;NodeKeywords for node </span><span class="si">%s</span><span class="s">&gt;&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">node</span><span class="p">,</span> <span class="p">)</span>
+
+
+<div class="viewcode-block" id="Node"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.main.Node">[docs]</a><span class="k">class</span> <span class="nc">Node</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; base class for Collector and Item the test collection tree.</span>
+<span class="sd">    Collector subclasses have children, Items are terminal nodes.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">session</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="c">#: a unique name within the scope of the parent node</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+
+        <span class="c">#: the parent collector node.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parent</span> <span class="o">=</span> <span class="n">parent</span>
+
+        <span class="c">#: the pytest config object</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">config</span> <span class="ow">or</span> <span class="n">parent</span><span class="o">.</span><span class="n">config</span>
+
+        <span class="c">#: the session this node is part of</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">session</span> <span class="o">=</span> <span class="n">session</span> <span class="ow">or</span> <span class="n">parent</span><span class="o">.</span><span class="n">session</span>
+
+        <span class="c">#: filesystem path where this node was collected from (can be None)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fspath</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">parent</span><span class="p">,</span> <span class="s">&#39;fspath&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+
+        <span class="c">#: keywords/markers collected from all scopes</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">keywords</span> <span class="o">=</span> <span class="n">NodeKeywords</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+        <span class="c">#: allow adding of extra keywords to use for matching</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">extra_keyword_matches</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+
+        <span class="c"># used for storing artificial fixturedefs for direct parametrization</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_name2pseudofixturedef</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c">#self.extrainit()</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">ihook</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; fspath sensitive hook proxy used to call pytest hooks&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">gethookproxy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fspath</span><span class="p">)</span>
+
+    <span class="c">#def extrainit(self):</span>
+    <span class="c">#    &quot;&quot;&quot;&quot;extra initialization after Node is initialized.  Implemented</span>
+    <span class="c">#    by some subclasses. &quot;&quot;&quot;</span>
+
+    <span class="n">Module</span> <span class="o">=</span> <span class="n">compatproperty</span><span class="p">(</span><span class="s">&quot;Module&quot;</span><span class="p">)</span>
+    <span class="n">Class</span> <span class="o">=</span> <span class="n">compatproperty</span><span class="p">(</span><span class="s">&quot;Class&quot;</span><span class="p">)</span>
+    <span class="n">Instance</span> <span class="o">=</span> <span class="n">compatproperty</span><span class="p">(</span><span class="s">&quot;Instance&quot;</span><span class="p">)</span>
+    <span class="n">Function</span> <span class="o">=</span> <span class="n">compatproperty</span><span class="p">(</span><span class="s">&quot;Function&quot;</span><span class="p">)</span>
+    <span class="n">File</span> <span class="o">=</span> <span class="n">compatproperty</span><span class="p">(</span><span class="s">&quot;File&quot;</span><span class="p">)</span>
+    <span class="n">Item</span> <span class="o">=</span> <span class="n">compatproperty</span><span class="p">(</span><span class="s">&quot;Item&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_getcustomclass</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="n">cls</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">cls</span> <span class="o">!=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">pytest</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+            <span class="n">py</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">_apiwarn</span><span class="p">(</span><span class="s">&quot;2.0&quot;</span><span class="p">,</span> <span class="s">&quot;use of node.</span><span class="si">%s</span><span class="s"> is deprecated, &quot;</span>
+                <span class="s">&quot;use pytest_pycollect_makeitem(...) to create custom &quot;</span>
+                <span class="s">&quot;collection nodes&quot;</span> <span class="o">%</span> <span class="n">name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">cls</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;</span><span class="si">%s</span><span class="s"> </span><span class="si">%r</span><span class="s">&gt;&quot;</span> <span class="o">%</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span>
+                           <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;name&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">))</span>
+
+<div class="viewcode-block" id="Node.warn"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.main.Node.warn">[docs]</a>    <span class="k">def</span> <span class="nf">warn</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">code</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; generate a warning with the given code and message for this</span>
+<span class="sd">        item. &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">code</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span>
+        <span class="n">fslocation</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&quot;location&quot;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">fslocation</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">fslocation</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&quot;fspath&quot;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">fslocation</span> <span class="o">=</span> <span class="s">&quot;</span><span class="si">%s</span><span class="s">:</span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">fslocation</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">ihook</span><span class="o">.</span><span class="n">pytest_logwarning</span><span class="p">(</span><span class="n">code</span><span class="o">=</span><span class="n">code</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="n">message</span><span class="p">,</span>
+                                     <span class="n">nodeid</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">nodeid</span><span class="p">,</span>
+                                     <span class="n">fslocation</span><span class="o">=</span><span class="n">fslocation</span><span class="p">)</span>
+
+    <span class="c"># methods for ordering nodes</span></div>
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">nodeid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; a ::-separated string denoting its collection tree address. &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nodeid</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_nodeid</span> <span class="o">=</span> <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_makeid</span><span class="p">()</span>
+            <span class="k">return</span> <span class="n">x</span>
+
+    <span class="k">def</span> <span class="nf">_makeid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">nodeid</span> <span class="o">+</span> <span class="s">&quot;::&quot;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span>
+
+    <span class="k">def</span> <span class="nf">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">hash</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodeid</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">teardown</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">_memoizedcall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attrname</span><span class="p">,</span> <span class="n">function</span><span class="p">):</span>
+        <span class="n">exattrname</span> <span class="o">=</span> <span class="s">&quot;_ex_&quot;</span> <span class="o">+</span> <span class="n">attrname</span>
+        <span class="n">failure</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exattrname</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">failure</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">py</span><span class="o">.</span><span class="n">builtin</span><span class="o">.</span><span class="n">_reraise</span><span class="p">(</span><span class="n">failure</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">failure</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">failure</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attrname</span><span class="p">):</span>
+            <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attrname</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">function</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">py</span><span class="o">.</span><span class="n">builtin</span><span class="o">.</span><span class="n">_sysex</span><span class="p">:</span>
+            <span class="k">raise</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="n">failure</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">exc_info</span><span class="p">()</span>
+            <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exattrname</span><span class="p">,</span> <span class="n">failure</span><span class="p">)</span>
+            <span class="k">raise</span>
+        <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attrname</span><span class="p">,</span> <span class="n">res</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">res</span>
+
+<div class="viewcode-block" id="Node.listchain"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.main.Node.listchain">[docs]</a>    <span class="k">def</span> <span class="nf">listchain</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; return list of all parent collectors up to self,</span>
+<span class="sd">            starting from root of collection tree. &quot;&quot;&quot;</span>
+        <span class="n">chain</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">item</span> <span class="o">=</span> <span class="bp">self</span>
+        <span class="k">while</span> <span class="n">item</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">chain</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+            <span class="n">item</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">parent</span>
+        <span class="n">chain</span><span class="o">.</span><span class="n">reverse</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">chain</span>
+</div>
+<div class="viewcode-block" id="Node.add_marker"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.main.Node.add_marker">[docs]</a>    <span class="k">def</span> <span class="nf">add_marker</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">marker</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; dynamically add a marker object to the node.</span>
+
+<span class="sd">        ``marker`` can be a string or pytest.mark.* instance.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">from</span> <span class="nn">_pytest.mark</span> <span class="kn">import</span> <span class="n">MarkDecorator</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">marker</span><span class="p">,</span> <span class="n">py</span><span class="o">.</span><span class="n">builtin</span><span class="o">.</span><span class="n">_basestring</span><span class="p">):</span>
+            <span class="n">marker</span> <span class="o">=</span> <span class="n">MarkDecorator</span><span class="p">(</span><span class="n">marker</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">marker</span><span class="p">,</span> <span class="n">MarkDecorator</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;is not a string or pytest.mark.* Marker&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">keywords</span><span class="p">[</span><span class="n">marker</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">marker</span>
+</div>
+<div class="viewcode-block" id="Node.get_marker"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.main.Node.get_marker">[docs]</a>    <span class="k">def</span> <span class="nf">get_marker</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; get a marker object from this node or None if</span>
+<span class="sd">        the node doesn&#39;t have a marker with that name. &quot;&quot;&quot;</span>
+        <span class="n">val</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">keywords</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="kn">from</span> <span class="nn">_pytest.mark</span> <span class="kn">import</span> <span class="n">MarkInfo</span><span class="p">,</span> <span class="n">MarkDecorator</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="p">(</span><span class="n">MarkDecorator</span><span class="p">,</span> <span class="n">MarkInfo</span><span class="p">)):</span>
+                <span class="k">return</span> <span class="n">val</span>
+</div>
+<div class="viewcode-block" id="Node.listextrakeywords"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.main.Node.listextrakeywords">[docs]</a>    <span class="k">def</span> <span class="nf">listextrakeywords</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; Return a set of all extra keywords in self and any parents.&quot;&quot;&quot;</span>
+        <span class="n">extra_keywords</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="n">item</span> <span class="o">=</span> <span class="bp">self</span>
+        <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">listchain</span><span class="p">():</span>
+            <span class="n">extra_keywords</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">extra_keyword_matches</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">extra_keywords</span>
+</div>
+    <span class="k">def</span> <span class="nf">listnames</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">listchain</span><span class="p">()]</span>
+
+<div class="viewcode-block" id="Node.addfinalizer"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.main.Node.addfinalizer">[docs]</a>    <span class="k">def</span> <span class="nf">addfinalizer</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fin</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; register a function to be called when this node is finalized.</span>
+
+<span class="sd">        This method can only be called when this node is active</span>
+<span class="sd">        in a setup chain, for example during self.setup().</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">_setupstate</span><span class="o">.</span><span class="n">addfinalizer</span><span class="p">(</span><span class="n">fin</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="Node.getparent"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.main.Node.getparent">[docs]</a>    <span class="k">def</span> <span class="nf">getparent</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cls</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; get the next parent node (including ourself)</span>
+<span class="sd">        which is an instance of the given class&quot;&quot;&quot;</span>
+        <span class="n">current</span> <span class="o">=</span> <span class="bp">self</span>
+        <span class="k">while</span> <span class="n">current</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">current</span><span class="p">,</span> <span class="n">cls</span><span class="p">):</span>
+            <span class="n">current</span> <span class="o">=</span> <span class="n">current</span><span class="o">.</span><span class="n">parent</span>
+        <span class="k">return</span> <span class="n">current</span>
+</div>
+    <span class="k">def</span> <span class="nf">_prunetraceback</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">excinfo</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">_repr_failure_py</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">excinfo</span><span class="p">,</span> <span class="n">style</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">fm</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">_fixturemanager</span>
+        <span class="k">if</span> <span class="n">excinfo</span><span class="o">.</span><span class="n">errisinstance</span><span class="p">(</span><span class="n">fm</span><span class="o">.</span><span class="n">FixtureLookupError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">excinfo</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">formatrepr</span><span class="p">()</span>
+        <span class="n">tbfilter</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="o">.</span><span class="n">fulltrace</span><span class="p">:</span>
+            <span class="n">style</span><span class="o">=</span><span class="s">&quot;long&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_prunetraceback</span><span class="p">(</span><span class="n">excinfo</span><span class="p">)</span>
+            <span class="n">tbfilter</span> <span class="o">=</span> <span class="bp">False</span>  <span class="c"># prunetraceback already does it</span>
+            <span class="k">if</span> <span class="n">style</span> <span class="o">==</span> <span class="s">&quot;auto&quot;</span><span class="p">:</span>
+                <span class="n">style</span> <span class="o">=</span> <span class="s">&quot;long&quot;</span>
+        <span class="c"># XXX should excinfo.getrepr record all data and toterminal() process it?</span>
+        <span class="k">if</span> <span class="n">style</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="o">.</span><span class="n">tbstyle</span> <span class="o">==</span> <span class="s">&quot;short&quot;</span><span class="p">:</span>
+                <span class="n">style</span> <span class="o">=</span> <span class="s">&quot;short&quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">style</span> <span class="o">=</span> <span class="s">&quot;long&quot;</span>
+
+        <span class="k">return</span> <span class="n">excinfo</span><span class="o">.</span><span class="n">getrepr</span><span class="p">(</span><span class="n">funcargs</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                               <span class="n">showlocals</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="o">.</span><span class="n">showlocals</span><span class="p">,</span>
+                               <span class="n">style</span><span class="o">=</span><span class="n">style</span><span class="p">,</span> <span class="n">tbfilter</span><span class="o">=</span><span class="n">tbfilter</span><span class="p">)</span>
+
+    <span class="n">repr_failure</span> <span class="o">=</span> <span class="n">_repr_failure_py</span>
+</div>
+<div class="viewcode-block" id="Collector"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.main.Collector">[docs]</a><span class="k">class</span> <span class="nc">Collector</span><span class="p">(</span><span class="n">Node</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; Collector instances create children through collect()</span>
+<span class="sd">        and thus iteratively build a tree.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Collector.CollectError"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.main.Collector.CollectError">[docs]</a>    <span class="k">class</span> <span class="nc">CollectError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; an error during collection, contains a custom message. &quot;&quot;&quot;</span>
+</div>
+<div class="viewcode-block" id="Collector.collect"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.main.Collector.collect">[docs]</a>    <span class="k">def</span> <span class="nf">collect</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; returns a list of children (items and collectors)</span>
+<span class="sd">            for this collection node.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s">&quot;abstract&quot;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="Collector.repr_failure"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.main.Collector.repr_failure">[docs]</a>    <span class="k">def</span> <span class="nf">repr_failure</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">excinfo</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; represent a collection failure. &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">excinfo</span><span class="o">.</span><span class="n">errisinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">CollectError</span><span class="p">):</span>
+            <span class="n">exc</span> <span class="o">=</span> <span class="n">excinfo</span><span class="o">.</span><span class="n">value</span>
+            <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_repr_failure_py</span><span class="p">(</span><span class="n">excinfo</span><span class="p">,</span> <span class="n">style</span><span class="o">=</span><span class="s">&quot;short&quot;</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">_memocollect</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; internal helper method to cache results of calling collect(). &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_memoizedcall</span><span class="p">(</span><span class="s">&#39;_collected&#39;</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">collect</span><span class="p">()))</span>
+
+    <span class="k">def</span> <span class="nf">_prunetraceback</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">excinfo</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;fspath&#39;</span><span class="p">):</span>
+            <span class="n">traceback</span> <span class="o">=</span> <span class="n">excinfo</span><span class="o">.</span><span class="n">traceback</span>
+            <span class="n">ntraceback</span> <span class="o">=</span> <span class="n">traceback</span><span class="o">.</span><span class="n">cut</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">fspath</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">ntraceback</span> <span class="o">==</span> <span class="n">traceback</span><span class="p">:</span>
+                <span class="n">ntraceback</span> <span class="o">=</span> <span class="n">ntraceback</span><span class="o">.</span><span class="n">cut</span><span class="p">(</span><span class="n">excludepath</span><span class="o">=</span><span class="n">tracebackcutdir</span><span class="p">)</span>
+            <span class="n">excinfo</span><span class="o">.</span><span class="n">traceback</span> <span class="o">=</span> <span class="n">ntraceback</span><span class="o">.</span><span class="n">filter</span><span class="p">()</span>
+</div>
+<span class="k">class</span> <span class="nc">FSCollector</span><span class="p">(</span><span class="n">Collector</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fspath</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">session</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">fspath</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">local</span><span class="p">(</span><span class="n">fspath</span><span class="p">)</span> <span class="c"># xxx only for test_resultlog.py?</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">fspath</span><span class="o">.</span><span class="n">basename</span>
+        <span class="k">if</span> <span class="n">parent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">rel</span> <span class="o">=</span> <span class="n">fspath</span><span class="o">.</span><span class="n">relto</span><span class="p">(</span><span class="n">parent</span><span class="o">.</span><span class="n">fspath</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">rel</span><span class="p">:</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="n">rel</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">sep</span><span class="p">,</span> <span class="s">&quot;/&quot;</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">FSCollector</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">parent</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">session</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fspath</span> <span class="o">=</span> <span class="n">fspath</span>
+
+    <span class="k">def</span> <span class="nf">_makeid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">relpath</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fspath</span><span class="o">.</span><span class="n">relto</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">rootdir</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">sep</span> <span class="o">!=</span> <span class="s">&quot;/&quot;</span><span class="p">:</span>
+            <span class="n">relpath</span> <span class="o">=</span> <span class="n">relpath</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">sep</span><span class="p">,</span> <span class="s">&quot;/&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">relpath</span>
+
+<span class="k">class</span> <span class="nc">File</span><span class="p">(</span><span class="n">FSCollector</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; base class for collecting tests from a file. &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Item"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.main.Item">[docs]</a><span class="k">class</span> <span class="nc">Item</span><span class="p">(</span><span class="n">Node</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; a basic test invocation item. Note that for a single function</span>
+<span class="sd">    there might be multiple test invocation items.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">nextitem</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">session</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">Item</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">parent</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">session</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_report_sections</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">def</span> <span class="nf">add_report_section</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">when</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">content</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">content</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_report_sections</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">when</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">content</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">reportinfo</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">fspath</span><span class="p">,</span> <span class="bp">None</span><span class="p">,</span> <span class="s">&quot;&quot;</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">location</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_location</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">location</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">reportinfo</span><span class="p">()</span>
+            <span class="c"># bestrelpath is a quite slow function</span>
+            <span class="n">cache</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">__dict__</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s">&quot;_bestrelpathcache&quot;</span><span class="p">,</span> <span class="p">{})</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">fspath</span> <span class="o">=</span> <span class="n">cache</span><span class="p">[</span><span class="n">location</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
+            <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+                <span class="n">fspath</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">fspath</span><span class="o">.</span><span class="n">bestrelpath</span><span class="p">(</span><span class="n">location</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                <span class="n">cache</span><span class="p">[</span><span class="n">location</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">=</span> <span class="n">fspath</span>
+            <span class="n">location</span> <span class="o">=</span> <span class="p">(</span><span class="n">fspath</span><span class="p">,</span> <span class="n">location</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="nb">str</span><span class="p">(</span><span class="n">location</span><span class="p">[</span><span class="mi">2</span><span class="p">]))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_location</span> <span class="o">=</span> <span class="n">location</span>
+            <span class="k">return</span> <span class="n">location</span>
+</div>
+<span class="k">class</span> <span class="nc">NoMatch</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; raised if matching cannot locate a matching names. &quot;&quot;&quot;</span>
+
+<span class="k">class</span> <span class="nc">Interrupted</span><span class="p">(</span><span class="ne">KeyboardInterrupt</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; signals an interrupted test run. &quot;&quot;&quot;</span>
+    <span class="n">__module__</span> <span class="o">=</span> <span class="s">&#39;builtins&#39;</span> <span class="c"># for py3</span>
+
+<span class="k">class</span> <span class="nc">Session</span><span class="p">(</span><span class="n">FSCollector</span><span class="p">):</span>
+    <span class="n">Interrupted</span> <span class="o">=</span> <span class="n">Interrupted</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
+        <span class="n">FSCollector</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">rootdir</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                             <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">,</span> <span class="n">session</span><span class="o">=</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_fs2hookproxy</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">testsfailed</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">testscollected</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">shouldstop</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trace</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">trace</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&quot;collection&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_norecursepatterns</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">getini</span><span class="p">(</span><span class="s">&quot;norecursedirs&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">startdir</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">local</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">pluginmanager</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s">&quot;session&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_makeid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&quot;&quot;</span>
+
+    <span class="nd">@pytest.hookimpl</span><span class="p">(</span><span class="n">tryfirst</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">pytest_collectstart</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">shouldstop</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="bp">self</span><span class="o">.</span><span class="n">Interrupted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shouldstop</span><span class="p">)</span>
+
+    <span class="nd">@pytest.hookimpl</span><span class="p">(</span><span class="n">tryfirst</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">pytest_runtest_logreport</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">report</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">report</span><span class="o">.</span><span class="n">failed</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">report</span><span class="p">,</span> <span class="s">&#39;wasxfail&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">testsfailed</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">maxfail</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">getvalue</span><span class="p">(</span><span class="s">&quot;maxfail&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">maxfail</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">testsfailed</span> <span class="o">&gt;=</span> <span class="n">maxfail</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">shouldstop</span> <span class="o">=</span> <span class="s">&quot;stopping after </span><span class="si">%d</span><span class="s"> failures&quot;</span> <span class="o">%</span> <span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">testsfailed</span><span class="p">)</span>
+    <span class="n">pytest_collectreport</span> <span class="o">=</span> <span class="n">pytest_runtest_logreport</span>
+
+    <span class="k">def</span> <span class="nf">isinitpath</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">path</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_initialpaths</span>
+
+    <span class="k">def</span> <span class="nf">gethookproxy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fspath</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fs2hookproxy</span><span class="p">[</span><span class="n">fspath</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="c"># check if we have the common case of running</span>
+            <span class="c"># hooks with all conftest.py filesall conftest.py</span>
+            <span class="n">pm</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">pluginmanager</span>
+            <span class="n">my_conftestmodules</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">_getconftestmodules</span><span class="p">(</span><span class="n">fspath</span><span class="p">)</span>
+            <span class="n">remove_mods</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">_conftest_plugins</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="n">my_conftestmodules</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">remove_mods</span><span class="p">:</span>
+                <span class="c"># one or more conftests are not in use at this fspath</span>
+                <span class="n">proxy</span> <span class="o">=</span> <span class="n">FSHookProxy</span><span class="p">(</span><span class="n">fspath</span><span class="p">,</span> <span class="n">pm</span><span class="p">,</span> <span class="n">remove_mods</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c"># all plugis are active for this fspath</span>
+                <span class="n">proxy</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">hook</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">_fs2hookproxy</span><span class="p">[</span><span class="n">fspath</span><span class="p">]</span> <span class="o">=</span> <span class="n">proxy</span>
+            <span class="k">return</span> <span class="n">proxy</span>
+
+    <span class="k">def</span> <span class="nf">perform_collect</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">genitems</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="n">hook</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">hook</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">items</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_perform_collect</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">genitems</span><span class="p">)</span>
+            <span class="n">hook</span><span class="o">.</span><span class="n">pytest_collection_modifyitems</span><span class="p">(</span><span class="n">session</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span>
+                <span class="n">config</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="n">items</span><span class="o">=</span><span class="n">items</span><span class="p">)</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">hook</span><span class="o">.</span><span class="n">pytest_collection_finish</span><span class="p">(</span><span class="n">session</span><span class="o">=</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">testscollected</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">items</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">items</span>
+
+    <span class="k">def</span> <span class="nf">_perform_collect</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">genitems</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">args</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">args</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">args</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trace</span><span class="p">(</span><span class="s">&quot;perform_collect&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trace</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">indent</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_notfound</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_initialpaths</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_initialparts</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">items</span> <span class="o">=</span> <span class="n">items</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">args</span><span class="p">:</span>
+            <span class="n">parts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsearg</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_initialparts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_initialpaths</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">rep</span> <span class="o">=</span> <span class="n">collect_one_node</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ihook</span><span class="o">.</span><span class="n">pytest_collectreport</span><span class="p">(</span><span class="n">report</span><span class="o">=</span><span class="n">rep</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trace</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">indent</span> <span class="o">-=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_notfound</span><span class="p">:</span>
+            <span class="n">errors</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">arg</span><span class="p">,</span> <span class="n">exc</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_notfound</span><span class="p">:</span>
+                <span class="n">line</span> <span class="o">=</span> <span class="s">&quot;(no name </span><span class="si">%r</span><span class="s"> in any of </span><span class="si">%r</span><span class="s">)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">exc</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&quot;not found: </span><span class="si">%s</span><span class="se">\n</span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">line</span><span class="p">))</span>
+                <span class="c">#XXX: test this</span>
+            <span class="k">raise</span> <span class="n">pytest</span><span class="o">.</span><span class="n">UsageError</span><span class="p">(</span><span class="o">*</span><span class="n">errors</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">genitems</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">rep</span><span class="o">.</span><span class="n">result</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">rep</span><span class="o">.</span><span class="n">passed</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">rep</span><span class="o">.</span><span class="n">result</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">items</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">genitems</span><span class="p">(</span><span class="n">node</span><span class="p">))</span>
+            <span class="k">return</span> <span class="n">items</span>
+
+    <span class="k">def</span> <span class="nf">collect</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">parts</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_initialparts</span><span class="p">:</span>
+            <span class="n">arg</span> <span class="o">=</span> <span class="s">&quot;::&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">parts</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">trace</span><span class="p">(</span><span class="s">&quot;processing argument&quot;</span><span class="p">,</span> <span class="n">arg</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">trace</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">indent</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_collect</span><span class="p">(</span><span class="n">arg</span><span class="p">):</span>
+                    <span class="k">yield</span> <span class="n">x</span>
+            <span class="k">except</span> <span class="n">NoMatch</span><span class="p">:</span>
+                <span class="c"># we are inside a make_report hook so</span>
+                <span class="c"># we cannot directly pass through the exception</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_notfound</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">arg</span><span class="p">,</span> <span class="n">sys</span><span class="o">.</span><span class="n">exc_info</span><span class="p">()[</span><span class="mi">1</span><span class="p">]))</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">trace</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">indent</span> <span class="o">-=</span> <span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">_collect</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arg</span><span class="p">):</span>
+        <span class="n">names</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parsearg</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">names</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="nb">dir</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+            <span class="k">assert</span> <span class="ow">not</span> <span class="n">names</span><span class="p">,</span> <span class="s">&quot;invalid arg </span><span class="si">%r</span><span class="s">&quot;</span> <span class="o">%</span><span class="p">(</span><span class="n">arg</span><span class="p">,)</span>
+            <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">path</span><span class="o">.</span><span class="n">visit</span><span class="p">(</span><span class="n">fil</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="nb">file</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span>
+                                   <span class="n">rec</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_recurse</span><span class="p">,</span> <span class="n">bf</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_collectfile</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+                    <span class="k">yield</span> <span class="n">x</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">path</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="nb">file</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">matchnodes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_collectfile</span><span class="p">(</span><span class="n">path</span><span class="p">),</span> <span class="n">names</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="n">x</span>
+
+    <span class="k">def</span> <span class="nf">_collectfile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+        <span class="n">ihook</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">gethookproxy</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">isinitpath</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">ihook</span><span class="o">.</span><span class="n">pytest_ignore_collect</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">):</span>
+                <span class="k">return</span> <span class="p">()</span>
+        <span class="k">return</span> <span class="n">ihook</span><span class="o">.</span><span class="n">pytest_collect_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="bp">self</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_recurse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+        <span class="n">ihook</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">gethookproxy</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">dirpath</span><span class="p">())</span>
+        <span class="k">if</span> <span class="n">ihook</span><span class="o">.</span><span class="n">pytest_ignore_collect</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">):</span>
+            <span class="k">return</span>
+        <span class="k">for</span> <span class="n">pat</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_norecursepatterns</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="n">fnmatch</span><span class="o">=</span><span class="n">pat</span><span class="p">):</span>
+                <span class="k">return</span> <span class="bp">False</span>
+        <span class="n">ihook</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">gethookproxy</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="n">ihook</span><span class="o">.</span><span class="n">pytest_collect_directory</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="bp">self</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">True</span>
+
+    <span class="k">def</span> <span class="nf">_tryconvertpyarg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="n">mod</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="p">[</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="s">&#39;.&#39;</span><span class="p">)]</span> <span class="o">+</span> <span class="n">sys</span><span class="o">.</span><span class="n">path</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">x</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;.&#39;</span><span class="p">):</span>
+            <span class="c"># ignore anything that&#39;s not a proper name here</span>
+            <span class="c"># else something like --pyargs will mess up &#39;.&#39;</span>
+            <span class="c"># since imp.find_module will actually sometimes work for it</span>
+            <span class="c"># but it&#39;s supposed to be considered a filesystem path</span>
+            <span class="c"># not a package</span>
+            <span class="k">if</span> <span class="n">name_re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">x</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">fd</span><span class="p">,</span> <span class="n">mod</span><span class="p">,</span> <span class="n">type_</span> <span class="o">=</span> <span class="n">imp</span><span class="o">.</span><span class="n">find_module</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">x</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">fd</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="n">fd</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+            <span class="k">if</span> <span class="n">type_</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">!=</span> <span class="n">imp</span><span class="o">.</span><span class="n">PKG_DIRECTORY</span><span class="p">:</span>
+                <span class="n">path</span> <span class="o">=</span> <span class="p">[</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">mod</span><span class="p">)]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">path</span> <span class="o">=</span> <span class="p">[</span><span class="n">mod</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">mod</span>
+
+    <span class="k">def</span> <span class="nf">_parsearg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arg</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; return (fspath, names) tuple after checking the file exists. &quot;&quot;&quot;</span>
+        <span class="n">arg</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="o">.</span><span class="n">pyargs</span><span class="p">:</span>
+            <span class="n">arg</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tryconvertpyarg</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+        <span class="n">parts</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;::&quot;</span><span class="p">)</span>
+        <span class="n">relpath</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s">&quot;/&quot;</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">sep</span><span class="p">)</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">invocation_dir</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">relpath</span><span class="p">,</span> <span class="nb">abs</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">check</span><span class="p">():</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="o">.</span><span class="n">pyargs</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s">&quot;file or package not found: &quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s">&quot;file not found: &quot;</span>
+            <span class="k">raise</span> <span class="n">pytest</span><span class="o">.</span><span class="n">UsageError</span><span class="p">(</span><span class="n">msg</span> <span class="o">+</span> <span class="n">arg</span><span class="p">)</span>
+        <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">path</span>
+        <span class="k">return</span> <span class="n">parts</span>
+
+    <span class="k">def</span> <span class="nf">matchnodes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">matching</span><span class="p">,</span> <span class="n">names</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trace</span><span class="p">(</span><span class="s">&quot;matchnodes&quot;</span><span class="p">,</span> <span class="n">matching</span><span class="p">,</span> <span class="n">names</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trace</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">indent</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">nodes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_matchnodes</span><span class="p">(</span><span class="n">matching</span><span class="p">,</span> <span class="n">names</span><span class="p">)</span>
+        <span class="n">num</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">nodes</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trace</span><span class="p">(</span><span class="s">&quot;matchnodes finished -&gt; &quot;</span><span class="p">,</span> <span class="n">num</span><span class="p">,</span> <span class="s">&quot;nodes&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trace</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">indent</span> <span class="o">-=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">num</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NoMatch</span><span class="p">(</span><span class="n">matching</span><span class="p">,</span> <span class="n">names</span><span class="p">[:</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">nodes</span>
+
+    <span class="k">def</span> <span class="nf">_matchnodes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">matching</span><span class="p">,</span> <span class="n">names</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">matching</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">names</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">matching</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">names</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">assert</span> <span class="n">name</span>
+        <span class="n">nextnames</span> <span class="o">=</span> <span class="n">names</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="n">resultnodes</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">matching</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">pytest</span><span class="o">.</span><span class="n">Item</span><span class="p">):</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">names</span><span class="p">:</span>
+                    <span class="n">resultnodes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">node</span><span class="p">)</span>
+                <span class="k">continue</span>
+            <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">pytest</span><span class="o">.</span><span class="n">Collector</span><span class="p">)</span>
+            <span class="n">rep</span> <span class="o">=</span> <span class="n">collect_one_node</span><span class="p">(</span><span class="n">node</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">rep</span><span class="o">.</span><span class="n">passed</span><span class="p">:</span>
+                <span class="n">has_matched</span> <span class="o">=</span> <span class="bp">False</span>
+                <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">rep</span><span class="o">.</span><span class="n">result</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="n">name</span><span class="p">:</span>
+                        <span class="n">resultnodes</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">matchnodes</span><span class="p">([</span><span class="n">x</span><span class="p">],</span> <span class="n">nextnames</span><span class="p">))</span>
+                        <span class="n">has_matched</span> <span class="o">=</span> <span class="bp">True</span>
+                <span class="c"># XXX accept IDs that don&#39;t have &quot;()&quot; for class instances</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">has_matched</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">rep</span><span class="o">.</span><span class="n">result</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">x</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s">&quot;()&quot;</span><span class="p">:</span>
+                    <span class="n">nextnames</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+                    <span class="n">resultnodes</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">matchnodes</span><span class="p">([</span><span class="n">x</span><span class="p">],</span> <span class="n">nextnames</span><span class="p">))</span>
+            <span class="n">node</span><span class="o">.</span><span class="n">ihook</span><span class="o">.</span><span class="n">pytest_collectreport</span><span class="p">(</span><span class="n">report</span><span class="o">=</span><span class="n">rep</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">resultnodes</span>
+
+    <span class="k">def</span> <span class="nf">genitems</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trace</span><span class="p">(</span><span class="s">&quot;genitems&quot;</span><span class="p">,</span> <span class="n">node</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">pytest</span><span class="o">.</span><span class="n">Item</span><span class="p">):</span>
+            <span class="n">node</span><span class="o">.</span><span class="n">ihook</span><span class="o">.</span><span class="n">pytest_itemcollected</span><span class="p">(</span><span class="n">item</span><span class="o">=</span><span class="n">node</span><span class="p">)</span>
+            <span class="k">yield</span> <span class="n">node</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">pytest</span><span class="o">.</span><span class="n">Collector</span><span class="p">)</span>
+            <span class="n">rep</span> <span class="o">=</span> <span class="n">collect_one_node</span><span class="p">(</span><span class="n">node</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">rep</span><span class="o">.</span><span class="n">passed</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">subnode</span> <span class="ow">in</span> <span class="n">rep</span><span class="o">.</span><span class="n">result</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">genitems</span><span class="p">(</span><span class="n">subnode</span><span class="p">):</span>
+                        <span class="k">yield</span> <span class="n">x</span>
+            <span class="n">node</span><span class="o">.</span><span class="n">ihook</span><span class="o">.</span><span class="n">pytest_collectreport</span><span class="p">(</span><span class="n">report</span><span class="o">=</span><span class="n">rep</span><span class="p">)</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../../contents.html">
+              <img class="logo" src="../../_static/pytest1.png" alt="Logo"/>
+            </a></p><h3><a href="../../contents.html">Table Of Contents</a></h3>
+
+<ul>
+  <li><a href="../../index.html">Home</a></li>
+  <li><a href="../../contents.html">Contents</a></li>
+  <li><a href="../../getting-started.html">Install</a></li>
+  <li><a href="../../example/index.html">Examples</a></li>
+  <li><a href="../../customize.html">Customize</a></li>
+  <li><a href="../../contact.html">Contact</a></li>
+  <li><a href="../../talks.html">Talks/Posts</a></li>
+  <li><a href="../../changelog.html">Changelog</a></li>
+</ul><h3>Related Topics</h3>
+<ul>
+  <li><a href="../../contents.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul><h3>Useful Links</h3>
+<ul>
+  <li><a href="../../index.html">The pytest Website</a></li>
+  <li><a href="../../contributing.html">Contribution Guide</a></li>
+  <li><a href="https://pypi.python.org/pypi/pytest">pytest @ PyPI</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/">pytest @ GitHub</a></li>
+  <li><a href="http://pytest.org/latest/plugins_index/index.html">3rd party plugins</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/issues">Issue Tracker</a></li>
+  <li><a href="http://pytest.org/latest/pytest.pdf">PDF Documentation</a>
+</ul>
+
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+
+  <div class="footer">
+    &copy; Copyright 2015, holger krekel and pytest-dev team.
+    Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+  </div>
+  
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-7597274-13']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+  </body>
+</html>

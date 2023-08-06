@@ -1,0 +1,430 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>_pytest.skipping</title>
+    
+    <link rel="stylesheet" href="../../_static/flasky.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '2.7.3.dev376+ng06b1b69.d20150827',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../_static/pytest1favi.ico"/>
+    <link rel="top" title="None" href="../../contents.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+  
+  
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="nav-item nav-item-0"><a href="../../contents.html">pytest-2.7.3.dev376+ng06b1b69.d20150827</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for _pytest.skipping</h1><div class="highlight"><pre>
+<span class="sd">&quot;&quot;&quot; support for skip/xfail functions and markers. &quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">traceback</span>
+
+<span class="kn">import</span> <span class="nn">py</span>
+<span class="kn">import</span> <span class="nn">pytest</span>
+
+<span class="k">def</span> <span class="nf">pytest_addoption</span><span class="p">(</span><span class="n">parser</span><span class="p">):</span>
+    <span class="n">group</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">getgroup</span><span class="p">(</span><span class="s">&quot;general&quot;</span><span class="p">)</span>
+    <span class="n">group</span><span class="o">.</span><span class="n">addoption</span><span class="p">(</span><span class="s">&#39;--runxfail&#39;</span><span class="p">,</span>
+           <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_true&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;runxfail&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+           <span class="n">help</span><span class="o">=</span><span class="s">&quot;run tests even if they are marked xfail&quot;</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">pytest_configure</span><span class="p">(</span><span class="n">config</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="o">.</span><span class="n">runxfail</span><span class="p">:</span>
+        <span class="n">old</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">xfail</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">_cleanup</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="nb">setattr</span><span class="p">(</span><span class="n">pytest</span><span class="p">,</span> <span class="s">&quot;xfail&quot;</span><span class="p">,</span> <span class="n">old</span><span class="p">))</span>
+        <span class="k">def</span> <span class="nf">nop</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+            <span class="k">pass</span>
+        <span class="n">nop</span><span class="o">.</span><span class="n">Exception</span> <span class="o">=</span> <span class="n">XFailed</span>
+        <span class="nb">setattr</span><span class="p">(</span><span class="n">pytest</span><span class="p">,</span> <span class="s">&quot;xfail&quot;</span><span class="p">,</span> <span class="n">nop</span><span class="p">)</span>
+
+    <span class="n">config</span><span class="o">.</span><span class="n">addinivalue_line</span><span class="p">(</span><span class="s">&quot;markers&quot;</span><span class="p">,</span>
+        <span class="s">&quot;skipif(condition): skip the given test function if eval(condition) &quot;</span>
+        <span class="s">&quot;results in a True value.  Evaluation happens within the &quot;</span>
+        <span class="s">&quot;module global context. Example: skipif(&#39;sys.platform == </span><span class="se">\&quot;</span><span class="s">win32</span><span class="se">\&quot;</span><span class="s">&#39;) &quot;</span>
+        <span class="s">&quot;skips the test if we are on the win32 platform. see &quot;</span>
+        <span class="s">&quot;http://pytest.org/latest/skipping.html&quot;</span>
+    <span class="p">)</span>
+    <span class="n">config</span><span class="o">.</span><span class="n">addinivalue_line</span><span class="p">(</span><span class="s">&quot;markers&quot;</span><span class="p">,</span>
+        <span class="s">&quot;xfail(condition, reason=None, run=True, raises=None): mark the the test function &quot;</span>
+        <span class="s">&quot;as an expected failure if eval(condition) has a True value. &quot;</span>
+        <span class="s">&quot;Optionally specify a reason for better reporting and run=False if &quot;</span>
+        <span class="s">&quot;you don&#39;t even want to execute the test function. If only specific &quot;</span>
+        <span class="s">&quot;exception(s) are expected, you can list them in raises, and if the test fails &quot;</span>
+        <span class="s">&quot;in other ways, it will be reported as a true failure. &quot;</span>
+        <span class="s">&quot;See http://pytest.org/latest/skipping.html&quot;</span>
+    <span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">pytest_namespace</span><span class="p">():</span>
+    <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">xfail</span><span class="o">=</span><span class="n">xfail</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">XFailed</span><span class="p">(</span><span class="n">pytest</span><span class="o">.</span><span class="n">fail</span><span class="o">.</span><span class="n">Exception</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; raised from an explicit call to pytest.xfail() &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="xfail"><a class="viewcode-back" href="../../builtin.html#_pytest.skipping.xfail">[docs]</a><span class="k">def</span> <span class="nf">xfail</span><span class="p">(</span><span class="n">reason</span><span class="o">=</span><span class="s">&quot;&quot;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; xfail an executing test or setup functions with the given reason.&quot;&quot;&quot;</span>
+    <span class="n">__tracebackhide__</span> <span class="o">=</span> <span class="bp">True</span>
+    <span class="k">raise</span> <span class="n">XFailed</span><span class="p">(</span><span class="n">reason</span><span class="p">)</span></div>
+<span class="n">xfail</span><span class="o">.</span><span class="n">Exception</span> <span class="o">=</span> <span class="n">XFailed</span>
+
+<span class="k">class</span> <span class="nc">MarkEvaluator</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">item</span> <span class="o">=</span> <span class="n">item</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">holder</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">item</span><span class="o">.</span><span class="n">keywords</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__bool__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">holder</span><span class="p">)</span>
+    <span class="n">__nonzero__</span> <span class="o">=</span> <span class="n">__bool__</span>
+
+    <span class="k">def</span> <span class="nf">wasvalid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;exc&#39;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">invalidraise</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc</span><span class="p">):</span>
+        <span class="n">raises</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;raises&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">raises</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exc</span><span class="p">,</span> <span class="n">raises</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">istrue</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_istrue</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">exc</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">exc_info</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exc</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="ne">SyntaxError</span><span class="p">):</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="p">[</span><span class="s">&quot; &quot;</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exc</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">offset</span> <span class="o">+</span> <span class="mi">4</span><span class="p">)</span> <span class="o">+</span> <span class="s">&quot;^&quot;</span><span class="p">,]</span>
+                <span class="n">msg</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&quot;SyntaxError: invalid syntax&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="n">traceback</span><span class="o">.</span><span class="n">format_exception_only</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">exc</span><span class="p">[:</span><span class="mi">2</span><span class="p">])</span>
+            <span class="n">pytest</span><span class="o">.</span><span class="n">fail</span><span class="p">(</span><span class="s">&quot;Error evaluating </span><span class="si">%r</span><span class="s"> expression</span><span class="se">\n</span><span class="s">&quot;</span>
+                        <span class="s">&quot;    </span><span class="si">%s</span><span class="se">\n</span><span class="s">&quot;</span>
+                        <span class="s">&quot;</span><span class="si">%s</span><span class="s">&quot;</span>
+                        <span class="o">%</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">expr</span><span class="p">,</span> <span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">msg</span><span class="p">)),</span>
+                        <span class="n">pytrace</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_getglobals</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;os&#39;</span><span class="p">:</span> <span class="n">os</span><span class="p">,</span> <span class="s">&#39;sys&#39;</span><span class="p">:</span> <span class="n">sys</span><span class="p">,</span> <span class="s">&#39;config&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">item</span><span class="o">.</span><span class="n">config</span><span class="p">}</span>
+        <span class="n">func</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">item</span><span class="o">.</span><span class="n">obj</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">d</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">func</span><span class="o">.</span><span class="n">__globals__</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="n">d</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">func</span><span class="o">.</span><span class="n">func_globals</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">d</span>
+
+    <span class="k">def</span> <span class="nf">_istrue</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;result&#39;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">result</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">holder</span><span class="p">:</span>
+            <span class="n">d</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_getglobals</span><span class="p">()</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">holder</span><span class="o">.</span><span class="n">args</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">result</span> <span class="o">=</span> <span class="bp">False</span>
+                <span class="c"># &quot;holder&quot; might be a MarkInfo or a MarkDecorator; only</span>
+                <span class="c"># MarkInfo keeps track of all parameters it received in an</span>
+                <span class="c"># _arglist attribute</span>
+                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">holder</span><span class="p">,</span> <span class="s">&#39;_arglist&#39;</span><span class="p">):</span>
+                    <span class="n">arglist</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">holder</span><span class="o">.</span><span class="n">_arglist</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">arglist</span> <span class="o">=</span> <span class="p">[(</span><span class="bp">self</span><span class="o">.</span><span class="n">holder</span><span class="o">.</span><span class="n">args</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">holder</span><span class="o">.</span><span class="n">kwargs</span><span class="p">)]</span>
+                <span class="k">for</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="ow">in</span> <span class="n">arglist</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">expr</span> <span class="ow">in</span> <span class="n">args</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">expr</span> <span class="o">=</span> <span class="n">expr</span>
+                        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expr</span><span class="p">,</span> <span class="n">py</span><span class="o">.</span><span class="n">builtin</span><span class="o">.</span><span class="n">_basestring</span><span class="p">):</span>
+                            <span class="n">result</span> <span class="o">=</span> <span class="n">cached_eval</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">item</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="n">expr</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="k">if</span> <span class="s">&quot;reason&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+                                <span class="c"># XXX better be checked at collection time</span>
+                                <span class="n">msg</span> <span class="o">=</span> <span class="s">&quot;you need to specify reason=STRING &quot;</span> \
+                                      <span class="s">&quot;when using booleans as conditions.&quot;</span>
+                                <span class="n">pytest</span><span class="o">.</span><span class="n">fail</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+                            <span class="n">result</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">expr</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">result</span><span class="p">:</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">result</span> <span class="o">=</span> <span class="bp">True</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">reason</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;reason&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">expr</span> <span class="o">=</span> <span class="n">expr</span>
+                            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">result</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">result</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;result&#39;</span><span class="p">,</span> <span class="bp">False</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attr</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">holder</span><span class="o">.</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">attr</span><span class="p">,</span> <span class="n">default</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">getexplanation</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">expl</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;reason&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;reason&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">expl</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;expr&#39;</span><span class="p">):</span>
+                <span class="k">return</span> <span class="s">&quot;&quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="s">&quot;condition: &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">expr</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">expl</span>
+
+
+<span class="nd">@pytest.hookimpl</span><span class="p">(</span><span class="n">tryfirst</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">pytest_runtest_setup</span><span class="p">(</span><span class="n">item</span><span class="p">):</span>
+    <span class="n">evalskip</span> <span class="o">=</span> <span class="n">MarkEvaluator</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="s">&#39;skipif&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">evalskip</span><span class="o">.</span><span class="n">istrue</span><span class="p">():</span>
+        <span class="n">item</span><span class="o">.</span><span class="n">_evalskip</span> <span class="o">=</span> <span class="n">evalskip</span>
+        <span class="n">pytest</span><span class="o">.</span><span class="n">skip</span><span class="p">(</span><span class="n">evalskip</span><span class="o">.</span><span class="n">getexplanation</span><span class="p">())</span>
+    <span class="n">item</span><span class="o">.</span><span class="n">_evalxfail</span> <span class="o">=</span> <span class="n">MarkEvaluator</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="s">&#39;xfail&#39;</span><span class="p">)</span>
+    <span class="n">check_xfail_no_run</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">pytest_pyfunc_call</span><span class="p">(</span><span class="n">pyfuncitem</span><span class="p">):</span>
+    <span class="n">check_xfail_no_run</span><span class="p">(</span><span class="n">pyfuncitem</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">check_xfail_no_run</span><span class="p">(</span><span class="n">item</span><span class="p">):</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">item</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="o">.</span><span class="n">runxfail</span><span class="p">:</span>
+        <span class="n">evalxfail</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">_evalxfail</span>
+        <span class="k">if</span> <span class="n">evalxfail</span><span class="o">.</span><span class="n">istrue</span><span class="p">():</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">evalxfail</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;run&#39;</span><span class="p">,</span> <span class="bp">True</span><span class="p">):</span>
+                <span class="n">pytest</span><span class="o">.</span><span class="n">xfail</span><span class="p">(</span><span class="s">&quot;[NOTRUN] &quot;</span> <span class="o">+</span> <span class="n">evalxfail</span><span class="o">.</span><span class="n">getexplanation</span><span class="p">())</span>
+
+<span class="nd">@pytest.hookimpl</span><span class="p">(</span><span class="n">hookwrapper</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">pytest_runtest_makereport</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">call</span><span class="p">):</span>
+    <span class="n">outcome</span> <span class="o">=</span> <span class="k">yield</span>
+    <span class="n">rep</span> <span class="o">=</span> <span class="n">outcome</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="n">evalxfail</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="s">&#39;_evalxfail&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+    <span class="n">evalskip</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="s">&#39;_evalskip&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+    <span class="c"># unitttest special case, see setting of _unexpectedsuccess</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="s">&#39;_unexpectedsuccess&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">rep</span><span class="o">.</span><span class="n">when</span> <span class="o">==</span> <span class="s">&quot;call&quot;</span><span class="p">:</span>
+        <span class="c"># we need to translate into how pytest encodes xpass</span>
+        <span class="n">rep</span><span class="o">.</span><span class="n">wasxfail</span> <span class="o">=</span> <span class="s">&quot;reason: &quot;</span> <span class="o">+</span> <span class="nb">repr</span><span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">_unexpectedsuccess</span><span class="p">)</span>
+        <span class="n">rep</span><span class="o">.</span><span class="n">outcome</span> <span class="o">=</span> <span class="s">&quot;failed&quot;</span>
+    <span class="k">elif</span> <span class="n">item</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="o">.</span><span class="n">runxfail</span><span class="p">:</span>
+        <span class="k">pass</span>   <span class="c"># don&#39;t interefere</span>
+    <span class="k">elif</span> <span class="n">call</span><span class="o">.</span><span class="n">excinfo</span> <span class="ow">and</span> <span class="n">call</span><span class="o">.</span><span class="n">excinfo</span><span class="o">.</span><span class="n">errisinstance</span><span class="p">(</span><span class="n">pytest</span><span class="o">.</span><span class="n">xfail</span><span class="o">.</span><span class="n">Exception</span><span class="p">):</span>
+        <span class="n">rep</span><span class="o">.</span><span class="n">wasxfail</span> <span class="o">=</span> <span class="s">&quot;reason: &quot;</span> <span class="o">+</span> <span class="n">call</span><span class="o">.</span><span class="n">excinfo</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">msg</span>
+        <span class="n">rep</span><span class="o">.</span><span class="n">outcome</span> <span class="o">=</span> <span class="s">&quot;skipped&quot;</span>
+    <span class="k">elif</span> <span class="n">evalxfail</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">rep</span><span class="o">.</span><span class="n">skipped</span> <span class="ow">and</span> <span class="n">evalxfail</span><span class="o">.</span><span class="n">wasvalid</span><span class="p">()</span> <span class="ow">and</span> \
+        <span class="n">evalxfail</span><span class="o">.</span><span class="n">istrue</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">call</span><span class="o">.</span><span class="n">excinfo</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">evalxfail</span><span class="o">.</span><span class="n">invalidraise</span><span class="p">(</span><span class="n">call</span><span class="o">.</span><span class="n">excinfo</span><span class="o">.</span><span class="n">value</span><span class="p">):</span>
+                <span class="n">rep</span><span class="o">.</span><span class="n">outcome</span> <span class="o">=</span> <span class="s">&quot;failed&quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">rep</span><span class="o">.</span><span class="n">outcome</span> <span class="o">=</span> <span class="s">&quot;skipped&quot;</span>
+                <span class="n">rep</span><span class="o">.</span><span class="n">wasxfail</span> <span class="o">=</span> <span class="n">evalxfail</span><span class="o">.</span><span class="n">getexplanation</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="n">call</span><span class="o">.</span><span class="n">when</span> <span class="o">==</span> <span class="s">&quot;call&quot;</span><span class="p">:</span>
+            <span class="n">rep</span><span class="o">.</span><span class="n">outcome</span> <span class="o">=</span> <span class="s">&quot;failed&quot;</span>  <span class="c"># xpass outcome</span>
+            <span class="n">rep</span><span class="o">.</span><span class="n">wasxfail</span> <span class="o">=</span> <span class="n">evalxfail</span><span class="o">.</span><span class="n">getexplanation</span><span class="p">()</span>
+    <span class="k">elif</span> <span class="n">evalskip</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">rep</span><span class="o">.</span><span class="n">skipped</span> <span class="ow">and</span> <span class="nb">type</span><span class="p">(</span><span class="n">rep</span><span class="o">.</span><span class="n">longrepr</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">tuple</span><span class="p">:</span>
+        <span class="c"># skipped by mark.skipif; change the location of the failure</span>
+        <span class="c"># to point to the item definition, otherwise it will display</span>
+        <span class="c"># the location of where the skip exception was raised within pytest</span>
+        <span class="n">filename</span><span class="p">,</span> <span class="n">line</span><span class="p">,</span> <span class="n">reason</span> <span class="o">=</span> <span class="n">rep</span><span class="o">.</span><span class="n">longrepr</span>
+        <span class="n">filename</span><span class="p">,</span> <span class="n">line</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">location</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span>
+        <span class="n">rep</span><span class="o">.</span><span class="n">longrepr</span> <span class="o">=</span> <span class="n">filename</span><span class="p">,</span> <span class="n">line</span><span class="p">,</span> <span class="n">reason</span>
+
+<span class="c"># called by terminalreporter progress reporting</span>
+<span class="k">def</span> <span class="nf">pytest_report_teststatus</span><span class="p">(</span><span class="n">report</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">report</span><span class="p">,</span> <span class="s">&quot;wasxfail&quot;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">report</span><span class="o">.</span><span class="n">skipped</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&quot;xfailed&quot;</span><span class="p">,</span> <span class="s">&quot;x&quot;</span><span class="p">,</span> <span class="s">&quot;xfail&quot;</span>
+        <span class="k">elif</span> <span class="n">report</span><span class="o">.</span><span class="n">failed</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&quot;xpassed&quot;</span><span class="p">,</span> <span class="s">&quot;X&quot;</span><span class="p">,</span> <span class="p">(</span><span class="s">&quot;XPASS&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s">&#39;yellow&#39;</span><span class="p">:</span> <span class="bp">True</span><span class="p">})</span>
+
+<span class="c"># called by the terminalreporter instance/plugin</span>
+<span class="k">def</span> <span class="nf">pytest_terminal_summary</span><span class="p">(</span><span class="n">terminalreporter</span><span class="p">):</span>
+    <span class="n">tr</span> <span class="o">=</span> <span class="n">terminalreporter</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">tr</span><span class="o">.</span><span class="n">reportchars</span><span class="p">:</span>
+        <span class="c">#for name in &quot;xfailed skipped failed xpassed&quot;:</span>
+        <span class="c">#    if not tr.stats.get(name, 0):</span>
+        <span class="c">#        tr.write_line(&quot;HINT: use &#39;-r&#39; option to see extra &quot;</span>
+        <span class="c">#              &quot;summary info about tests&quot;)</span>
+        <span class="c">#        break</span>
+        <span class="k">return</span>
+
+    <span class="n">lines</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">char</span> <span class="ow">in</span> <span class="n">tr</span><span class="o">.</span><span class="n">reportchars</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">char</span> <span class="o">==</span> <span class="s">&quot;x&quot;</span><span class="p">:</span>
+            <span class="n">show_xfailed</span><span class="p">(</span><span class="n">terminalreporter</span><span class="p">,</span> <span class="n">lines</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">char</span> <span class="o">==</span> <span class="s">&quot;X&quot;</span><span class="p">:</span>
+            <span class="n">show_xpassed</span><span class="p">(</span><span class="n">terminalreporter</span><span class="p">,</span> <span class="n">lines</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">char</span> <span class="ow">in</span> <span class="s">&quot;fF&quot;</span><span class="p">:</span>
+            <span class="n">show_simple</span><span class="p">(</span><span class="n">terminalreporter</span><span class="p">,</span> <span class="n">lines</span><span class="p">,</span> <span class="s">&#39;failed&#39;</span><span class="p">,</span> <span class="s">&quot;FAIL </span><span class="si">%s</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">char</span> <span class="ow">in</span> <span class="s">&quot;sS&quot;</span><span class="p">:</span>
+            <span class="n">show_skipped</span><span class="p">(</span><span class="n">terminalreporter</span><span class="p">,</span> <span class="n">lines</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">char</span> <span class="o">==</span> <span class="s">&quot;E&quot;</span><span class="p">:</span>
+            <span class="n">show_simple</span><span class="p">(</span><span class="n">terminalreporter</span><span class="p">,</span> <span class="n">lines</span><span class="p">,</span> <span class="s">&#39;error&#39;</span><span class="p">,</span> <span class="s">&quot;ERROR </span><span class="si">%s</span><span class="s">&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">lines</span><span class="p">:</span>
+        <span class="n">tr</span><span class="o">.</span><span class="n">_tw</span><span class="o">.</span><span class="n">sep</span><span class="p">(</span><span class="s">&quot;=&quot;</span><span class="p">,</span> <span class="s">&quot;short test summary info&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+            <span class="n">tr</span><span class="o">.</span><span class="n">_tw</span><span class="o">.</span><span class="n">line</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">show_simple</span><span class="p">(</span><span class="n">terminalreporter</span><span class="p">,</span> <span class="n">lines</span><span class="p">,</span> <span class="n">stat</span><span class="p">,</span> <span class="n">format</span><span class="p">):</span>
+    <span class="n">failed</span> <span class="o">=</span> <span class="n">terminalreporter</span><span class="o">.</span><span class="n">stats</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">stat</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">failed</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">rep</span> <span class="ow">in</span> <span class="n">failed</span><span class="p">:</span>
+            <span class="n">pos</span> <span class="o">=</span> <span class="n">terminalreporter</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">cwd_relative_nodeid</span><span class="p">(</span><span class="n">rep</span><span class="o">.</span><span class="n">nodeid</span><span class="p">)</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">format</span> <span class="o">%</span><span class="p">(</span><span class="n">pos</span><span class="p">,))</span>
+
+<span class="k">def</span> <span class="nf">show_xfailed</span><span class="p">(</span><span class="n">terminalreporter</span><span class="p">,</span> <span class="n">lines</span><span class="p">):</span>
+    <span class="n">xfailed</span> <span class="o">=</span> <span class="n">terminalreporter</span><span class="o">.</span><span class="n">stats</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&quot;xfailed&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">xfailed</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">rep</span> <span class="ow">in</span> <span class="n">xfailed</span><span class="p">:</span>
+            <span class="n">pos</span> <span class="o">=</span> <span class="n">terminalreporter</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">cwd_relative_nodeid</span><span class="p">(</span><span class="n">rep</span><span class="o">.</span><span class="n">nodeid</span><span class="p">)</span>
+            <span class="n">reason</span> <span class="o">=</span> <span class="n">rep</span><span class="o">.</span><span class="n">wasxfail</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&quot;XFAIL </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">pos</span><span class="p">,))</span>
+            <span class="k">if</span> <span class="n">reason</span><span class="p">:</span>
+                <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&quot;  &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">reason</span><span class="p">))</span>
+
+<span class="k">def</span> <span class="nf">show_xpassed</span><span class="p">(</span><span class="n">terminalreporter</span><span class="p">,</span> <span class="n">lines</span><span class="p">):</span>
+    <span class="n">xpassed</span> <span class="o">=</span> <span class="n">terminalreporter</span><span class="o">.</span><span class="n">stats</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&quot;xpassed&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">xpassed</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">rep</span> <span class="ow">in</span> <span class="n">xpassed</span><span class="p">:</span>
+            <span class="n">pos</span> <span class="o">=</span> <span class="n">terminalreporter</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">cwd_relative_nodeid</span><span class="p">(</span><span class="n">rep</span><span class="o">.</span><span class="n">nodeid</span><span class="p">)</span>
+            <span class="n">reason</span> <span class="o">=</span> <span class="n">rep</span><span class="o">.</span><span class="n">wasxfail</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&quot;XPASS </span><span class="si">%s</span><span class="s"> </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span><span class="p">(</span><span class="n">pos</span><span class="p">,</span> <span class="n">reason</span><span class="p">))</span>
+
+<span class="k">def</span> <span class="nf">cached_eval</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">expr</span><span class="p">,</span> <span class="n">d</span><span class="p">):</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="s">&#39;_evalcache&#39;</span><span class="p">):</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">_evalcache</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">config</span><span class="o">.</span><span class="n">_evalcache</span><span class="p">[</span><span class="n">expr</span><span class="p">]</span>
+    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="c">#import sys</span>
+        <span class="c">#print &gt;&gt;sys.stderr, (&quot;cache-miss: %r&quot; % expr)</span>
+        <span class="n">exprcode</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">code</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="n">expr</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s">&quot;eval&quot;</span><span class="p">)</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">_evalcache</span><span class="p">[</span><span class="n">expr</span><span class="p">]</span> <span class="o">=</span> <span class="n">x</span> <span class="o">=</span> <span class="nb">eval</span><span class="p">(</span><span class="n">exprcode</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">x</span>
+
+
+<span class="k">def</span> <span class="nf">folded_skips</span><span class="p">(</span><span class="n">skipped</span><span class="p">):</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">event</span> <span class="ow">in</span> <span class="n">skipped</span><span class="p">:</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="n">longrepr</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span><span class="p">,</span> <span class="p">(</span><span class="n">event</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span>
+        <span class="n">d</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>
+    <span class="n">l</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">events</span> <span class="ow">in</span> <span class="n">d</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">l</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">events</span><span class="p">),)</span> <span class="o">+</span> <span class="n">key</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">l</span>
+
+<span class="k">def</span> <span class="nf">show_skipped</span><span class="p">(</span><span class="n">terminalreporter</span><span class="p">,</span> <span class="n">lines</span><span class="p">):</span>
+    <span class="n">tr</span> <span class="o">=</span> <span class="n">terminalreporter</span>
+    <span class="n">skipped</span> <span class="o">=</span> <span class="n">tr</span><span class="o">.</span><span class="n">stats</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;skipped&#39;</span><span class="p">,</span> <span class="p">[])</span>
+    <span class="k">if</span> <span class="n">skipped</span><span class="p">:</span>
+        <span class="c">#if not tr.hasopt(&#39;skipped&#39;):</span>
+        <span class="c">#    tr.write_line(</span>
+        <span class="c">#        &quot;%d skipped tests, specify -rs for more info&quot; %</span>
+        <span class="c">#        len(skipped))</span>
+        <span class="c">#    return</span>
+        <span class="n">fskips</span> <span class="o">=</span> <span class="n">folded_skips</span><span class="p">(</span><span class="n">skipped</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">fskips</span><span class="p">:</span>
+            <span class="c">#tr.write_sep(&quot;_&quot;, &quot;skipped test summary&quot;)</span>
+            <span class="k">for</span> <span class="n">num</span><span class="p">,</span> <span class="n">fspath</span><span class="p">,</span> <span class="n">lineno</span><span class="p">,</span> <span class="n">reason</span> <span class="ow">in</span> <span class="n">fskips</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">reason</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&quot;Skipped: &quot;</span><span class="p">):</span>
+                    <span class="n">reason</span> <span class="o">=</span> <span class="n">reason</span><span class="p">[</span><span class="mi">9</span><span class="p">:]</span>
+                <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&quot;SKIP [</span><span class="si">%d</span><span class="s">] </span><span class="si">%s</span><span class="s">:</span><span class="si">%d</span><span class="s">: </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span>
+                    <span class="p">(</span><span class="n">num</span><span class="p">,</span> <span class="n">fspath</span><span class="p">,</span> <span class="n">lineno</span><span class="p">,</span> <span class="n">reason</span><span class="p">))</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../../contents.html">
+              <img class="logo" src="../../_static/pytest1.png" alt="Logo"/>
+            </a></p><h3><a href="../../contents.html">Table Of Contents</a></h3>
+
+<ul>
+  <li><a href="../../index.html">Home</a></li>
+  <li><a href="../../contents.html">Contents</a></li>
+  <li><a href="../../getting-started.html">Install</a></li>
+  <li><a href="../../example/index.html">Examples</a></li>
+  <li><a href="../../customize.html">Customize</a></li>
+  <li><a href="../../contact.html">Contact</a></li>
+  <li><a href="../../talks.html">Talks/Posts</a></li>
+  <li><a href="../../changelog.html">Changelog</a></li>
+</ul><h3>Related Topics</h3>
+<ul>
+  <li><a href="../../contents.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul><h3>Useful Links</h3>
+<ul>
+  <li><a href="../../index.html">The pytest Website</a></li>
+  <li><a href="../../contributing.html">Contribution Guide</a></li>
+  <li><a href="https://pypi.python.org/pypi/pytest">pytest @ PyPI</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/">pytest @ GitHub</a></li>
+  <li><a href="http://pytest.org/latest/plugins_index/index.html">3rd party plugins</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/issues">Issue Tracker</a></li>
+  <li><a href="http://pytest.org/latest/pytest.pdf">PDF Documentation</a>
+</ul>
+
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+
+  <div class="footer">
+    &copy; Copyright 2015, holger krekel and pytest-dev team.
+    Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+  </div>
+  
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-7597274-13']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+  </body>
+</html>

@@ -1,0 +1,1044 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>pytest fixtures: explicit, modular, scalable</title>
+    
+    <link rel="stylesheet" href="_static/flasky.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '2.7.3.dev376+ng06b1b69.d20150827',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="shortcut icon" href="_static/pytest1favi.ico"/>
+    <link rel="top" title="None" href="contents.html" />
+    <link rel="up" title="pytest reference documentation" href="apiref.html" />
+    <link rel="next" title="Fixture functions using “yield” / context manager integration" href="yieldfixture.html" />
+    <link rel="prev" title="The writing and reporting of assertions in tests" href="assert.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+  
+  
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="yieldfixture.html" title="Fixture functions using “yield” / context manager integration"
+             accesskey="N">next</a></li>
+        <li class="right" >
+          <a href="assert.html" title="The writing and reporting of assertions in tests"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="contents.html">pytest-2.7.3.dev376+ng06b1b69.d20150827</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="apiref.html" accesskey="U">pytest reference documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="pytest-fixtures-explicit-modular-scalable">
+<span id="fixture-functions"></span><span id="fixtures"></span><span id="fixture"></span><h1>pytest fixtures: explicit, modular, scalable<a class="headerlink" href="#pytest-fixtures-explicit-modular-scalable" title="Permalink to this headline">¶</a></h1>
+<div class="versionadded">
+<p><span class="versionmodified">New in version 2.0/2.3/2.4.</span></p>
+</div>
+<p>The <a class="reference external" href="http://en.wikipedia.org/wiki/Test_fixture#Software">purpose of test fixtures</a> is to provide a fixed baseline
+upon which tests can reliably and repeatedly execute.   pytest fixtures
+offer dramatic improvements over the classic xUnit style of setup/teardown
+functions:</p>
+<ul class="simple">
+<li>fixtures have explicit names and are activated by declaring their use
+from test functions, modules, classes or whole projects.</li>
+<li>fixtures are implemented in a modular manner, as each fixture name
+triggers a <em>fixture function</em> which can itself use other fixtures.</li>
+<li>fixture management scales from simple unit to complex
+functional testing, allowing to parametrize fixtures and tests according
+to configuration and component options, or to re-use fixtures
+across class, module or whole test session scopes.</li>
+</ul>
+<p>In addition, pytest continues to support <a class="reference internal" href="xunit_setup.html#xunitsetup"><span>classic xunit-style setup</span></a>.  You can mix
+both styles, moving incrementally from classic to new style, as you
+prefer.  You can also start out from existing <a class="reference internal" href="unittest.html#unittest-testcase"><span>unittest.TestCase
+style</span></a> or <a class="reference internal" href="nose.html#nosestyle"><span>nose based</span></a> projects.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">pytest-2.4 introduced an additional experimental
+<a class="reference internal" href="yieldfixture.html#yieldfixture"><span>yield fixture mechanism</span></a> for easier context manager
+integration and more linear writing of teardown code.</p>
+</div>
+<div class="section" id="fixtures-as-function-arguments">
+<span id="id1"></span><span id="pytest-fixture"></span><span id="fixture-function"></span><span id="funcarg-mechanism"></span><span id="funcargs"></span><h2>Fixtures as Function arguments<a class="headerlink" href="#fixtures-as-function-arguments" title="Permalink to this headline">¶</a></h2>
+<p>Test functions can receive fixture objects by naming them as an input
+argument. For each argument name, a fixture function with that name provides
+the fixture object.  Fixture functions are registered by marking them with
+<a class="reference internal" href="builtin.html#_pytest.python.fixture" title="_pytest.python.fixture"><code class="xref py py-func docutils literal"><span class="pre">&#64;pytest.fixture</span></code></a>.  Let&#8217;s look at a simple
+self-contained test module containing a fixture and a test function
+using it:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of ./test_smtpsimple.py</span>
+<span class="kn">import</span> <span class="nn">pytest</span>
+
+<span class="nd">@pytest.fixture</span>
+<span class="k">def</span> <span class="nf">smtp</span><span class="p">():</span>
+    <span class="kn">import</span> <span class="nn">smtplib</span>
+    <span class="k">return</span> <span class="n">smtplib</span><span class="o">.</span><span class="n">SMTP</span><span class="p">(</span><span class="s">&quot;merlinux.eu&quot;</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">test_ehlo</span><span class="p">(</span><span class="n">smtp</span><span class="p">):</span>
+    <span class="n">response</span><span class="p">,</span> <span class="n">msg</span> <span class="o">=</span> <span class="n">smtp</span><span class="o">.</span><span class="n">ehlo</span><span class="p">()</span>
+    <span class="k">assert</span> <span class="n">response</span> <span class="o">==</span> <span class="mi">250</span>
+    <span class="k">assert</span> <span class="mi">0</span> <span class="c"># for demo purposes</span>
+</pre></div>
+</div>
+<p>Here, the <code class="docutils literal"><span class="pre">test_ehlo</span></code> needs the <code class="docutils literal"><span class="pre">smtp</span></code> fixture value.  pytest
+will discover and call the <a class="reference internal" href="builtin.html#_pytest.python.fixture" title="_pytest.python.fixture"><code class="xref py py-func docutils literal"><span class="pre">&#64;pytest.fixture</span></code></a>
+marked <code class="docutils literal"><span class="pre">smtp</span></code> fixture function.  Running the test looks like this:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ py.test test_smtpsimple.py
+======= test session starts ========
+platform linux2 -- Python 2.7.9, pytest-2.8.0.dev4, py-1.4.28, pluggy-0.3.0
+rootdir: $REGENDOC_TMPDIR, inifile:
+collected 1 items
+
+test_smtpsimple.py F
+
+======= FAILURES ========
+_______ test_ehlo ________
+
+smtp = &lt;smtplib.SMTP instance at 0xdeadbeef&gt;
+
+    def test_ehlo(smtp):
+        response, msg = smtp.ehlo()
+        assert response == 250
+&gt;       assert 0 # for demo purposes
+E       assert 0
+
+test_smtpsimple.py:11: AssertionError
+======= 1 failed in 0.12 seconds ========
+</pre></div>
+</div>
+<p>In the failure traceback we see that the test function was called with a
+<code class="docutils literal"><span class="pre">smtp</span></code> argument, the <code class="docutils literal"><span class="pre">smtplib.SMTP()</span></code> instance created by the fixture
+function.  The test function fails on our deliberate <code class="docutils literal"><span class="pre">assert</span> <span class="pre">0</span></code>.  Here is
+the exact protocol used by <code class="docutils literal"><span class="pre">pytest</span></code> to call the test function this way:</p>
+<ol class="arabic simple">
+<li>pytest <a class="reference internal" href="goodpractises.html#test-discovery"><span>finds</span></a> the <code class="docutils literal"><span class="pre">test_ehlo</span></code> because
+of the <code class="docutils literal"><span class="pre">test_</span></code> prefix.  The test function needs a function argument
+named <code class="docutils literal"><span class="pre">smtp</span></code>.  A matching fixture function is discovered by
+looking for a fixture-marked function named <code class="docutils literal"><span class="pre">smtp</span></code>.</li>
+<li><code class="docutils literal"><span class="pre">smtp()</span></code> is called to create an instance.</li>
+<li><code class="docutils literal"><span class="pre">test_ehlo(&lt;SMTP</span> <span class="pre">instance&gt;)</span></code> is called and fails in the last
+line of the test function.</li>
+</ol>
+<p>Note that if you misspell a function argument or want
+to use one that isn&#8217;t available, you&#8217;ll see an error
+with a list of available function arguments.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p>You can always issue:</p>
+<div class="highlight-python"><div class="highlight"><pre>py.test --fixtures test_simplefactory.py
+</pre></div>
+</div>
+<p>to see available fixtures.</p>
+<p class="last">In versions prior to 2.3 there was no <code class="docutils literal"><span class="pre">&#64;pytest.fixture</span></code> marker
+and you had to use a magic <code class="docutils literal"><span class="pre">pytest_funcarg__NAME</span></code> prefix
+for the fixture factory.  This remains and will remain supported
+but is not anymore advertised as the primary means of declaring fixture
+functions.</p>
+</div>
+</div>
+<div class="section" id="funcargs-a-prime-example-of-dependency-injection">
+<h2>&#8220;Funcargs&#8221; a prime example of dependency injection<a class="headerlink" href="#funcargs-a-prime-example-of-dependency-injection" title="Permalink to this headline">¶</a></h2>
+<p>When injecting fixtures to test functions, pytest-2.0 introduced the
+term &#8220;funcargs&#8221; or &#8220;funcarg mechanism&#8221; which continues to be present
+also in docs today.  It now refers to the specific case of injecting
+fixture values as arguments to test functions.  With pytest-2.3 there are
+more possibilities to use fixtures but &#8220;funcargs&#8221; remain as the main way
+as they allow to directly state the dependencies of a test function.</p>
+<p>As the following examples show in more detail, funcargs allow test
+functions to easily receive and work against specific pre-initialized
+application objects without having to care about import/setup/cleanup
+details.  It&#8217;s a prime example of <a class="reference external" href="http://en.wikipedia.org/wiki/Dependency_injection#Definition">dependency injection</a> where fixture
+functions take the role of the <em>injector</em> and test functions are the
+<em>consumers</em> of fixture objects.</p>
+</div>
+<div class="section" id="sharing-a-fixture-across-tests-in-a-module-or-class-session">
+<span id="smtpshared"></span><h2>Sharing a fixture across tests in a module (or class/session)<a class="headerlink" href="#sharing-a-fixture-across-tests-in-a-module-or-class-session" title="Permalink to this headline">¶</a></h2>
+<p>Fixtures requiring network access depend on connectivity and are
+usually time-expensive to create.  Extending the previous example, we
+can add a <code class="docutils literal"><span class="pre">scope='module'</span></code> parameter to the
+<a class="reference internal" href="builtin.html#_pytest.python.fixture" title="_pytest.python.fixture"><code class="xref py py-func docutils literal"><span class="pre">&#64;pytest.fixture</span></code></a> invocation
+to cause the decorated <code class="docutils literal"><span class="pre">smtp</span></code> fixture function to only be invoked once
+per test module.  Multiple test functions in a test module will thus
+each receive the same <code class="docutils literal"><span class="pre">smtp</span></code> fixture instance.  The next example puts
+the fixture function into a separate <code class="docutils literal"><span class="pre">conftest.py</span></code> file so
+that tests from multiple test modules in the directory can
+access the fixture function:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of conftest.py</span>
+<span class="kn">import</span> <span class="nn">pytest</span>
+<span class="kn">import</span> <span class="nn">smtplib</span>
+
+<span class="nd">@pytest.fixture</span><span class="p">(</span><span class="n">scope</span><span class="o">=</span><span class="s">&quot;module&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">smtp</span><span class="p">():</span>
+    <span class="k">return</span> <span class="n">smtplib</span><span class="o">.</span><span class="n">SMTP</span><span class="p">(</span><span class="s">&quot;merlinux.eu&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The name of the fixture again is <code class="docutils literal"><span class="pre">smtp</span></code> and you can access its result by
+listing the name <code class="docutils literal"><span class="pre">smtp</span></code> as an input parameter in any test or fixture
+function (in or below the directory where <code class="docutils literal"><span class="pre">conftest.py</span></code> is located):</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of test_module.py</span>
+
+<span class="k">def</span> <span class="nf">test_ehlo</span><span class="p">(</span><span class="n">smtp</span><span class="p">):</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">smtp</span><span class="o">.</span><span class="n">ehlo</span><span class="p">()</span>
+    <span class="k">assert</span> <span class="n">response</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">250</span>
+    <span class="k">assert</span> <span class="s">&quot;merlinux&quot;</span> <span class="ow">in</span> <span class="n">response</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">assert</span> <span class="mi">0</span>  <span class="c"># for demo purposes</span>
+
+<span class="k">def</span> <span class="nf">test_noop</span><span class="p">(</span><span class="n">smtp</span><span class="p">):</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">smtp</span><span class="o">.</span><span class="n">noop</span><span class="p">()</span>
+    <span class="k">assert</span> <span class="n">response</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">250</span>
+    <span class="k">assert</span> <span class="mi">0</span>  <span class="c"># for demo purposes</span>
+</pre></div>
+</div>
+<p>We deliberately insert failing <code class="docutils literal"><span class="pre">assert</span> <span class="pre">0</span></code> statements in order to
+inspect what is going on and can now run the tests:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ py.test test_module.py
+======= test session starts ========
+platform linux2 -- Python 2.7.9, pytest-2.8.0.dev4, py-1.4.28, pluggy-0.3.0
+rootdir: $REGENDOC_TMPDIR, inifile:
+collected 2 items
+
+test_module.py FF
+
+======= FAILURES ========
+_______ test_ehlo ________
+
+smtp = &lt;smtplib.SMTP instance at 0xdeadbeef&gt;
+
+    def test_ehlo(smtp):
+        response = smtp.ehlo()
+        assert response[0] == 250
+        assert &quot;merlinux&quot; in response[1]
+&gt;       assert 0  # for demo purposes
+E       assert 0
+
+test_module.py:6: AssertionError
+_______ test_noop ________
+
+smtp = &lt;smtplib.SMTP instance at 0xdeadbeef&gt;
+
+    def test_noop(smtp):
+        response = smtp.noop()
+        assert response[0] == 250
+&gt;       assert 0  # for demo purposes
+E       assert 0
+
+test_module.py:11: AssertionError
+======= 2 failed in 0.12 seconds ========
+</pre></div>
+</div>
+<p>You see the two <code class="docutils literal"><span class="pre">assert</span> <span class="pre">0</span></code> failing and more importantly you can also see
+that the same (module-scoped) <code class="docutils literal"><span class="pre">smtp</span></code> object was passed into the two
+test functions because pytest shows the incoming argument values in the
+traceback.  As a result, the two test functions using <code class="docutils literal"><span class="pre">smtp</span></code> run as
+quick as a single one because they reuse the same instance.</p>
+<p>If you decide that you rather want to have a session-scoped <code class="docutils literal"><span class="pre">smtp</span></code>
+instance, you can simply declare it:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="nd">@pytest.fixture</span><span class="p">(</span><span class="n">scope</span><span class="o">=</span><span class="s">&quot;session&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">smtp</span><span class="p">(</span><span class="o">...</span><span class="p">):</span>
+    <span class="c"># the returned fixture value will be shared for</span>
+    <span class="c"># all tests needing it</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="fixture-finalization-executing-teardown-code">
+<span id="finalization"></span><h2>fixture finalization / executing teardown code<a class="headerlink" href="#fixture-finalization-executing-teardown-code" title="Permalink to this headline">¶</a></h2>
+<p>pytest supports execution of fixture specific finalization code
+when the fixture goes out of scope.  By accepting a <code class="docutils literal"><span class="pre">request</span></code> object
+into your fixture function you can call its <code class="docutils literal"><span class="pre">request.addfinalizer</span></code> one
+or multiple times:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of conftest.py</span>
+
+<span class="kn">import</span> <span class="nn">smtplib</span>
+<span class="kn">import</span> <span class="nn">pytest</span>
+
+<span class="nd">@pytest.fixture</span><span class="p">(</span><span class="n">scope</span><span class="o">=</span><span class="s">&quot;module&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">smtp</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="n">smtp</span> <span class="o">=</span> <span class="n">smtplib</span><span class="o">.</span><span class="n">SMTP</span><span class="p">(</span><span class="s">&quot;merlinux.eu&quot;</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">fin</span><span class="p">():</span>
+        <span class="k">print</span> <span class="p">(</span><span class="s">&quot;teardown smtp&quot;</span><span class="p">)</span>
+        <span class="n">smtp</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="n">request</span><span class="o">.</span><span class="n">addfinalizer</span><span class="p">(</span><span class="n">fin</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">smtp</span>  <span class="c"># provide the fixture value</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal"><span class="pre">fin</span></code> function will execute when the last test using
+the fixture in the module has finished execution.</p>
+<p>Let&#8217;s execute it:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ py.test -s -q --tb=no
+FFteardown smtp
+
+2 failed in 0.12 seconds
+</pre></div>
+</div>
+<p>We see that the <code class="docutils literal"><span class="pre">smtp</span></code> instance is finalized after the two
+tests finished execution.  Note that if we decorated our fixture
+function with <code class="docutils literal"><span class="pre">scope='function'</span></code> then fixture setup and cleanup would
+occur around each single test.  In either case the test
+module itself does not need to change or know about these details
+of fixture setup.</p>
+</div>
+<div class="section" id="fixtures-can-introspect-the-requesting-test-context">
+<span id="request-context"></span><h2>Fixtures can introspect the requesting test context<a class="headerlink" href="#fixtures-can-introspect-the-requesting-test-context" title="Permalink to this headline">¶</a></h2>
+<p>Fixture function can accept the <a class="reference internal" href="builtin.html#_pytest.python.FixtureRequest" title="_pytest.python.FixtureRequest"><code class="xref py py-class docutils literal"><span class="pre">request</span></code></a> object
+to introspect the &#8220;requesting&#8221; test function, class or module context.
+Further extending the previous <code class="docutils literal"><span class="pre">smtp</span></code> fixture example, let&#8217;s
+read an optional server URL from the test module which uses our fixture:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of conftest.py</span>
+<span class="kn">import</span> <span class="nn">pytest</span>
+<span class="kn">import</span> <span class="nn">smtplib</span>
+
+<span class="nd">@pytest.fixture</span><span class="p">(</span><span class="n">scope</span><span class="o">=</span><span class="s">&quot;module&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">smtp</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="n">server</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">module</span><span class="p">,</span> <span class="s">&quot;smtpserver&quot;</span><span class="p">,</span> <span class="s">&quot;merlinux.eu&quot;</span><span class="p">)</span>
+    <span class="n">smtp</span> <span class="o">=</span> <span class="n">smtplib</span><span class="o">.</span><span class="n">SMTP</span><span class="p">(</span><span class="n">server</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">fin</span><span class="p">():</span>
+        <span class="k">print</span> <span class="p">(</span><span class="s">&quot;finalizing </span><span class="si">%s</span><span class="s"> (</span><span class="si">%s</span><span class="s">)&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">smtp</span><span class="p">,</span> <span class="n">server</span><span class="p">))</span>
+        <span class="n">smtp</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="n">request</span><span class="o">.</span><span class="n">addfinalizer</span><span class="p">(</span><span class="n">fin</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">smtp</span>
+</pre></div>
+</div>
+<p>We use the <code class="docutils literal"><span class="pre">request.module</span></code> attribute to optionally obtain an
+<code class="docutils literal"><span class="pre">smtpserver</span></code> attribute from the test module.  If we just execute
+again, nothing much has changed:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ py.test -s -q --tb=no
+FFteardown smtp
+
+2 failed in 0.12 seconds
+</pre></div>
+</div>
+<p>Let&#8217;s quickly create another test module that actually sets the
+server URL in its module namespace:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of test_anothersmtp.py</span>
+
+<span class="n">smtpserver</span> <span class="o">=</span> <span class="s">&quot;mail.python.org&quot;</span>  <span class="c"># will be read by smtp fixture</span>
+
+<span class="k">def</span> <span class="nf">test_showhelo</span><span class="p">(</span><span class="n">smtp</span><span class="p">):</span>
+    <span class="k">assert</span> <span class="mi">0</span><span class="p">,</span> <span class="n">smtp</span><span class="o">.</span><span class="n">helo</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>Running it:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ py.test -qq --tb=short test_anothersmtp.py
+F
+======= FAILURES ========
+_______ test_showhelo ________
+test_anothersmtp.py:5: in test_showhelo
+    assert 0, smtp.helo()
+E   AssertionError: (250, &#39;hq.merlinux.eu&#39;)
+E   assert 0
+</pre></div>
+</div>
+<p>voila! The <code class="docutils literal"><span class="pre">smtp</span></code> fixture function picked up our mail server name
+from the module namespace.</p>
+</div>
+<div class="section" id="parametrizing-a-fixture">
+<span id="fixture-parametrize"></span><h2>Parametrizing a fixture<a class="headerlink" href="#parametrizing-a-fixture" title="Permalink to this headline">¶</a></h2>
+<p>Fixture functions can be parametrized in which case they will be called
+multiple times, each time executing the set of dependent tests, i. e. the
+tests that depend on this fixture.  Test functions do usually not need
+to be aware of their re-running.  Fixture parametrization helps to
+write exhaustive functional tests for components which themselves can be
+configured in multiple ways.</p>
+<p>Extending the previous example, we can flag the fixture to create two
+<code class="docutils literal"><span class="pre">smtp</span></code> fixture instances which will cause all tests using the fixture
+to run twice.  The fixture function gets access to each parameter
+through the special <a class="reference internal" href="builtin.html#_pytest.python.FixtureRequest" title="_pytest.python.FixtureRequest"><code class="xref py py-class docutils literal"><span class="pre">request</span></code></a> object:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of conftest.py</span>
+<span class="kn">import</span> <span class="nn">pytest</span>
+<span class="kn">import</span> <span class="nn">smtplib</span>
+
+<span class="nd">@pytest.fixture</span><span class="p">(</span><span class="n">scope</span><span class="o">=</span><span class="s">&quot;module&quot;</span><span class="p">,</span>
+                <span class="n">params</span><span class="o">=</span><span class="p">[</span><span class="s">&quot;merlinux.eu&quot;</span><span class="p">,</span> <span class="s">&quot;mail.python.org&quot;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">smtp</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="n">smtp</span> <span class="o">=</span> <span class="n">smtplib</span><span class="o">.</span><span class="n">SMTP</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">param</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">fin</span><span class="p">():</span>
+        <span class="k">print</span> <span class="p">(</span><span class="s">&quot;finalizing </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">smtp</span><span class="p">)</span>
+        <span class="n">smtp</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="n">request</span><span class="o">.</span><span class="n">addfinalizer</span><span class="p">(</span><span class="n">fin</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">smtp</span>
+</pre></div>
+</div>
+<p>The main change is the declaration of <code class="docutils literal"><span class="pre">params</span></code> with
+<a class="reference internal" href="builtin.html#_pytest.python.fixture" title="_pytest.python.fixture"><code class="xref py py-func docutils literal"><span class="pre">&#64;pytest.fixture</span></code></a>, a list of values
+for each of which the fixture function will execute and can access
+a value via <code class="docutils literal"><span class="pre">request.param</span></code>.  No test function code needs to change.
+So let&#8217;s just do another run:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ py.test -q test_module.py
+FFFF
+======= FAILURES ========
+_______ test_ehlo[merlinux.eu] ________
+
+smtp = &lt;smtplib.SMTP instance at 0xdeadbeef&gt;
+
+    def test_ehlo(smtp):
+        response = smtp.ehlo()
+        assert response[0] == 250
+        assert &quot;merlinux&quot; in response[1]
+&gt;       assert 0  # for demo purposes
+E       assert 0
+
+test_module.py:6: AssertionError
+_______ test_noop[merlinux.eu] ________
+
+smtp = &lt;smtplib.SMTP instance at 0xdeadbeef&gt;
+
+    def test_noop(smtp):
+        response = smtp.noop()
+        assert response[0] == 250
+&gt;       assert 0  # for demo purposes
+E       assert 0
+
+test_module.py:11: AssertionError
+_______ test_ehlo[mail.python.org] ________
+
+smtp = &lt;smtplib.SMTP instance at 0xdeadbeef&gt;
+
+    def test_ehlo(smtp):
+        response = smtp.ehlo()
+        assert response[0] == 250
+&gt;       assert &quot;merlinux&quot; in response[1]
+E       assert &#39;merlinux&#39; in &#39;mail.python.org\nSIZE 51200000\nETRN\nSTARTTLS\nENHANCEDSTATUSCODES\n8BITMIME\nDSN\nSMTPUTF8&#39;
+
+test_module.py:5: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+finalizing &lt;smtplib.SMTP instance at 0xdeadbeef&gt;
+_______ test_noop[mail.python.org] ________
+
+smtp = &lt;smtplib.SMTP instance at 0xdeadbeef&gt;
+
+    def test_noop(smtp):
+        response = smtp.noop()
+        assert response[0] == 250
+&gt;       assert 0  # for demo purposes
+E       assert 0
+
+test_module.py:11: AssertionError
+4 failed in 0.12 seconds
+</pre></div>
+</div>
+<p>We see that our two test functions each ran twice, against the different
+<code class="docutils literal"><span class="pre">smtp</span></code> instances.  Note also, that with the <code class="docutils literal"><span class="pre">mail.python.org</span></code>
+connection the second test fails in <code class="docutils literal"><span class="pre">test_ehlo</span></code> because a
+different server string is expected than what arrived.</p>
+<p>pytest will build a string that is the test ID for each fixture value
+in a parametrized fixture, e.g. <code class="docutils literal"><span class="pre">test_ehlo[merlinux.eu]</span></code> and
+<code class="docutils literal"><span class="pre">test_ehlo[mail.python.org]</span></code> in the above examples.  These IDs can
+be used with <code class="docutils literal"><span class="pre">-k</span></code> to select specific cases to run, and they will
+also identify the specific case when one is failing.  Running pytest
+with <code class="docutils literal"><span class="pre">--collect-only</span></code> will show the generated IDs.</p>
+<p>Numbers, strings, booleans and None will have their usual string
+representation used in the test ID. For other objects, pytest will
+make a string based on the argument name.  It is possible to customise
+the string used in a test ID for a certain fixture value by using the
+<code class="docutils literal"><span class="pre">ids</span></code> keyword argument:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">pytest</span>
+
+<span class="nd">@pytest.fixture</span><span class="p">(</span><span class="n">params</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">ids</span><span class="o">=</span><span class="p">[</span><span class="s">&quot;spam&quot;</span><span class="p">,</span> <span class="s">&quot;ham&quot;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">a</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">request</span><span class="o">.</span><span class="n">param</span>
+
+<span class="k">def</span> <span class="nf">test_a</span><span class="p">(</span><span class="n">a</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+<span class="k">def</span> <span class="nf">idfn</span><span class="p">(</span><span class="n">fixture_value</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">fixture_value</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&quot;eggs&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">None</span>
+
+<span class="nd">@pytest.fixture</span><span class="p">(</span><span class="n">params</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">ids</span><span class="o">=</span><span class="n">idfn</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">b</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">request</span><span class="o">.</span><span class="n">param</span>
+
+<span class="k">def</span> <span class="nf">test_b</span><span class="p">(</span><span class="n">b</span><span class="p">):</span>
+    <span class="k">pass</span>
+</pre></div>
+</div>
+<p>The above shows how <code class="docutils literal"><span class="pre">ids</span></code> can be either a list of strings to use or
+a function which will be called with the fixture value and then
+has to return a string to use.  In the latter case if the function
+return <code class="docutils literal"><span class="pre">None</span></code> then pytest&#8217;s auto-generated ID will be used.</p>
+<p>Running the above tests results in the following test IDs being used:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ py.test --collect-only
+======= test session starts ========
+platform linux2 -- Python 2.7.9, pytest-2.8.0.dev4, py-1.4.28, pluggy-0.3.0
+rootdir: $REGENDOC_TMPDIR, inifile:
+collected 6 items
+&lt;Module &#39;test_anothersmtp.py&#39;&gt;
+  &lt;Function &#39;test_showhelo[merlinux.eu]&#39;&gt;
+  &lt;Function &#39;test_showhelo[mail.python.org]&#39;&gt;
+&lt;Module &#39;test_module.py&#39;&gt;
+  &lt;Function &#39;test_ehlo[merlinux.eu]&#39;&gt;
+  &lt;Function &#39;test_noop[merlinux.eu]&#39;&gt;
+  &lt;Function &#39;test_ehlo[mail.python.org]&#39;&gt;
+  &lt;Function &#39;test_noop[mail.python.org]&#39;&gt;
+
+=======  in 0.12 seconds ========
+</pre></div>
+</div>
+</div>
+<div class="section" id="modularity-using-fixtures-from-a-fixture-function">
+<span id="interdependent-fixtures"></span><h2>Modularity: using fixtures from a fixture function<a class="headerlink" href="#modularity-using-fixtures-from-a-fixture-function" title="Permalink to this headline">¶</a></h2>
+<p>You can not only use fixtures in test functions but fixture functions
+can use other fixtures themselves.  This contributes to a modular design
+of your fixtures and allows re-use of framework-specific fixtures across
+many projects.  As a simple example, we can extend the previous example
+and instantiate an object <code class="docutils literal"><span class="pre">app</span></code> where we stick the already defined
+<code class="docutils literal"><span class="pre">smtp</span></code> resource into it:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of test_appsetup.py</span>
+
+<span class="kn">import</span> <span class="nn">pytest</span>
+
+<span class="k">class</span> <span class="nc">App</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">smtp</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">smtp</span> <span class="o">=</span> <span class="n">smtp</span>
+
+<span class="nd">@pytest.fixture</span><span class="p">(</span><span class="n">scope</span><span class="o">=</span><span class="s">&quot;module&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">app</span><span class="p">(</span><span class="n">smtp</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">App</span><span class="p">(</span><span class="n">smtp</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">test_smtp_exists</span><span class="p">(</span><span class="n">app</span><span class="p">):</span>
+    <span class="k">assert</span> <span class="n">app</span><span class="o">.</span><span class="n">smtp</span>
+</pre></div>
+</div>
+<p>Here we declare an <code class="docutils literal"><span class="pre">app</span></code> fixture which receives the previously defined
+<code class="docutils literal"><span class="pre">smtp</span></code> fixture and instantiates an <code class="docutils literal"><span class="pre">App</span></code> object with it.  Let&#8217;s run it:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ py.test -v test_appsetup.py
+======= test session starts ========
+platform linux2 -- Python 2.7.9, pytest-2.8.0.dev4, py-1.4.28, pluggy-0.3.0 -- $PWD/.env/bin/python2.7
+rootdir: $REGENDOC_TMPDIR, inifile:
+collecting ... collected 2 items
+
+test_appsetup.py::test_smtp_exists[merlinux.eu] PASSED
+test_appsetup.py::test_smtp_exists[mail.python.org] PASSED
+
+======= 2 passed in 0.12 seconds ========
+</pre></div>
+</div>
+<p>Due to the parametrization of <code class="docutils literal"><span class="pre">smtp</span></code> the test will run twice with two
+different <code class="docutils literal"><span class="pre">App</span></code> instances and respective smtp servers.  There is no
+need for the <code class="docutils literal"><span class="pre">app</span></code> fixture to be aware of the <code class="docutils literal"><span class="pre">smtp</span></code> parametrization
+as pytest will fully analyse the fixture dependency graph.</p>
+<p>Note, that the <code class="docutils literal"><span class="pre">app</span></code> fixture has a scope of <code class="docutils literal"><span class="pre">module</span></code> and uses a
+module-scoped <code class="docutils literal"><span class="pre">smtp</span></code> fixture.  The example would still work if <code class="docutils literal"><span class="pre">smtp</span></code>
+was cached on a <code class="docutils literal"><span class="pre">session</span></code> scope: it is fine for fixtures to use
+&#8220;broader&#8221; scoped fixtures but not the other way round:
+A session-scoped fixture could not use a module-scoped one in a
+meaningful way.</p>
+</div>
+<div class="section" id="automatic-grouping-of-tests-by-fixture-instances">
+<span id="automatic-per-resource-grouping"></span><h2>Automatic grouping of tests by fixture instances<a class="headerlink" href="#automatic-grouping-of-tests-by-fixture-instances" title="Permalink to this headline">¶</a></h2>
+<p>pytest minimizes the number of active fixtures during test runs.
+If you have a parametrized fixture, then all the tests using it will
+first execute with one instance and then finalizers are called
+before the next fixture instance is created.  Among other things,
+this eases testing of applications which create and use global state.</p>
+<p>The following example uses two parametrized funcargs, one of which is
+scoped on a per-module basis, and all the functions perform <code class="docutils literal"><span class="pre">print</span></code> calls
+to show the setup/teardown flow:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of test_module.py</span>
+<span class="kn">import</span> <span class="nn">pytest</span>
+
+<span class="nd">@pytest.fixture</span><span class="p">(</span><span class="n">scope</span><span class="o">=</span><span class="s">&quot;module&quot;</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">[</span><span class="s">&quot;mod1&quot;</span><span class="p">,</span> <span class="s">&quot;mod2&quot;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">modarg</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="n">param</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">param</span>
+    <span class="k">print</span> <span class="p">(</span><span class="s">&quot;create&quot;</span><span class="p">,</span> <span class="n">param</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">fin</span><span class="p">():</span>
+        <span class="k">print</span> <span class="p">(</span><span class="s">&quot;fin </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">param</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">param</span>
+
+<span class="nd">@pytest.fixture</span><span class="p">(</span><span class="n">scope</span><span class="o">=</span><span class="s">&quot;function&quot;</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">otherarg</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">request</span><span class="o">.</span><span class="n">param</span>
+
+<span class="k">def</span> <span class="nf">test_0</span><span class="p">(</span><span class="n">otherarg</span><span class="p">):</span>
+    <span class="k">print</span> <span class="p">(</span><span class="s">&quot;  test0&quot;</span><span class="p">,</span> <span class="n">otherarg</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">test_1</span><span class="p">(</span><span class="n">modarg</span><span class="p">):</span>
+    <span class="k">print</span> <span class="p">(</span><span class="s">&quot;  test1&quot;</span><span class="p">,</span> <span class="n">modarg</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">test_2</span><span class="p">(</span><span class="n">otherarg</span><span class="p">,</span> <span class="n">modarg</span><span class="p">):</span>
+    <span class="k">print</span> <span class="p">(</span><span class="s">&quot;  test2&quot;</span><span class="p">,</span> <span class="n">otherarg</span><span class="p">,</span> <span class="n">modarg</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Let&#8217;s run the tests in verbose mode and with looking at the print-output:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ py.test -v -s test_module.py
+======= test session starts ========
+platform linux2 -- Python 2.7.9, pytest-2.8.0.dev4, py-1.4.28, pluggy-0.3.0 -- $PWD/.env/bin/python2.7
+rootdir: $REGENDOC_TMPDIR, inifile:
+collecting ... collected 8 items
+
+test_module.py::test_0[1] (&#39;  test0&#39;, 1)
+PASSED
+test_module.py::test_0[2] (&#39;  test0&#39;, 2)
+PASSED
+test_module.py::test_1[mod1] (&#39;create&#39;, &#39;mod1&#39;)
+(&#39;  test1&#39;, &#39;mod1&#39;)
+PASSED
+test_module.py::test_2[1-mod1] (&#39;  test2&#39;, 1, &#39;mod1&#39;)
+PASSED
+test_module.py::test_2[2-mod1] (&#39;  test2&#39;, 2, &#39;mod1&#39;)
+PASSED
+test_module.py::test_1[mod2] (&#39;create&#39;, &#39;mod2&#39;)
+(&#39;  test1&#39;, &#39;mod2&#39;)
+PASSED
+test_module.py::test_2[1-mod2] (&#39;  test2&#39;, 1, &#39;mod2&#39;)
+PASSED
+test_module.py::test_2[2-mod2] (&#39;  test2&#39;, 2, &#39;mod2&#39;)
+PASSED
+
+======= 8 passed in 0.12 seconds ========
+</pre></div>
+</div>
+<p>You can see that the parametrized module-scoped <code class="docutils literal"><span class="pre">modarg</span></code> resource caused
+an ordering of test execution that lead to the fewest possible &#8220;active&#8221; resources. The finalizer for the <code class="docutils literal"><span class="pre">mod1</span></code> parametrized resource was executed
+before the <code class="docutils literal"><span class="pre">mod2</span></code> resource was setup.</p>
+</div>
+<div class="section" id="using-fixtures-from-classes-modules-or-projects">
+<span id="usefixtures"></span><h2>using fixtures from classes, modules or projects<a class="headerlink" href="#using-fixtures-from-classes-modules-or-projects" title="Permalink to this headline">¶</a></h2>
+<p>Sometimes test functions do not directly need access to a fixture object.
+For example, tests may require to operate with an empty directory as the
+current working directory but otherwise do not care for the concrete
+directory.  Here is how you can can use the standard <a class="reference external" href="http://docs.python.org/library/tempfile.html">tempfile</a> and pytest fixtures to
+achieve it.  We separate the creation of the fixture into a conftest.py
+file:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of conftest.py</span>
+
+<span class="kn">import</span> <span class="nn">pytest</span>
+<span class="kn">import</span> <span class="nn">tempfile</span>
+<span class="kn">import</span> <span class="nn">os</span>
+
+<span class="nd">@pytest.fixture</span><span class="p">()</span>
+<span class="k">def</span> <span class="nf">cleandir</span><span class="p">():</span>
+    <span class="n">newpath</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">()</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="n">newpath</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>and declare its use in a test module via a <code class="docutils literal"><span class="pre">usefixtures</span></code> marker:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of test_setenv.py</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">pytest</span>
+
+<span class="nd">@pytest.mark.usefixtures</span><span class="p">(</span><span class="s">&quot;cleandir&quot;</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">TestDirectoryInit</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">test_cwd_starts_empty</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">getcwd</span><span class="p">())</span> <span class="o">==</span> <span class="p">[]</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s">&quot;myfile&quot;</span><span class="p">,</span> <span class="s">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;hello&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">test_cwd_again_starts_empty</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">getcwd</span><span class="p">())</span> <span class="o">==</span> <span class="p">[]</span>
+</pre></div>
+</div>
+<p>Due to the <code class="docutils literal"><span class="pre">usefixtures</span></code> marker, the <code class="docutils literal"><span class="pre">cleandir</span></code> fixture
+will be required for the execution of each test method, just as if
+you specified a &#8220;cleandir&#8221; function argument to each of them.  Let&#8217;s run it
+to verify our fixture is activated and the tests pass:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ py.test -q
+..
+2 passed in 0.12 seconds
+</pre></div>
+</div>
+<p>You can specify multiple fixtures like this:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="nd">@pytest.mark.usefixtures</span><span class="p">(</span><span class="s">&quot;cleandir&quot;</span><span class="p">,</span> <span class="s">&quot;anotherfixture&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>and you may specify fixture usage at the test module level, using
+a generic feature of the mark mechanism:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">pytestmark</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">usefixtures</span><span class="p">(</span><span class="s">&quot;cleandir&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Lastly you can put fixtures required by all tests in your project
+into an ini-file:</p>
+<div class="highlight-ini"><div class="highlight"><pre><span class="c1"># content of pytest.ini</span>
+<span class="k">[pytest]</span>
+<span class="na">usefixtures</span> <span class="o">=</span> <span class="s">cleandir</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="autouse-fixtures-xunit-setup-on-steroids">
+<span id="autouse-fixtures"></span><span id="autouse"></span><h2>autouse fixtures (xUnit setup on steroids)<a class="headerlink" href="#autouse-fixtures-xunit-setup-on-steroids" title="Permalink to this headline">¶</a></h2>
+<p>Occasionally, you may want to have fixtures get invoked automatically
+without a <a class="reference internal" href="#usefixtures">usefixtures</a> or <a class="reference internal" href="#funcargs">funcargs</a> reference.   As a practical
+example, suppose we have a database fixture which has a
+begin/rollback/commit architecture and we want to automatically surround
+each test method by a transaction and a rollback.  Here is a dummy
+self-contained implementation of this idea:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of test_db_transact.py</span>
+
+<span class="kn">import</span> <span class="nn">pytest</span>
+
+<span class="k">class</span> <span class="nc">DB</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">intransaction</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">def</span> <span class="nf">begin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">intransaction</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">intransaction</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+
+<span class="nd">@pytest.fixture</span><span class="p">(</span><span class="n">scope</span><span class="o">=</span><span class="s">&quot;module&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">db</span><span class="p">():</span>
+    <span class="k">return</span> <span class="n">DB</span><span class="p">()</span>
+
+<span class="k">class</span> <span class="nc">TestClass</span><span class="p">:</span>
+    <span class="nd">@pytest.fixture</span><span class="p">(</span><span class="n">autouse</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">transact</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">db</span><span class="p">):</span>
+        <span class="n">db</span><span class="o">.</span><span class="n">begin</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">function</span><span class="o">.</span><span class="n">__name__</span><span class="p">)</span>
+        <span class="n">request</span><span class="o">.</span><span class="n">addfinalizer</span><span class="p">(</span><span class="n">db</span><span class="o">.</span><span class="n">rollback</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">test_method1</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">db</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="n">db</span><span class="o">.</span><span class="n">intransaction</span> <span class="o">==</span> <span class="p">[</span><span class="s">&quot;test_method1&quot;</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">test_method2</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">db</span><span class="p">):</span>
+        <span class="k">assert</span> <span class="n">db</span><span class="o">.</span><span class="n">intransaction</span> <span class="o">==</span> <span class="p">[</span><span class="s">&quot;test_method2&quot;</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>The class-level <code class="docutils literal"><span class="pre">transact</span></code> fixture is marked with <em>autouse=true</em>
+which implies that all test methods in the class will use this fixture
+without a need to state it in the test function signature or with a
+class-level <code class="docutils literal"><span class="pre">usefixtures</span></code> decorator.</p>
+<p>If we run it, we get two passing tests:</p>
+<div class="highlight-python"><div class="highlight"><pre>$ py.test -q
+..
+2 passed in 0.12 seconds
+</pre></div>
+</div>
+<p>Here is how autouse fixtures work in other scopes:</p>
+<ul class="simple">
+<li>if an autouse fixture is defined in a test module, all its test
+functions automatically use it.</li>
+<li>if an autouse fixture is defined in a conftest.py file then all tests in
+all test modules below its directory will invoke the fixture.</li>
+<li>lastly, and <strong>please use that with care</strong>: if you define an autouse
+fixture in a plugin, it will be invoked for all tests in all projects
+where the plugin is installed.  This can be useful if a fixture only
+anyway works in the presence of certain settings e. g. in the ini-file.  Such
+a global fixture should always quickly determine if it should do
+any work and avoid otherwise expensive imports or computation.</li>
+</ul>
+<p>Note that the above <code class="docutils literal"><span class="pre">transact</span></code> fixture may very well be a fixture that
+you want to make available in your project without having it generally
+active.  The canonical way to do that is to put the transact definition
+into a conftest.py file <strong>without</strong> using <code class="docutils literal"><span class="pre">autouse</span></code>:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of conftest.py</span>
+<span class="nd">@pytest.fixture</span><span class="p">()</span>
+<span class="k">def</span> <span class="nf">transact</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">db</span><span class="p">):</span>
+    <span class="n">db</span><span class="o">.</span><span class="n">begin</span><span class="p">()</span>
+    <span class="n">request</span><span class="o">.</span><span class="n">addfinalizer</span><span class="p">(</span><span class="n">db</span><span class="o">.</span><span class="n">rollback</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>and then e.g. have a TestClass using it by declaring the need:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="nd">@pytest.mark.usefixtures</span><span class="p">(</span><span class="s">&quot;transact&quot;</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">TestClass</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">test_method1</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="o">...</span>
+</pre></div>
+</div>
+<p>All test methods in this TestClass will use the transaction fixture while
+other test classes or functions in the module will not use it unless
+they also add a <code class="docutils literal"><span class="pre">transact</span></code> reference.</p>
+</div>
+<div class="section" id="shifting-visibility-of-fixture-functions">
+<h2>Shifting (visibility of) fixture functions<a class="headerlink" href="#shifting-visibility-of-fixture-functions" title="Permalink to this headline">¶</a></h2>
+<p>If during implementing your tests you realize that you
+want to use a fixture function from multiple test files you can move it
+to a <a class="reference internal" href="writing_plugins.html#conftest-py"><span>conftest.py</span></a> file or even separately installable
+<a class="reference internal" href="writing_plugins.html#plugins"><span>plugins</span></a> without changing test code.  The discovery of
+fixtures functions starts at test classes, then test modules, then
+<code class="docutils literal"><span class="pre">conftest.py</span></code> files and finally builtin and third party plugins.</p>
+</div>
+<div class="section" id="overriding-fixtures-on-various-levels">
+<h2>Overriding fixtures on various levels<a class="headerlink" href="#overriding-fixtures-on-various-levels" title="Permalink to this headline">¶</a></h2>
+<p>In relatively large test suite, you most likely need to <code class="docutils literal"><span class="pre">override</span></code> a <code class="docutils literal"><span class="pre">global</span></code> or <code class="docutils literal"><span class="pre">root</span></code> fixture with a <code class="docutils literal"><span class="pre">locally</span></code>
+defined one, keeping the test code readable and maintainable.</p>
+<div class="section" id="override-a-fixture-on-a-folder-conftest-level">
+<h3>Override a fixture on a folder (conftest) level<a class="headerlink" href="#override-a-fixture-on-a-folder-conftest-level" title="Permalink to this headline">¶</a></h3>
+<p>Given the tests file structure is:</p>
+<div class="highlight-python"><div class="highlight"><pre>tests/
+    __init__.py
+
+    conftest.py
+        # content of tests/conftest.py
+        import pytest
+
+        @pytest.fixture
+        def username():
+            return &#39;username&#39;
+
+    test_something.py
+        # content of tests/test_something.py
+        def test_username(username):
+            assert username == &#39;username&#39;
+
+    subfolder/
+        __init__.py
+
+        conftest.py
+            # content of tests/subfolder/conftest.py
+            import pytest
+
+            @pytest.fixture
+            def username(username):
+                return &#39;overridden-&#39; + username
+
+        test_something.py
+            # content of tests/subfolder/test_something.py
+            def test_username(username):
+                assert username == &#39;overridden-username&#39;
+</pre></div>
+</div>
+<p>As you can see, a fixture with the same name can be overridden for certain test folder level.
+Note that the <code class="docutils literal"><span class="pre">base</span></code> or <code class="docutils literal"><span class="pre">super</span></code> fixture can be accessed from the <code class="docutils literal"><span class="pre">overriding</span></code>
+fixture easily - used in the example above.</p>
+</div>
+<div class="section" id="override-a-fixture-on-a-test-module-level">
+<h3>Override a fixture on a test module level<a class="headerlink" href="#override-a-fixture-on-a-test-module-level" title="Permalink to this headline">¶</a></h3>
+<p>Given the tests file structure is:</p>
+<div class="highlight-python"><div class="highlight"><pre>tests/
+    __init__.py
+
+    conftest.py
+        # content of tests/conftest.py
+        @pytest.fixture
+        def username():
+            return &#39;username&#39;
+
+    test_something.py
+        # content of tests/test_something.py
+        import pytest
+
+        @pytest.fixture
+        def username(username):
+            return &#39;overridden-&#39; + username
+
+        def test_username(username):
+            assert username == &#39;overridden-username&#39;
+
+    test_something_else.py
+        # content of tests/test_something_else.py
+        import pytest
+
+        @pytest.fixture
+        def username(username):
+            return &#39;overridden-else-&#39; + username
+
+        def test_username(username):
+            assert username == &#39;overridden-else-username&#39;
+</pre></div>
+</div>
+<p>In the example above, a fixture with the same name can be overridden for certain test module.</p>
+</div>
+<div class="section" id="override-a-fixture-with-direct-test-parametrization">
+<h3>Override a fixture with direct test parametrization<a class="headerlink" href="#override-a-fixture-with-direct-test-parametrization" title="Permalink to this headline">¶</a></h3>
+<p>Given the tests file structure is:</p>
+<div class="highlight-python"><div class="highlight"><pre>tests/
+    __init__.py
+
+    conftest.py
+        # content of tests/conftest.py
+        import pytest
+
+        @pytest.fixture
+        def username():
+            return &#39;username&#39;
+
+        @pytest.fixture
+        def other_username(username):
+            return &#39;other-&#39; + username
+
+    test_something.py
+        # content of tests/test_something.py
+        import pytest
+
+        @pytest.mark.parametrize(&#39;username&#39;, [&#39;directly-overridden-username&#39;])
+        def test_username(username):
+            assert username == &#39;directly-overridden-username&#39;
+
+        @pytest.mark.parametrize(&#39;username&#39;, [&#39;directly-overridden-username-other&#39;])
+        def test_username_other(other_username):
+            assert username == &#39;other-directly-overridden-username-other&#39;
+</pre></div>
+</div>
+<p>In the example above, a fixture value is overridden by the test parameter value. Note that the value of the fixture
+can be overridden this way even if the test doesn&#8217;t use it directly (doesn&#8217;t mention it in the function prototype).</p>
+</div>
+<div class="section" id="override-a-parametrized-fixture-with-non-parametrized-one-and-vice-versa">
+<h3>Override a parametrized fixture with non-parametrized one and vice versa<a class="headerlink" href="#override-a-parametrized-fixture-with-non-parametrized-one-and-vice-versa" title="Permalink to this headline">¶</a></h3>
+<p>Given the tests file structure is:</p>
+<div class="highlight-python"><div class="highlight"><pre>tests/
+    __init__.py
+
+    conftest.py
+        # content of tests/conftest.py
+        import pytest
+
+        @pytest.fixture(params=[&#39;one&#39;, &#39;two&#39;, &#39;three&#39;])
+        def parametrized_username(request):
+            return request.param
+
+        @pytest.fixture
+        def non_parametrized_username(request):
+            return &#39;username&#39;
+
+    test_something.py
+        # content of tests/test_something.py
+        import pytest
+
+        @pytest.fixture
+        def parametrized_username():
+            return &#39;overridden-username&#39;
+
+        @pytest.fixture(params=[&#39;one&#39;, &#39;two&#39;, &#39;three&#39;])
+        def non_parametrized_username(request):
+            return request.param
+
+        def test_username(parametrized_username):
+            assert parametrized_username == &#39;overridden-username&#39;
+
+        def test_parametrized_username(non_parametrized_username):
+            assert non_parametrized_username in [&#39;one&#39;, &#39;two&#39;, &#39;three&#39;]
+
+    test_something_else.py
+        # content of tests/test_something_else.py
+        def test_username(parametrized_username):
+            assert parametrized_username in [&#39;one&#39;, &#39;two&#39;, &#39;three&#39;]
+
+        def test_username(non_parametrized_username):
+            assert non_parametrized_username == &#39;username&#39;
+</pre></div>
+</div>
+<p>In the example above, a parametrized fixture is overridden with a non-parametrized version, and
+a non-parametrized fixture is overridden with a parametrized version for certain test module.
+The same applies for the test folder level obviously.</p>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="contents.html">
+              <img class="logo" src="_static/pytest1.png" alt="Logo"/>
+            </a></p><h3><a href="contents.html">Table Of Contents</a></h3>
+
+<ul>
+  <li><a href="index.html">Home</a></li>
+  <li><a href="contents.html">Contents</a></li>
+  <li><a href="getting-started.html">Install</a></li>
+  <li><a href="example/index.html">Examples</a></li>
+  <li><a href="customize.html">Customize</a></li>
+  <li><a href="contact.html">Contact</a></li>
+  <li><a href="talks.html">Talks/Posts</a></li>
+  <li><a href="changelog.html">Changelog</a></li>
+</ul>
+  <hr>
+  <ul>
+<li><a class="reference internal" href="#">pytest fixtures: explicit, modular, scalable</a><ul>
+<li><a class="reference internal" href="#fixtures-as-function-arguments">Fixtures as Function arguments</a></li>
+<li><a class="reference internal" href="#funcargs-a-prime-example-of-dependency-injection">&#8220;Funcargs&#8221; a prime example of dependency injection</a></li>
+<li><a class="reference internal" href="#sharing-a-fixture-across-tests-in-a-module-or-class-session">Sharing a fixture across tests in a module (or class/session)</a></li>
+<li><a class="reference internal" href="#fixture-finalization-executing-teardown-code">fixture finalization / executing teardown code</a></li>
+<li><a class="reference internal" href="#fixtures-can-introspect-the-requesting-test-context">Fixtures can introspect the requesting test context</a></li>
+<li><a class="reference internal" href="#parametrizing-a-fixture">Parametrizing a fixture</a></li>
+<li><a class="reference internal" href="#modularity-using-fixtures-from-a-fixture-function">Modularity: using fixtures from a fixture function</a></li>
+<li><a class="reference internal" href="#automatic-grouping-of-tests-by-fixture-instances">Automatic grouping of tests by fixture instances</a></li>
+<li><a class="reference internal" href="#using-fixtures-from-classes-modules-or-projects">using fixtures from classes, modules or projects</a></li>
+<li><a class="reference internal" href="#autouse-fixtures-xunit-setup-on-steroids">autouse fixtures (xUnit setup on steroids)</a></li>
+<li><a class="reference internal" href="#shifting-visibility-of-fixture-functions">Shifting (visibility of) fixture functions</a></li>
+<li><a class="reference internal" href="#overriding-fixtures-on-various-levels">Overriding fixtures on various levels</a><ul>
+<li><a class="reference internal" href="#override-a-fixture-on-a-folder-conftest-level">Override a fixture on a folder (conftest) level</a></li>
+<li><a class="reference internal" href="#override-a-fixture-on-a-test-module-level">Override a fixture on a test module level</a></li>
+<li><a class="reference internal" href="#override-a-fixture-with-direct-test-parametrization">Override a fixture with direct test parametrization</a></li>
+<li><a class="reference internal" href="#override-a-parametrized-fixture-with-non-parametrized-one-and-vice-versa">Override a parametrized fixture with non-parametrized one and vice versa</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="contents.html">Documentation overview</a><ul>
+  <li><a href="apiref.html">pytest reference documentation</a><ul>
+      <li>Previous: <a href="assert.html" title="previous chapter">The writing and reporting of assertions in tests</a></li>
+      <li>Next: <a href="yieldfixture.html" title="next chapter">Fixture functions using &#8220;yield&#8221; / context manager integration</a></li>
+  </ul></li>
+  </ul></li>
+</ul><h3>Useful Links</h3>
+<ul>
+  <li><a href="index.html">The pytest Website</a></li>
+  <li><a href="contributing.html">Contribution Guide</a></li>
+  <li><a href="https://pypi.python.org/pypi/pytest">pytest @ PyPI</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/">pytest @ GitHub</a></li>
+  <li><a href="http://pytest.org/latest/plugins_index/index.html">3rd party plugins</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/issues">Issue Tracker</a></li>
+  <li><a href="http://pytest.org/latest/pytest.pdf">PDF Documentation</a>
+</ul>
+
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+
+  <div class="footer">
+    &copy; Copyright 2015, holger krekel and pytest-dev team.
+    Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+  </div>
+  
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-7597274-13']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+  </body>
+</html>

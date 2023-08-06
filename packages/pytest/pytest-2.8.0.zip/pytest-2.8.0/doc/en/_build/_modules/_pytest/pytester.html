@@ -1,0 +1,1222 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>_pytest.pytester</title>
+    
+    <link rel="stylesheet" href="../../_static/flasky.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '2.7.3.dev376+ng06b1b69.d20150827',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../_static/pytest1favi.ico"/>
+    <link rel="top" title="None" href="../../contents.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+  
+  
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="nav-item nav-item-0"><a href="../../contents.html">pytest-2.7.3.dev376+ng06b1b69.d20150827</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for _pytest.pytester</h1><div class="highlight"><pre>
+<span class="sd">&quot;&quot;&quot; (disabled by default) support for testing pytest and pytest plugins. &quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">gc</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">traceback</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">codecs</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">platform</span>
+<span class="kn">from</span> <span class="nn">fnmatch</span> <span class="kn">import</span> <span class="n">fnmatch</span>
+<span class="kn">import</span> <span class="nn">subprocess</span>
+
+<span class="kn">import</span> <span class="nn">py</span>
+<span class="kn">import</span> <span class="nn">pytest</span>
+<span class="kn">from</span> <span class="nn">py.builtin</span> <span class="kn">import</span> <span class="n">print_</span>
+
+<span class="kn">from</span> <span class="nn">_pytest.main</span> <span class="kn">import</span> <span class="n">Session</span><span class="p">,</span> <span class="n">EXIT_OK</span>
+
+
+<span class="k">def</span> <span class="nf">pytest_addoption</span><span class="p">(</span><span class="n">parser</span><span class="p">):</span>
+    <span class="c"># group = parser.getgroup(&quot;pytester&quot;, &quot;pytester (self-tests) options&quot;)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">addoption</span><span class="p">(</span><span class="s">&#39;--lsof&#39;</span><span class="p">,</span>
+           <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_true&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;lsof&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+           <span class="n">help</span><span class="o">=</span><span class="p">(</span><span class="s">&quot;run FD checks if lsof is available&quot;</span><span class="p">))</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">addoption</span><span class="p">(</span><span class="s">&#39;--runpytest&#39;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s">&quot;inprocess&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;runpytest&quot;</span><span class="p">,</span>
+           <span class="n">choices</span><span class="o">=</span><span class="p">(</span><span class="s">&quot;inprocess&quot;</span><span class="p">,</span> <span class="s">&quot;subprocess&quot;</span><span class="p">,</span> <span class="p">),</span>
+           <span class="n">help</span><span class="o">=</span><span class="p">(</span><span class="s">&quot;run pytest sub runs in tests using an &#39;inprocess&#39; &quot;</span>
+                 <span class="s">&quot;or &#39;subprocess&#39; (python -m main) method&quot;</span><span class="p">))</span>
+
+
+<span class="k">def</span> <span class="nf">pytest_configure</span><span class="p">(</span><span class="n">config</span><span class="p">):</span>
+    <span class="c"># This might be called multiple times. Only take the first.</span>
+    <span class="k">global</span> <span class="n">_pytest_fullpath</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">_pytest_fullpath</span>
+    <span class="k">except</span> <span class="ne">NameError</span><span class="p">:</span>
+        <span class="n">_pytest_fullpath</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">pytest</span><span class="o">.</span><span class="n">__file__</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s">&quot;oc&quot;</span><span class="p">))</span>
+        <span class="n">_pytest_fullpath</span> <span class="o">=</span> <span class="n">_pytest_fullpath</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s">&quot;$py.class&quot;</span><span class="p">,</span> <span class="s">&quot;.py&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">getvalue</span><span class="p">(</span><span class="s">&quot;lsof&quot;</span><span class="p">):</span>
+        <span class="n">checker</span> <span class="o">=</span> <span class="n">LsofFdLeakChecker</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">checker</span><span class="o">.</span><span class="n">matching_platform</span><span class="p">():</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">pluginmanager</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">checker</span><span class="p">)</span>
+
+
+<span class="k">class</span> <span class="nc">LsofFdLeakChecker</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">get_open_files</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exec_lsof</span><span class="p">()</span>
+        <span class="n">open_files</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_lsof_output</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">open_files</span>
+
+    <span class="k">def</span> <span class="nf">_exec_lsof</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">py</span><span class="o">.</span><span class="n">process</span><span class="o">.</span><span class="n">cmdexec</span><span class="p">(</span><span class="s">&quot;lsof -Ffn0 -p </span><span class="si">%d</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">pid</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_parse_lsof_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">out</span><span class="p">):</span>
+        <span class="k">def</span> <span class="nf">isopen</span><span class="p">(</span><span class="n">line</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;f&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="s">&quot;deleted&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">line</span> <span class="ow">and</span>
+                <span class="s">&#39;mem&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">line</span> <span class="ow">and</span> <span class="s">&quot;txt&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">line</span> <span class="ow">and</span> <span class="s">&#39;cwd&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">line</span><span class="p">)</span>
+
+        <span class="n">open_files</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">isopen</span><span class="p">(</span><span class="n">line</span><span class="p">):</span>
+                <span class="n">fields</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\0</span><span class="s">&#39;</span><span class="p">)</span>
+                <span class="n">fd</span> <span class="o">=</span> <span class="n">fields</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">:]</span>
+                <span class="n">filename</span> <span class="o">=</span> <span class="n">fields</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">:]</span>
+                <span class="k">if</span> <span class="n">filename</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">):</span>
+                    <span class="n">open_files</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">fd</span><span class="p">,</span> <span class="n">filename</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">open_files</span>
+
+    <span class="k">def</span> <span class="nf">matching_platform</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">py</span><span class="o">.</span><span class="n">process</span><span class="o">.</span><span class="n">cmdexec</span><span class="p">(</span><span class="s">&quot;lsof -v&quot;</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="n">py</span><span class="o">.</span><span class="n">process</span><span class="o">.</span><span class="n">cmdexec</span><span class="o">.</span><span class="n">Error</span><span class="p">,</span> <span class="ne">UnicodeDecodeError</span><span class="p">):</span>
+            <span class="c"># cmdexec may raise UnicodeDecodeError on Windows systems</span>
+            <span class="c"># with locale other than english:</span>
+            <span class="c"># https://bitbucket.org/pytest-dev/py/issues/66</span>
+            <span class="k">return</span> <span class="bp">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">True</span>
+
+    <span class="nd">@pytest.hookimpl</span><span class="p">(</span><span class="n">hookwrapper</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">tryfirst</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">pytest_runtest_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
+        <span class="n">lines1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_open_files</span><span class="p">()</span>
+        <span class="k">yield</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">sys</span><span class="p">,</span> <span class="s">&quot;pypy_version_info&quot;</span><span class="p">):</span>
+            <span class="n">gc</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+        <span class="n">lines2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_open_files</span><span class="p">()</span>
+
+        <span class="n">new_fds</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([</span><span class="n">t</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">lines2</span><span class="p">])</span> <span class="o">-</span> <span class="nb">set</span><span class="p">([</span><span class="n">t</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">lines1</span><span class="p">])</span>
+        <span class="n">leaked_files</span> <span class="o">=</span> <span class="p">[</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">lines2</span> <span class="k">if</span> <span class="n">t</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">in</span> <span class="n">new_fds</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">leaked_files</span><span class="p">:</span>
+            <span class="n">error</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">error</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&quot;***** </span><span class="si">%s</span><span class="s"> FD leakage detected&quot;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">leaked_files</span><span class="p">))</span>
+            <span class="n">error</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">leaked_files</span><span class="p">])</span>
+            <span class="n">error</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&quot;*** Before:&quot;</span><span class="p">)</span>
+            <span class="n">error</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">lines1</span><span class="p">])</span>
+            <span class="n">error</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&quot;*** After:&quot;</span><span class="p">)</span>
+            <span class="n">error</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">lines2</span><span class="p">])</span>
+            <span class="n">error</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">error</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="n">error</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&quot;*** function </span><span class="si">%s</span><span class="s">:</span><span class="si">%s</span><span class="s">: </span><span class="si">%s</span><span class="s"> &quot;</span> <span class="o">%</span> <span class="n">item</span><span class="o">.</span><span class="n">location</span><span class="p">)</span>
+            <span class="n">pytest</span><span class="o">.</span><span class="n">fail</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">error</span><span class="p">),</span> <span class="n">pytrace</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+
+
+<span class="c"># XXX copied from execnet&#39;s conftest.py - needs to be merged</span>
+<span class="n">winpymap</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s">&#39;python2.7&#39;</span><span class="p">:</span> <span class="s">r&#39;C:\Python27\python.exe&#39;</span><span class="p">,</span>
+    <span class="s">&#39;python2.6&#39;</span><span class="p">:</span> <span class="s">r&#39;C:\Python26\python.exe&#39;</span><span class="p">,</span>
+    <span class="s">&#39;python3.1&#39;</span><span class="p">:</span> <span class="s">r&#39;C:\Python31\python.exe&#39;</span><span class="p">,</span>
+    <span class="s">&#39;python3.2&#39;</span><span class="p">:</span> <span class="s">r&#39;C:\Python32\python.exe&#39;</span><span class="p">,</span>
+    <span class="s">&#39;python3.3&#39;</span><span class="p">:</span> <span class="s">r&#39;C:\Python33\python.exe&#39;</span><span class="p">,</span>
+    <span class="s">&#39;python3.4&#39;</span><span class="p">:</span> <span class="s">r&#39;C:\Python34\python.exe&#39;</span><span class="p">,</span>
+    <span class="s">&#39;python3.5&#39;</span><span class="p">:</span> <span class="s">r&#39;C:\Python35\python.exe&#39;</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="k">def</span> <span class="nf">getexecutable</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">cache</span><span class="o">=</span><span class="p">{}):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">cache</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="n">executable</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">local</span><span class="o">.</span><span class="n">sysfind</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">executable</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="o">==</span> <span class="s">&quot;jython&quot;</span><span class="p">:</span>
+                <span class="kn">import</span> <span class="nn">subprocess</span>
+                <span class="n">popen</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">executable</span><span class="p">),</span> <span class="s">&quot;--version&quot;</span><span class="p">],</span>
+                    <span class="n">universal_newlines</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span><span class="p">)</span>
+                <span class="n">out</span><span class="p">,</span> <span class="n">err</span> <span class="o">=</span> <span class="n">popen</span><span class="o">.</span><span class="n">communicate</span><span class="p">()</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">err</span> <span class="ow">or</span> <span class="s">&quot;2.5&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">err</span><span class="p">:</span>
+                    <span class="n">executable</span> <span class="o">=</span> <span class="bp">None</span>
+                <span class="k">if</span> <span class="s">&quot;2.5.2&quot;</span> <span class="ow">in</span> <span class="n">err</span><span class="p">:</span>
+                    <span class="n">executable</span> <span class="o">=</span> <span class="bp">None</span> <span class="c"># http://bugs.jython.org/issue1790</span>
+        <span class="n">cache</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">executable</span>
+        <span class="k">return</span> <span class="n">executable</span>
+
+<span class="nd">@pytest.fixture</span><span class="p">(</span><span class="n">params</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;python2.6&#39;</span><span class="p">,</span> <span class="s">&#39;python2.7&#39;</span><span class="p">,</span> <span class="s">&#39;python3.3&#39;</span><span class="p">,</span> <span class="s">&quot;python3.4&quot;</span><span class="p">,</span>
+                        <span class="s">&#39;pypy&#39;</span><span class="p">,</span> <span class="s">&#39;pypy3&#39;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">anypython</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">param</span>
+    <span class="n">executable</span> <span class="o">=</span> <span class="n">getexecutable</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">executable</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">platform</span> <span class="o">==</span> <span class="s">&quot;win32&quot;</span><span class="p">:</span>
+            <span class="n">executable</span> <span class="o">=</span> <span class="n">winpymap</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">executable</span><span class="p">:</span>
+                <span class="n">executable</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">local</span><span class="p">(</span><span class="n">executable</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">executable</span><span class="o">.</span><span class="n">check</span><span class="p">():</span>
+                    <span class="k">return</span> <span class="n">executable</span>
+        <span class="n">pytest</span><span class="o">.</span><span class="n">skip</span><span class="p">(</span><span class="s">&quot;no suitable </span><span class="si">%s</span><span class="s"> found&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name</span><span class="p">,))</span>
+    <span class="k">return</span> <span class="n">executable</span>
+
+<span class="c"># used at least by pytest-xdist plugin</span>
+<span class="nd">@pytest.fixture</span>
+<span class="k">def</span> <span class="nf">_pytest</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; Return a helper which offers a gethookrecorder(hook)</span>
+<span class="sd">    method which returns a HookRecorder instance which helps</span>
+<span class="sd">    to make assertions about called hooks.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">PytestArg</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">PytestArg</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">request</span> <span class="o">=</span> <span class="n">request</span>
+
+    <span class="k">def</span> <span class="nf">gethookrecorder</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">hook</span><span class="p">):</span>
+        <span class="n">hookrecorder</span> <span class="o">=</span> <span class="n">HookRecorder</span><span class="p">(</span><span class="n">hook</span><span class="o">.</span><span class="n">_pm</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">addfinalizer</span><span class="p">(</span><span class="n">hookrecorder</span><span class="o">.</span><span class="n">finish_recording</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">hookrecorder</span>
+
+
+<span class="k">def</span> <span class="nf">get_public_names</span><span class="p">(</span><span class="n">l</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Only return names from iterator l without a leading underscore.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">l</span> <span class="k">if</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="s">&quot;_&quot;</span><span class="p">]</span>
+
+
+<span class="k">class</span> <span class="nc">ParsedCall</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="n">name</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">del</span> <span class="n">d</span><span class="p">[</span><span class="s">&#39;_name&#39;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;ParsedCall </span><span class="si">%r</span><span class="s">(**</span><span class="si">%r</span><span class="s">)&gt;&quot;</span> <span class="o">%</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span>
+
+
+<span class="k">class</span> <span class="nc">HookRecorder</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Record all hooks called in a plugin manager.</span>
+
+<span class="sd">    This wraps all the hook calls in the plugin manager, recording</span>
+<span class="sd">    each call before propagating the normal calls.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pluginmanager</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pluginmanager</span> <span class="o">=</span> <span class="n">pluginmanager</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">calls</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">def</span> <span class="nf">before</span><span class="p">(</span><span class="n">hook_name</span><span class="p">,</span> <span class="n">hook_impls</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">calls</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ParsedCall</span><span class="p">(</span><span class="n">hook_name</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">))</span>
+
+        <span class="k">def</span> <span class="nf">after</span><span class="p">(</span><span class="n">outcome</span><span class="p">,</span> <span class="n">hook_name</span><span class="p">,</span> <span class="n">hook_impls</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">):</span>
+            <span class="k">pass</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_undo_wrapping</span> <span class="o">=</span> <span class="n">pluginmanager</span><span class="o">.</span><span class="n">add_hookcall_monitoring</span><span class="p">(</span><span class="n">before</span><span class="p">,</span> <span class="n">after</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">finish_recording</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_undo_wrapping</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">getcalls</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">names</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">names</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">names</span> <span class="o">=</span> <span class="n">names</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">call</span> <span class="k">for</span> <span class="n">call</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">calls</span> <span class="k">if</span> <span class="n">call</span><span class="o">.</span><span class="n">_name</span> <span class="ow">in</span> <span class="n">names</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">assert_contains</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">entries</span><span class="p">):</span>
+        <span class="n">__tracebackhide__</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">entries</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">entries</span><span class="p">)</span>
+        <span class="n">backlocals</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">_getframe</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">f_locals</span>
+        <span class="k">while</span> <span class="n">entries</span><span class="p">:</span>
+            <span class="n">name</span><span class="p">,</span> <span class="n">check</span> <span class="o">=</span> <span class="n">entries</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">ind</span><span class="p">,</span> <span class="n">call</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">calls</span><span class="p">[</span><span class="n">i</span><span class="p">:]):</span>
+                <span class="k">if</span> <span class="n">call</span><span class="o">.</span><span class="n">_name</span> <span class="o">==</span> <span class="n">name</span><span class="p">:</span>
+                    <span class="n">print_</span><span class="p">(</span><span class="s">&quot;NAMEMATCH&quot;</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">call</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="nb">eval</span><span class="p">(</span><span class="n">check</span><span class="p">,</span> <span class="n">backlocals</span><span class="p">,</span> <span class="n">call</span><span class="o">.</span><span class="n">__dict__</span><span class="p">):</span>
+                        <span class="n">print_</span><span class="p">(</span><span class="s">&quot;CHECKERMATCH&quot;</span><span class="p">,</span> <span class="nb">repr</span><span class="p">(</span><span class="n">check</span><span class="p">),</span> <span class="s">&quot;-&gt;&quot;</span><span class="p">,</span> <span class="n">call</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">print_</span><span class="p">(</span><span class="s">&quot;NOCHECKERMATCH&quot;</span><span class="p">,</span> <span class="nb">repr</span><span class="p">(</span><span class="n">check</span><span class="p">),</span> <span class="s">&quot;-&quot;</span><span class="p">,</span> <span class="n">call</span><span class="p">)</span>
+                        <span class="k">continue</span>
+                    <span class="n">i</span> <span class="o">+=</span> <span class="n">ind</span> <span class="o">+</span> <span class="mi">1</span>
+                    <span class="k">break</span>
+                <span class="n">print_</span><span class="p">(</span><span class="s">&quot;NONAMEMATCH&quot;</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="s">&quot;with&quot;</span><span class="p">,</span> <span class="n">call</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">pytest</span><span class="o">.</span><span class="n">fail</span><span class="p">(</span><span class="s">&quot;could not find </span><span class="si">%r</span><span class="s"> check </span><span class="si">%r</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">check</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">popcall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="n">__tracebackhide__</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">call</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">calls</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">call</span><span class="o">.</span><span class="n">_name</span> <span class="o">==</span> <span class="n">name</span><span class="p">:</span>
+                <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">calls</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="k">return</span> <span class="n">call</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="s">&quot;could not find call </span><span class="si">%r</span><span class="s">, in:&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name</span><span class="p">,)]</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s">&quot;  </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">calls</span><span class="p">])</span>
+        <span class="n">pytest</span><span class="o">.</span><span class="n">fail</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lines</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">getcall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="n">l</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">getcalls</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">l</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">l</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">l</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="c"># functionality for test reports</span>
+
+    <span class="k">def</span> <span class="nf">getreports</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                   <span class="n">names</span><span class="o">=</span><span class="s">&quot;pytest_runtest_logreport pytest_collectreport&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">report</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">getcalls</span><span class="p">(</span><span class="n">names</span><span class="p">)]</span>
+
+    <span class="k">def</span> <span class="nf">matchreport</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inamepart</span><span class="o">=</span><span class="s">&quot;&quot;</span><span class="p">,</span>
+        <span class="n">names</span><span class="o">=</span><span class="s">&quot;pytest_runtest_logreport pytest_collectreport&quot;</span><span class="p">,</span> <span class="n">when</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; return a testreport whose dotted import path matches &quot;&quot;&quot;</span>
+        <span class="n">l</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">rep</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">getreports</span><span class="p">(</span><span class="n">names</span><span class="o">=</span><span class="n">names</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">when</span> <span class="ow">and</span> <span class="n">rep</span><span class="o">.</span><span class="n">when</span> <span class="o">!=</span> <span class="s">&quot;call&quot;</span> <span class="ow">and</span> <span class="n">rep</span><span class="o">.</span><span class="n">passed</span><span class="p">:</span>
+                    <span class="c"># setup/teardown passing reports - let&#39;s ignore those</span>
+                    <span class="k">continue</span>
+            <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">if</span> <span class="n">when</span> <span class="ow">and</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">rep</span><span class="p">,</span> <span class="s">&#39;when&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span> <span class="o">!=</span> <span class="n">when</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">inamepart</span> <span class="ow">or</span> <span class="n">inamepart</span> <span class="ow">in</span> <span class="n">rep</span><span class="o">.</span><span class="n">nodeid</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;::&quot;</span><span class="p">):</span>
+                <span class="n">l</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rep</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">l</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;could not find test report matching </span><span class="si">%r</span><span class="s">: &quot;</span>
+                             <span class="s">&quot;no test reports at all!&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">inamepart</span><span class="p">,))</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">l</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s">&quot;found 2 or more testreports matching </span><span class="si">%r</span><span class="s">: </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span><span class="p">(</span><span class="n">inamepart</span><span class="p">,</span> <span class="n">l</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">l</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">getfailures</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                    <span class="n">names</span><span class="o">=</span><span class="s">&#39;pytest_runtest_logreport pytest_collectreport&#39;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">rep</span> <span class="k">for</span> <span class="n">rep</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">getreports</span><span class="p">(</span><span class="n">names</span><span class="p">)</span> <span class="k">if</span> <span class="n">rep</span><span class="o">.</span><span class="n">failed</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">getfailedcollections</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">getfailures</span><span class="p">(</span><span class="s">&#39;pytest_collectreport&#39;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">listoutcomes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">passed</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">skipped</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">failed</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">rep</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">getreports</span><span class="p">(</span>
+            <span class="s">&quot;pytest_collectreport pytest_runtest_logreport&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">rep</span><span class="o">.</span><span class="n">passed</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">rep</span><span class="p">,</span> <span class="s">&quot;when&quot;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span> <span class="o">==</span> <span class="s">&quot;call&quot;</span><span class="p">:</span>
+                    <span class="n">passed</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rep</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">rep</span><span class="o">.</span><span class="n">skipped</span><span class="p">:</span>
+                <span class="n">skipped</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rep</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">rep</span><span class="o">.</span><span class="n">failed</span><span class="p">:</span>
+                <span class="n">failed</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rep</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">passed</span><span class="p">,</span> <span class="n">skipped</span><span class="p">,</span> <span class="n">failed</span>
+
+    <span class="k">def</span> <span class="nf">countoutcomes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">listoutcomes</span><span class="p">()]</span>
+
+    <span class="k">def</span> <span class="nf">assertoutcome</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">passed</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">skipped</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">failed</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="n">realpassed</span><span class="p">,</span> <span class="n">realskipped</span><span class="p">,</span> <span class="n">realfailed</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">listoutcomes</span><span class="p">()</span>
+        <span class="k">assert</span> <span class="n">passed</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">realpassed</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">skipped</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">realskipped</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">failed</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">realfailed</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">clear</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">calls</span><span class="p">[:]</span> <span class="o">=</span> <span class="p">[]</span>
+
+
+<span class="nd">@pytest.fixture</span>
+<span class="k">def</span> <span class="nf">linecomp</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">LineComp</span><span class="p">()</span>
+
+
+<span class="k">def</span> <span class="nf">pytest_funcarg__LineMatcher</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">LineMatcher</span>
+
+
+<span class="nd">@pytest.fixture</span>
+<span class="k">def</span> <span class="nf">testdir</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">tmpdir_factory</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">Testdir</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">tmpdir_factory</span><span class="p">)</span>
+
+
+<span class="n">rex_outcome</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s">&quot;(\d+) (\w+)&quot;</span><span class="p">)</span>
+<div class="viewcode-block" id="RunResult"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.pytester.RunResult">[docs]</a><span class="k">class</span> <span class="nc">RunResult</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;The result of running a command.</span>
+
+<span class="sd">    Attributes:</span>
+
+<span class="sd">    :ret: The return value.</span>
+<span class="sd">    :outlines: List of lines captured from stdout.</span>
+<span class="sd">    :errlines: List of lines captures from stderr.</span>
+<span class="sd">    :stdout: :py:class:`LineMatcher` of stdout, use ``stdout.str()`` to</span>
+<span class="sd">       reconstruct stdout or the commonly used</span>
+<span class="sd">       ``stdout.fnmatch_lines()`` method.</span>
+<span class="sd">    :stderrr: :py:class:`LineMatcher` of stderr.</span>
+<span class="sd">    :duration: Duration in seconds.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ret</span><span class="p">,</span> <span class="n">outlines</span><span class="p">,</span> <span class="n">errlines</span><span class="p">,</span> <span class="n">duration</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ret</span> <span class="o">=</span> <span class="n">ret</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">outlines</span> <span class="o">=</span> <span class="n">outlines</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">errlines</span> <span class="o">=</span> <span class="n">errlines</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stdout</span> <span class="o">=</span> <span class="n">LineMatcher</span><span class="p">(</span><span class="n">outlines</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stderr</span> <span class="o">=</span> <span class="n">LineMatcher</span><span class="p">(</span><span class="n">errlines</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">duration</span> <span class="o">=</span> <span class="n">duration</span>
+
+<div class="viewcode-block" id="RunResult.parseoutcomes"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.pytester.RunResult.parseoutcomes">[docs]</a>    <span class="k">def</span> <span class="nf">parseoutcomes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; Return a dictionary of outcomestring-&gt;num from parsing</span>
+<span class="sd">        the terminal output that the test process produced.&quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">outlines</span><span class="p">):</span>
+            <span class="k">if</span> <span class="s">&#39;seconds&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
+                <span class="n">outcomes</span> <span class="o">=</span> <span class="n">rex_outcome</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">outcomes</span><span class="p">:</span>
+                    <span class="n">d</span> <span class="o">=</span> <span class="p">{}</span>
+                    <span class="k">for</span> <span class="n">num</span><span class="p">,</span> <span class="n">cat</span> <span class="ow">in</span> <span class="n">outcomes</span><span class="p">:</span>
+                        <span class="n">d</span><span class="p">[</span><span class="n">cat</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">num</span><span class="p">)</span>
+                    <span class="k">return</span> <span class="n">d</span>
+</div>
+<div class="viewcode-block" id="RunResult.assert_outcomes"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.pytester.RunResult.assert_outcomes">[docs]</a>    <span class="k">def</span> <span class="nf">assert_outcomes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">passed</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">skipped</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">failed</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; assert that the specified outcomes appear with the respective</span>
+<span class="sd">        numbers (0 means it didn&#39;t occur) in the text output from a test run.&quot;&quot;&quot;</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parseoutcomes</span><span class="p">()</span>
+        <span class="k">assert</span> <span class="n">passed</span> <span class="o">==</span> <span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&quot;passed&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">skipped</span> <span class="o">==</span> <span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&quot;skipped&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">failed</span> <span class="o">==</span> <span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&quot;failed&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+
+
+</div></div>
+<div class="viewcode-block" id="Testdir"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.pytester.Testdir">[docs]</a><span class="k">class</span> <span class="nc">Testdir</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Temporary test directory with tools to test/run py.test itself.</span>
+
+<span class="sd">    This is based on the ``tmpdir`` fixture but provides a number of</span>
+<span class="sd">    methods which aid with testing py.test itself.  Unless</span>
+<span class="sd">    :py:meth:`chdir` is used all methods will use :py:attr:`tmpdir` as</span>
+<span class="sd">    current working directory.</span>
+
+<span class="sd">    Attributes:</span>
+
+<span class="sd">    :tmpdir: The :py:class:`py.path.local` instance of the temporary</span>
+<span class="sd">       directory.</span>
+
+<span class="sd">    :plugins: A list of plugins to use with :py:meth:`parseconfig` and</span>
+<span class="sd">       :py:meth:`runpytest`.  Initially this is an empty list but</span>
+<span class="sd">       plugins can be added to the list.  The type of items to add to</span>
+<span class="sd">       the list depend on the method which uses them so refer to them</span>
+<span class="sd">       for details.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">tmpdir_factory</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">request</span> <span class="o">=</span> <span class="n">request</span>
+        <span class="c"># XXX remove duplication with tmpdir plugin</span>
+        <span class="n">basetmp</span> <span class="o">=</span> <span class="n">tmpdir_factory</span><span class="o">.</span><span class="n">ensuretemp</span><span class="p">(</span><span class="s">&quot;testdir&quot;</span><span class="p">)</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">function</span><span class="o">.</span><span class="n">__name__</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">100</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">tmpdir</span> <span class="o">=</span> <span class="n">basetmp</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">name</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
+            <span class="k">except</span> <span class="n">py</span><span class="o">.</span><span class="n">error</span><span class="o">.</span><span class="n">EEXIST</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">break</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tmpdir</span> <span class="o">=</span> <span class="n">tmpdir</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">plugins</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_savesyspath</span> <span class="o">=</span> <span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">meta_path</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_savemodulekeys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">chdir</span><span class="p">()</span> <span class="c"># always chdir</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">addfinalizer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">finalize</span><span class="p">)</span>
+        <span class="n">method</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">getoption</span><span class="p">(</span><span class="s">&quot;--runpytest&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s">&quot;inprocess&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_runpytest_method</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">runpytest_inprocess</span>
+        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s">&quot;subprocess&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_runpytest_method</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">runpytest_subprocess</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;Testdir </span><span class="si">%r</span><span class="s">&gt;&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tmpdir</span><span class="p">,)</span>
+
+    <span class="k">def</span> <span class="nf">finalize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Clean up global state artifacts.</span>
+
+<span class="sd">        Some methods modify the global interpreter state and this</span>
+<span class="sd">        tries to clean this up.  It does not remove the temporary</span>
+<span class="sd">        directory however so it can be looked at after the test run</span>
+<span class="sd">        has finished.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">[:],</span> <span class="n">sys</span><span class="o">.</span><span class="n">meta_path</span><span class="p">[:]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_savesyspath</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;_olddir&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_olddir</span><span class="o">.</span><span class="n">chdir</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">delete_loaded_modules</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">delete_loaded_modules</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Delete modules that have been loaded during a test.</span>
+
+<span class="sd">        This allows the interpreter to catch module changes in case</span>
+<span class="sd">        the module is re-imported.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">set</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="p">)</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_savemodulekeys</span><span class="p">):</span>
+            <span class="c"># it seems zope.interfaces is keeping some state</span>
+            <span class="c"># (used by twisted related tests)</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="o">!=</span> <span class="s">&quot;zope.interface&quot;</span><span class="p">:</span>
+                <span class="k">del</span> <span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">make_hook_recorder</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pluginmanager</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Create a new :py:class:`HookRecorder` for a PluginManager.&quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">pluginmanager</span><span class="p">,</span> <span class="s">&quot;reprec&quot;</span><span class="p">)</span>
+        <span class="n">pluginmanager</span><span class="o">.</span><span class="n">reprec</span> <span class="o">=</span> <span class="n">reprec</span> <span class="o">=</span> <span class="n">HookRecorder</span><span class="p">(</span><span class="n">pluginmanager</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">addfinalizer</span><span class="p">(</span><span class="n">reprec</span><span class="o">.</span><span class="n">finish_recording</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">reprec</span>
+
+    <span class="k">def</span> <span class="nf">chdir</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Cd into the temporary directory.</span>
+
+<span class="sd">        This is done automatically upon instantiation.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">old</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tmpdir</span><span class="o">.</span><span class="n">chdir</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;_olddir&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_olddir</span> <span class="o">=</span> <span class="n">old</span>
+
+    <span class="k">def</span> <span class="nf">_makefile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ext</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">items</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
+        <span class="k">if</span> <span class="n">args</span><span class="p">:</span>
+            <span class="n">source</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">builtin</span><span class="o">.</span><span class="n">_totext</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                <span class="nb">map</span><span class="p">(</span><span class="n">py</span><span class="o">.</span><span class="n">builtin</span><span class="o">.</span><span class="n">_totext</span><span class="p">,</span> <span class="n">args</span><span class="p">))</span> <span class="o">+</span> <span class="n">py</span><span class="o">.</span><span class="n">builtin</span><span class="o">.</span><span class="n">_totext</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+            <span class="n">basename</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">function</span><span class="o">.</span><span class="n">__name__</span>
+            <span class="n">items</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="p">(</span><span class="n">basename</span><span class="p">,</span> <span class="n">source</span><span class="p">))</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">items</span><span class="p">:</span>
+            <span class="n">p</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tmpdir</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="n">ext</span><span class="o">=</span><span class="n">ext</span><span class="p">)</span>
+            <span class="n">source</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">code</span><span class="o">.</span><span class="n">Source</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="k">def</span> <span class="nf">my_totext</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">&quot;utf-8&quot;</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">py</span><span class="o">.</span><span class="n">builtin</span><span class="o">.</span><span class="n">_isbytes</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+                    <span class="n">s</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">builtin</span><span class="o">.</span><span class="n">_totext</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">s</span>
+            <span class="n">source_unicode</span> <span class="o">=</span> <span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">my_totext</span><span class="p">(</span><span class="n">line</span><span class="p">)</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">source</span><span class="o">.</span><span class="n">lines</span><span class="p">])</span>
+            <span class="n">source</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">builtin</span><span class="o">.</span><span class="n">_totext</span><span class="p">(</span><span class="n">source_unicode</span><span class="p">)</span>
+            <span class="n">content</span> <span class="o">=</span> <span class="n">source</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&quot;utf-8&quot;</span><span class="p">)</span> <span class="c"># + &quot;\n&quot;</span>
+            <span class="c">#content = content.rstrip() + &quot;\n&quot;</span>
+            <span class="n">p</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">content</span><span class="p">,</span> <span class="s">&quot;wb&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">ret</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="n">p</span>
+        <span class="k">return</span> <span class="n">ret</span>
+
+    <span class="k">def</span> <span class="nf">makefile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ext</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Create a new file in the testdir.</span>
+
+<span class="sd">        ext: The extension the file should use, including the dot.</span>
+<span class="sd">           E.g. &quot;.py&quot;.</span>
+
+<span class="sd">        args: All args will be treated as strings and joined using</span>
+<span class="sd">           newlines.  The result will be written as contents to the</span>
+<span class="sd">           file.  The name of the file will be based on the test</span>
+<span class="sd">           function requesting this fixture.</span>
+<span class="sd">           E.g. &quot;testdir.makefile(&#39;.txt&#39;, &#39;line1&#39;, &#39;line2&#39;)&quot;</span>
+
+<span class="sd">        kwargs: Each keyword is the name of a file, while the value of</span>
+<span class="sd">           it will be written as contents of the file.</span>
+<span class="sd">           E.g. &quot;testdir.makefile(&#39;.ini&#39;, pytest=&#39;[pytest]\naddopts=-rs\n&#39;)&quot;</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_makefile</span><span class="p">(</span><span class="n">ext</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Testdir.makeconftest"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.pytester.Testdir.makeconftest">[docs]</a>    <span class="k">def</span> <span class="nf">makeconftest</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Write a contest.py file with &#39;source&#39; as contents.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">makepyfile</span><span class="p">(</span><span class="n">conftest</span><span class="o">=</span><span class="n">source</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">makeini</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Write a tox.ini file with &#39;source&#39; as contents.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">makefile</span><span class="p">(</span><span class="s">&#39;.ini&#39;</span><span class="p">,</span> <span class="n">tox</span><span class="o">=</span><span class="n">source</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">getinicfg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the pytest section from the tox.ini config file.&quot;&quot;&quot;</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">makeini</span><span class="p">(</span><span class="n">source</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">py</span><span class="o">.</span><span class="n">iniconfig</span><span class="o">.</span><span class="n">IniConfig</span><span class="p">(</span><span class="n">p</span><span class="p">)[</span><span class="s">&#39;pytest&#39;</span><span class="p">]</span>
+
+<div class="viewcode-block" id="Testdir.makepyfile"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.pytester.Testdir.makepyfile">[docs]</a>    <span class="k">def</span> <span class="nf">makepyfile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Shortcut for .makefile() with a .py extension.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_makefile</span><span class="p">(</span><span class="s">&#39;.py&#39;</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">maketxtfile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Shortcut for .makefile() with a .txt extension.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_makefile</span><span class="p">(</span><span class="s">&#39;.txt&#39;</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">syspathinsert</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Prepend a directory to sys.path, defaults to :py:attr:`tmpdir`.</span>
+
+<span class="sd">        This is undone automatically after the test.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">path</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tmpdir</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">mkdir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Create a new (sub)directory.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">tmpdir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">mkpydir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Create a new python package.</span>
+
+<span class="sd">        This creates a (sub)direcotry with an empty ``__init__.py``</span>
+<span class="sd">        file so that is recognised as a python package.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="n">p</span><span class="o">.</span><span class="n">ensure</span><span class="p">(</span><span class="s">&quot;__init__.py&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">p</span>
+
+    <span class="n">Session</span> <span class="o">=</span> <span class="n">Session</span>
+    <span class="k">def</span> <span class="nf">getnode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">arg</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the collection node of a file.</span>
+
+<span class="sd">        :param config: :py:class:`_pytest.config.Config` instance, see</span>
+<span class="sd">           :py:meth:`parseconfig` and :py:meth:`parseconfigure` to</span>
+<span class="sd">           create the configuration.</span>
+
+<span class="sd">        :param arg: A :py:class:`py.path.local` instance of the file.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">session</span> <span class="o">=</span> <span class="n">Session</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="s">&#39;::&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">local</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">hook</span><span class="o">.</span><span class="n">pytest_sessionstart</span><span class="p">(</span><span class="n">session</span><span class="o">=</span><span class="n">session</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">perform_collect</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">p</span><span class="p">)],</span> <span class="n">genitems</span><span class="o">=</span><span class="bp">False</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">hook</span><span class="o">.</span><span class="n">pytest_sessionfinish</span><span class="p">(</span><span class="n">session</span><span class="o">=</span><span class="n">session</span><span class="p">,</span> <span class="n">exitstatus</span><span class="o">=</span><span class="n">EXIT_OK</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">res</span>
+
+    <span class="k">def</span> <span class="nf">getpathnode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the collection node of a file.</span>
+
+<span class="sd">        This is like :py:meth:`getnode` but uses</span>
+<span class="sd">        :py:meth:`parseconfigure` to create the (configured) py.test</span>
+<span class="sd">        Config instance.</span>
+
+<span class="sd">        :param path: A :py:class:`py.path.local` instance of the file.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">config</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parseconfigure</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="n">session</span> <span class="o">=</span> <span class="n">Session</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">fspath</span><span class="o">.</span><span class="n">bestrelpath</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">hook</span><span class="o">.</span><span class="n">pytest_sessionstart</span><span class="p">(</span><span class="n">session</span><span class="o">=</span><span class="n">session</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="n">perform_collect</span><span class="p">([</span><span class="n">x</span><span class="p">],</span> <span class="n">genitems</span><span class="o">=</span><span class="bp">False</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">hook</span><span class="o">.</span><span class="n">pytest_sessionfinish</span><span class="p">(</span><span class="n">session</span><span class="o">=</span><span class="n">session</span><span class="p">,</span> <span class="n">exitstatus</span><span class="o">=</span><span class="n">EXIT_OK</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">res</span>
+
+    <span class="k">def</span> <span class="nf">genitems</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">colitems</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Generate all test items from a collection node.</span>
+
+<span class="sd">        This recurses into the collection node and returns a list of</span>
+<span class="sd">        all the test items contained within.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">session</span> <span class="o">=</span> <span class="n">colitems</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">session</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">colitem</span> <span class="ow">in</span> <span class="n">colitems</span><span class="p">:</span>
+            <span class="n">result</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">session</span><span class="o">.</span><span class="n">genitems</span><span class="p">(</span><span class="n">colitem</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">result</span>
+
+    <span class="k">def</span> <span class="nf">runitem</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Run the &quot;test_func&quot; Item.</span>
+
+<span class="sd">        The calling test instance (the class which contains the test</span>
+<span class="sd">        method) must provide a ``.getrunner()`` method which should</span>
+<span class="sd">        return a runner which can run the test protocol for a single</span>
+<span class="sd">        item, like e.g. :py:func:`_pytest.runner.runtestprotocol`.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># used from runner functional tests</span>
+        <span class="n">item</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">getitem</span><span class="p">(</span><span class="n">source</span><span class="p">)</span>
+        <span class="c"># the test class where we are called from wants to provide the runner</span>
+        <span class="n">testclassinstance</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">instance</span>
+        <span class="n">runner</span> <span class="o">=</span> <span class="n">testclassinstance</span><span class="o">.</span><span class="n">getrunner</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">runner</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">inline_runsource</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="o">*</span><span class="n">cmdlineargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Run a test module in process using ``pytest.main()``.</span>
+
+<span class="sd">        This run writes &quot;source&quot; into a temporary file and runs</span>
+<span class="sd">        ``pytest.main()`` on it, returning a :py:class:`HookRecorder`</span>
+<span class="sd">        instance for the result.</span>
+
+<span class="sd">        :param source: The source code of the test module.</span>
+
+<span class="sd">        :param cmdlineargs: Any extra command line arguments to use.</span>
+
+<span class="sd">        :return: :py:class:`HookRecorder` instance of the result.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">makepyfile</span><span class="p">(</span><span class="n">source</span><span class="p">)</span>
+        <span class="n">l</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">cmdlineargs</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="n">p</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">inline_run</span><span class="p">(</span><span class="o">*</span><span class="n">l</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">inline_genitems</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Run ``pytest.main([&#39;--collectonly&#39;])`` in-process.</span>
+
+<span class="sd">        Retuns a tuple of the collected items and a</span>
+<span class="sd">        :py:class:`HookRecorder` instance.</span>
+
+<span class="sd">        This runs the :py:func:`pytest.main` function to run all of</span>
+<span class="sd">        py.test inside the test process itself like</span>
+<span class="sd">        :py:meth:`inline_run`.  However the return value is a tuple of</span>
+<span class="sd">        the collection items and a :py:class:`HookRecorder` instance.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">rec</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">inline_run</span><span class="p">(</span><span class="s">&quot;--collect-only&quot;</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span>
+        <span class="n">items</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">item</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">rec</span><span class="o">.</span><span class="n">getcalls</span><span class="p">(</span><span class="s">&quot;pytest_itemcollected&quot;</span><span class="p">)]</span>
+        <span class="k">return</span> <span class="n">items</span><span class="p">,</span> <span class="n">rec</span>
+
+    <span class="k">def</span> <span class="nf">inline_run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Run ``pytest.main()`` in-process, returning a HookRecorder.</span>
+
+<span class="sd">        This runs the :py:func:`pytest.main` function to run all of</span>
+<span class="sd">        py.test inside the test process itself.  This means it can</span>
+<span class="sd">        return a :py:class:`HookRecorder` instance which gives more</span>
+<span class="sd">        detailed results from then run then can be done by matching</span>
+<span class="sd">        stdout/stderr from :py:meth:`runpytest`.</span>
+
+<span class="sd">        :param args: Any command line arguments to pass to</span>
+<span class="sd">           :py:func:`pytest.main`.</span>
+
+<span class="sd">        :param plugin: (keyword-only) Extra plugin instances the</span>
+<span class="sd">           ``pytest.main()`` instance should use.</span>
+
+<span class="sd">        :return: A :py:class:`HookRecorder` instance.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">rec</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">class</span> <span class="nc">Collect</span><span class="p">:</span>
+            <span class="k">def</span> <span class="nf">pytest_configure</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
+                <span class="n">rec</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">make_hook_recorder</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">pluginmanager</span><span class="p">))</span>
+
+        <span class="n">plugins</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&quot;plugins&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+        <span class="n">plugins</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Collect</span><span class="p">())</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">main</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">args</span><span class="p">),</span> <span class="n">plugins</span><span class="o">=</span><span class="n">plugins</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">delete_loaded_modules</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">rec</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">reprec</span> <span class="o">=</span> <span class="n">rec</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">class</span> <span class="nc">reprec</span><span class="p">:</span>
+                <span class="k">pass</span>
+        <span class="n">reprec</span><span class="o">.</span><span class="n">ret</span> <span class="o">=</span> <span class="n">ret</span>
+
+        <span class="c"># typically we reraise keyboard interrupts from the child run</span>
+        <span class="c"># because it&#39;s our user requesting interruption of the testing</span>
+        <span class="k">if</span> <span class="n">ret</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&quot;no_reraise_ctrlc&quot;</span><span class="p">):</span>
+            <span class="n">calls</span> <span class="o">=</span> <span class="n">reprec</span><span class="o">.</span><span class="n">getcalls</span><span class="p">(</span><span class="s">&quot;pytest_keyboard_interrupt&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">calls</span> <span class="ow">and</span> <span class="n">calls</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">excinfo</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="ne">KeyboardInterrupt</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">KeyboardInterrupt</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">reprec</span>
+
+<div class="viewcode-block" id="Testdir.runpytest_inprocess"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.pytester.Testdir.runpytest_inprocess">[docs]</a>    <span class="k">def</span> <span class="nf">runpytest_inprocess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; Return result of running pytest in-process, providing a similar</span>
+<span class="sd">        interface to what self.runpytest() provides. &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&quot;syspathinsert&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">syspathinsert</span><span class="p">()</span>
+        <span class="n">now</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">capture</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">io</span><span class="o">.</span><span class="n">StdCapture</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">reprec</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">inline_run</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">SystemExit</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">class</span> <span class="nc">reprec</span><span class="p">:</span>
+                    <span class="n">ret</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="n">traceback</span><span class="o">.</span><span class="n">print_exc</span><span class="p">()</span>
+                <span class="k">class</span> <span class="nc">reprec</span><span class="p">:</span>
+                    <span class="n">ret</span> <span class="o">=</span> <span class="mi">3</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">out</span><span class="p">,</span> <span class="n">err</span> <span class="o">=</span> <span class="n">capture</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+
+        <span class="n">res</span> <span class="o">=</span> <span class="n">RunResult</span><span class="p">(</span><span class="n">reprec</span><span class="o">.</span><span class="n">ret</span><span class="p">,</span>
+                        <span class="n">out</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">),</span> <span class="n">err</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">),</span>
+                        <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span><span class="o">-</span><span class="n">now</span><span class="p">)</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">reprec</span> <span class="o">=</span> <span class="n">reprec</span>
+        <span class="k">return</span> <span class="n">res</span>
+</div>
+<div class="viewcode-block" id="Testdir.runpytest"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.pytester.Testdir.runpytest">[docs]</a>    <span class="k">def</span> <span class="nf">runpytest</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; Run pytest inline or in a subprocess, depending on the command line</span>
+<span class="sd">        option &quot;--runpytest&quot; and return a :py:class:`RunResult`.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">args</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_basetemp</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_runpytest_method</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">_ensure_basetemp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">args</span><span class="p">):</span>
+        <span class="n">args</span> <span class="o">=</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">args</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">args</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;--basetemp&#39;</span><span class="p">):</span>
+                <span class="c">#print (&quot;basedtemp exists: %s&quot; %(args,))</span>
+                <span class="k">break</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&quot;--basetemp=</span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">tmpdir</span><span class="o">.</span><span class="n">dirpath</span><span class="p">(</span><span class="s">&#39;basetemp&#39;</span><span class="p">))</span>
+            <span class="c">#print (&quot;added basetemp: %s&quot; %(args,))</span>
+        <span class="k">return</span> <span class="n">args</span>
+
+    <span class="k">def</span> <span class="nf">parseconfig</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return a new py.test Config instance from given commandline args.</span>
+
+<span class="sd">        This invokes the py.test bootstrapping code in _pytest.config</span>
+<span class="sd">        to create a new :py:class:`_pytest.core.PluginManager` and</span>
+<span class="sd">        call the pytest_cmdline_parse hook to create new</span>
+<span class="sd">        :py:class:`_pytest.config.Config` instance.</span>
+
+<span class="sd">        If :py:attr:`plugins` has been populated they should be plugin</span>
+<span class="sd">        modules which will be registered with the PluginManager.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">args</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_basetemp</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+
+        <span class="kn">import</span> <span class="nn">_pytest.config</span>
+        <span class="n">config</span> <span class="o">=</span> <span class="n">_pytest</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">_prepareconfig</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">plugins</span><span class="p">)</span>
+        <span class="c"># we don&#39;t know what the test will do with this half-setup config</span>
+        <span class="c"># object and thus we make sure it gets unconfigured properly in any</span>
+        <span class="c"># case (otherwise capturing could still be active, for example)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">addfinalizer</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">_ensure_unconfigure</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">config</span>
+
+    <span class="k">def</span> <span class="nf">parseconfigure</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return a new py.test configured Config instance.</span>
+
+<span class="sd">        This returns a new :py:class:`_pytest.config.Config` instance</span>
+<span class="sd">        like :py:meth:`parseconfig`, but also calls the</span>
+<span class="sd">        pytest_configure hook.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">config</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parseconfig</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">_do_configure</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">addfinalizer</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">_ensure_unconfigure</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">config</span>
+
+    <span class="k">def</span> <span class="nf">getitem</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>  <span class="n">source</span><span class="p">,</span> <span class="n">funcname</span><span class="o">=</span><span class="s">&quot;test_func&quot;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the test item for a test function.</span>
+
+<span class="sd">        This writes the source to a python file and runs py.test&#39;s</span>
+<span class="sd">        collection on the resulting module, returning the test item</span>
+<span class="sd">        for the requested function name.</span>
+
+<span class="sd">        :param source: The module source.</span>
+
+<span class="sd">        :param funcname: The name of the test function for which the</span>
+<span class="sd">           Item must be returned.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">items</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">getitems</span><span class="p">(</span><span class="n">source</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">items</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">item</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="n">funcname</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">item</span>
+        <span class="k">assert</span> <span class="mi">0</span><span class="p">,</span> <span class="s">&quot;</span><span class="si">%r</span><span class="s"> item not found in module:</span><span class="se">\n</span><span class="si">%s</span><span class="se">\n</span><span class="s">items: </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span><span class="p">(</span>
+                  <span class="n">funcname</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">items</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">getitems</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>  <span class="n">source</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return all test items collected from the module.</span>
+
+<span class="sd">        This writes the source to a python file and runs py.test&#39;s</span>
+<span class="sd">        collection on the resulting module, returning all test items</span>
+<span class="sd">        contained within.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">modcol</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">getmodulecol</span><span class="p">(</span><span class="n">source</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">genitems</span><span class="p">([</span><span class="n">modcol</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">getmodulecol</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>  <span class="n">source</span><span class="p">,</span> <span class="n">configargs</span><span class="o">=</span><span class="p">(),</span> <span class="n">withinit</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the module collection node for ``source``.</span>
+
+<span class="sd">        This writes ``source`` to a file using :py:meth:`makepyfile`</span>
+<span class="sd">        and then runs the py.test collection on it, returning the</span>
+<span class="sd">        collection node for the test module.</span>
+
+<span class="sd">        :param source: The source code of the module to collect.</span>
+
+<span class="sd">        :param configargs: Any extra arguments to pass to</span>
+<span class="sd">           :py:meth:`parseconfigure`.</span>
+
+<span class="sd">        :param withinit: Whether to also write a ``__init__.py`` file</span>
+<span class="sd">           to the temporarly directory to ensure it is a package.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">kw</span> <span class="o">=</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">function</span><span class="o">.</span><span class="n">__name__</span><span class="p">:</span> <span class="n">py</span><span class="o">.</span><span class="n">code</span><span class="o">.</span><span class="n">Source</span><span class="p">(</span><span class="n">source</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()}</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">makepyfile</span><span class="p">(</span><span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">withinit</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">makepyfile</span><span class="p">(</span><span class="n">__init__</span> <span class="o">=</span> <span class="s">&quot;#&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">config</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parseconfigure</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="o">*</span><span class="n">configargs</span><span class="p">)</span>
+        <span class="n">node</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">getnode</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">node</span>
+
+    <span class="k">def</span> <span class="nf">collect_by_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">modcol</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the collection node for name from the module collection.</span>
+
+<span class="sd">        This will search a module collection node for a collection</span>
+<span class="sd">        node matching the given name.</span>
+
+<span class="sd">        :param modcol: A module collection node, see</span>
+<span class="sd">           :py:meth:`getmodulecol`.</span>
+
+<span class="sd">        :param name: The name of the node to return.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">colitem</span> <span class="ow">in</span> <span class="n">modcol</span><span class="o">.</span><span class="n">_memocollect</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">colitem</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="n">name</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">colitem</span>
+
+    <span class="k">def</span> <span class="nf">popen</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cmdargs</span><span class="p">,</span> <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Invoke subprocess.Popen.</span>
+
+<span class="sd">        This calls subprocess.Popen making sure the current working</span>
+<span class="sd">        directory is the PYTHONPATH.</span>
+
+<span class="sd">        You probably want to use :py:meth:`run` instead.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">env</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">env</span><span class="p">[</span><span class="s">&#39;PYTHONPATH&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">pathsep</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">filter</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="p">[</span>
+            <span class="nb">str</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">getcwd</span><span class="p">()),</span> <span class="n">env</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;PYTHONPATH&#39;</span><span class="p">,</span> <span class="s">&#39;&#39;</span><span class="p">)]))</span>
+        <span class="n">kw</span><span class="p">[</span><span class="s">&#39;env&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">env</span>
+        <span class="k">return</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">(</span><span class="n">cmdargs</span><span class="p">,</span>
+                                <span class="n">stdout</span><span class="o">=</span><span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="n">stderr</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">cmdargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Run a command with arguments.</span>
+
+<span class="sd">        Run a process using subprocess.Popen saving the stdout and</span>
+<span class="sd">        stderr.</span>
+
+<span class="sd">        Returns a :py:class:`RunResult`.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_run</span><span class="p">(</span><span class="o">*</span><span class="n">cmdargs</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">cmdargs</span><span class="p">):</span>
+        <span class="n">cmdargs</span> <span class="o">=</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">cmdargs</span><span class="p">]</span>
+        <span class="n">p1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tmpdir</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&quot;stdout&quot;</span><span class="p">)</span>
+        <span class="n">p2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tmpdir</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&quot;stderr&quot;</span><span class="p">)</span>
+        <span class="n">print_</span><span class="p">(</span><span class="s">&quot;running:&quot;</span><span class="p">,</span> <span class="s">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">cmdargs</span><span class="p">))</span>
+        <span class="n">print_</span><span class="p">(</span><span class="s">&quot;     in:&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">py</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">local</span><span class="p">()))</span>
+        <span class="n">f1</span> <span class="o">=</span> <span class="n">codecs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">p1</span><span class="p">),</span> <span class="s">&quot;w&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">&quot;utf8&quot;</span><span class="p">)</span>
+        <span class="n">f2</span> <span class="o">=</span> <span class="n">codecs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">p2</span><span class="p">),</span> <span class="s">&quot;w&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">&quot;utf8&quot;</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">now</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+            <span class="n">popen</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">popen</span><span class="p">(</span><span class="n">cmdargs</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=</span><span class="n">f1</span><span class="p">,</span> <span class="n">stderr</span><span class="o">=</span><span class="n">f2</span><span class="p">,</span>
+                <span class="n">close_fds</span><span class="o">=</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">platform</span> <span class="o">!=</span> <span class="s">&quot;win32&quot;</span><span class="p">))</span>
+            <span class="n">ret</span> <span class="o">=</span> <span class="n">popen</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">f1</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="n">f2</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">f1</span> <span class="o">=</span> <span class="n">codecs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">p1</span><span class="p">),</span> <span class="s">&quot;r&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">&quot;utf8&quot;</span><span class="p">)</span>
+        <span class="n">f2</span> <span class="o">=</span> <span class="n">codecs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">p2</span><span class="p">),</span> <span class="s">&quot;r&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s">&quot;utf8&quot;</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">out</span> <span class="o">=</span> <span class="n">f1</span><span class="o">.</span><span class="n">read</span><span class="p">()</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()</span>
+            <span class="n">err</span> <span class="o">=</span> <span class="n">f2</span><span class="o">.</span><span class="n">read</span><span class="p">()</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">f1</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="n">f2</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dump_lines</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dump_lines</span><span class="p">(</span><span class="n">err</span><span class="p">,</span> <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">RunResult</span><span class="p">(</span><span class="n">ret</span><span class="p">,</span> <span class="n">out</span><span class="p">,</span> <span class="n">err</span><span class="p">,</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span><span class="o">-</span><span class="n">now</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_dump_lines</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lines</span><span class="p">,</span> <span class="n">fp</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+                <span class="n">py</span><span class="o">.</span><span class="n">builtin</span><span class="o">.</span><span class="n">print_</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="nb">file</span><span class="o">=</span><span class="n">fp</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">UnicodeEncodeError</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s">&quot;couldn&#39;t print to </span><span class="si">%s</span><span class="s"> because of encoding&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">fp</span><span class="p">,))</span>
+
+    <span class="k">def</span> <span class="nf">_getpytestargs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># we cannot use &quot;(sys.executable,script)&quot;</span>
+        <span class="c"># because on windows the script is e.g. a py.test.exe</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span> <span class="n">_pytest_fullpath</span><span class="p">,)</span> <span class="c"># noqa</span>
+
+    <span class="k">def</span> <span class="nf">runpython</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">script</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Run a python script using sys.executable as interpreter.</span>
+
+<span class="sd">        Returns a :py:class:`RunResult`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span> <span class="n">script</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">runpython_c</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">command</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Run python -c &quot;command&quot;, return a :py:class:`RunResult`.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span> <span class="s">&quot;-c&quot;</span><span class="p">,</span> <span class="n">command</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Testdir.runpytest_subprocess"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.pytester.Testdir.runpytest_subprocess">[docs]</a>    <span class="k">def</span> <span class="nf">runpytest_subprocess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Run py.test as a subprocess with given arguments.</span>
+
+<span class="sd">        Any plugins added to the :py:attr:`plugins` list will added</span>
+<span class="sd">        using the ``-p`` command line option.  Addtionally</span>
+<span class="sd">        ``--basetemp`` is used put any temporary files and directories</span>
+<span class="sd">        in a numbered directory prefixed with &quot;runpytest-&quot; so they do</span>
+<span class="sd">        not conflict with the normal numberd pytest location for</span>
+<span class="sd">        temporary files and directories.</span>
+
+<span class="sd">        Returns a :py:class:`RunResult`.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">local</span><span class="o">.</span><span class="n">make_numbered_dir</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s">&quot;runpytest-&quot;</span><span class="p">,</span>
+            <span class="n">keep</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">rootdir</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">tmpdir</span><span class="p">)</span>
+        <span class="n">args</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;--basetemp=</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">p</span><span class="p">,</span> <span class="p">)</span> <span class="o">+</span> <span class="n">args</span>
+        <span class="c">#for x in args:</span>
+        <span class="c">#    if &#39;--confcutdir&#39; in str(x):</span>
+        <span class="c">#        break</span>
+        <span class="c">#else:</span>
+        <span class="c">#    pass</span>
+        <span class="c">#    args = (&#39;--confcutdir=.&#39;,) + args</span>
+        <span class="n">plugins</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">plugins</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="nb">str</span><span class="p">)]</span>
+        <span class="k">if</span> <span class="n">plugins</span><span class="p">:</span>
+            <span class="n">args</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;-p&#39;</span><span class="p">,</span> <span class="n">plugins</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">+</span> <span class="n">args</span>
+        <span class="n">args</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_getpytestargs</span><span class="p">()</span> <span class="o">+</span> <span class="n">args</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">spawn_pytest</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">string</span><span class="p">,</span> <span class="n">expect_timeout</span><span class="o">=</span><span class="mf">10.0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Run py.test using pexpect.</span>
+
+<span class="sd">        This makes sure to use the right py.test and sets up the</span>
+<span class="sd">        temporary directory locations.</span>
+
+<span class="sd">        The pexpect child is returned.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">basetemp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tmpdir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="s">&quot;pexpect&quot;</span><span class="p">)</span>
+        <span class="n">invoke</span> <span class="o">=</span> <span class="s">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_getpytestargs</span><span class="p">()))</span>
+        <span class="n">cmd</span> <span class="o">=</span> <span class="s">&quot;</span><span class="si">%s</span><span class="s"> --basetemp=</span><span class="si">%s</span><span class="s"> </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">invoke</span><span class="p">,</span> <span class="n">basetemp</span><span class="p">,</span> <span class="n">string</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">expect_timeout</span><span class="o">=</span><span class="n">expect_timeout</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">spawn</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cmd</span><span class="p">,</span> <span class="n">expect_timeout</span><span class="o">=</span><span class="mf">10.0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Run a command using pexpect.</span>
+
+<span class="sd">        The pexpect child is returned.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">pexpect</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">importorskip</span><span class="p">(</span><span class="s">&quot;pexpect&quot;</span><span class="p">,</span> <span class="s">&quot;3.0&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">sys</span><span class="p">,</span> <span class="s">&#39;pypy_version_info&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="s">&#39;64&#39;</span> <span class="ow">in</span> <span class="n">platform</span><span class="o">.</span><span class="n">machine</span><span class="p">():</span>
+            <span class="n">pytest</span><span class="o">.</span><span class="n">skip</span><span class="p">(</span><span class="s">&quot;pypy-64 bit not supported&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">platform</span> <span class="o">==</span> <span class="s">&quot;darwin&quot;</span><span class="p">:</span>
+            <span class="n">pytest</span><span class="o">.</span><span class="n">xfail</span><span class="p">(</span><span class="s">&quot;pexpect does not work reliably on darwin?!&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">sys</span><span class="o">.</span><span class="n">platform</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&quot;freebsd&quot;</span><span class="p">):</span>
+            <span class="n">pytest</span><span class="o">.</span><span class="n">xfail</span><span class="p">(</span><span class="s">&quot;pexpect does not work reliably on freebsd&quot;</span><span class="p">)</span>
+        <span class="n">logfile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tmpdir</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s">&quot;spawn.out&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s">&quot;wb&quot;</span><span class="p">)</span>
+        <span class="n">child</span> <span class="o">=</span> <span class="n">pexpect</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">logfile</span><span class="o">=</span><span class="n">logfile</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">addfinalizer</span><span class="p">(</span><span class="n">logfile</span><span class="o">.</span><span class="n">close</span><span class="p">)</span>
+        <span class="n">child</span><span class="o">.</span><span class="n">timeout</span> <span class="o">=</span> <span class="n">expect_timeout</span>
+        <span class="k">return</span> <span class="n">child</span>
+</div>
+<span class="k">def</span> <span class="nf">getdecoded</span><span class="p">(</span><span class="n">out</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">UnicodeDecodeError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&quot;INTERNAL not-utf8-decodeable, truncated string:</span><span class="se">\n</span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="p">(</span>
+                    <span class="n">py</span><span class="o">.</span><span class="n">io</span><span class="o">.</span><span class="n">saferepr</span><span class="p">(</span><span class="n">out</span><span class="p">),)</span>
+
+
+<span class="k">class</span> <span class="nc">LineComp</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stringio</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">io</span><span class="o">.</span><span class="n">TextIO</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">assert_contains_lines</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lines2</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; assert that lines2 are contained (linearly) in lines1.</span>
+<span class="sd">            return a list of extralines found.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">__tracebackhide__</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="n">val</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">stringio</span><span class="o">.</span><span class="n">getvalue</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stringio</span><span class="o">.</span><span class="n">truncate</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stringio</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">lines1</span> <span class="o">=</span> <span class="n">val</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">LineMatcher</span><span class="p">(</span><span class="n">lines1</span><span class="p">)</span><span class="o">.</span><span class="n">fnmatch_lines</span><span class="p">(</span><span class="n">lines2</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="LineMatcher"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.pytester.LineMatcher">[docs]</a><span class="k">class</span> <span class="nc">LineMatcher</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Flexible matching of text.</span>
+
+<span class="sd">    This is a convenience class to test large texts like the output of</span>
+<span class="sd">    commands.</span>
+
+<span class="sd">    The constructor takes a list of lines without their trailing</span>
+<span class="sd">    newlines, i.e. ``text.splitlines()``.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>  <span class="n">lines</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lines</span> <span class="o">=</span> <span class="n">lines</span>
+
+<div class="viewcode-block" id="LineMatcher.str"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.pytester.LineMatcher.str">[docs]</a>    <span class="k">def</span> <span class="nf">str</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the entire original text.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lines</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">_getlines</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lines2</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">lines2</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">lines2</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">code</span><span class="o">.</span><span class="n">Source</span><span class="p">(</span><span class="n">lines2</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">lines2</span><span class="p">,</span> <span class="n">py</span><span class="o">.</span><span class="n">code</span><span class="o">.</span><span class="n">Source</span><span class="p">):</span>
+            <span class="n">lines2</span> <span class="o">=</span> <span class="n">lines2</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lines</span>
+        <span class="k">return</span> <span class="n">lines2</span>
+
+<div class="viewcode-block" id="LineMatcher.fnmatch_lines_random"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.pytester.LineMatcher.fnmatch_lines_random">[docs]</a>    <span class="k">def</span> <span class="nf">fnmatch_lines_random</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lines2</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Check lines exist in the output.</span>
+
+<span class="sd">        The argument is a list of lines which have to occur in the</span>
+<span class="sd">        output, in any order.  Each line can contain glob whildcards.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">lines2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_getlines</span><span class="p">(</span><span class="n">lines2</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines2</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lines</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">line</span> <span class="o">==</span> <span class="n">x</span> <span class="ow">or</span> <span class="n">fnmatch</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">line</span><span class="p">):</span>
+                    <span class="n">print_</span><span class="p">(</span><span class="s">&quot;matched: &quot;</span><span class="p">,</span> <span class="nb">repr</span><span class="p">(</span><span class="n">line</span><span class="p">))</span>
+                    <span class="k">break</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;line </span><span class="si">%r</span><span class="s"> not found in output&quot;</span> <span class="o">%</span> <span class="n">line</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="LineMatcher.get_lines_after"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.pytester.LineMatcher.get_lines_after">[docs]</a>    <span class="k">def</span> <span class="nf">get_lines_after</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fnline</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return all lines following the given line in the text.</span>
+
+<span class="sd">        The given line can contain glob wildcards.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lines</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">fnline</span> <span class="o">==</span> <span class="n">line</span> <span class="ow">or</span> <span class="n">fnmatch</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">fnline</span><span class="p">):</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">lines</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;line </span><span class="si">%r</span><span class="s"> not found in output&quot;</span> <span class="o">%</span> <span class="n">fnline</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="LineMatcher.fnmatch_lines"><a class="viewcode-back" href="../../writing_plugins.html#_pytest.pytester.LineMatcher.fnmatch_lines">[docs]</a>    <span class="k">def</span> <span class="nf">fnmatch_lines</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lines2</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Search the text for matching lines.</span>
+
+<span class="sd">        The argument is a list of lines which have to match and can</span>
+<span class="sd">        use glob wildcards.  If they do not match an pytest.fail() is</span>
+<span class="sd">        called.  The matches and non-matches are also printed on</span>
+<span class="sd">        stdout.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">def</span> <span class="nf">show</span><span class="p">(</span><span class="n">arg1</span><span class="p">,</span> <span class="n">arg2</span><span class="p">):</span>
+            <span class="n">py</span><span class="o">.</span><span class="n">builtin</span><span class="o">.</span><span class="n">print_</span><span class="p">(</span><span class="n">arg1</span><span class="p">,</span> <span class="n">arg2</span><span class="p">,</span> <span class="nb">file</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">)</span>
+        <span class="n">lines2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_getlines</span><span class="p">(</span><span class="n">lines2</span><span class="p">)</span>
+        <span class="n">lines1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lines</span><span class="p">[:]</span>
+        <span class="n">nextline</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">extralines</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">__tracebackhide__</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines2</span><span class="p">:</span>
+            <span class="n">nomatchprinted</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="k">while</span> <span class="n">lines1</span><span class="p">:</span>
+                <span class="n">nextline</span> <span class="o">=</span> <span class="n">lines1</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">line</span> <span class="o">==</span> <span class="n">nextline</span><span class="p">:</span>
+                    <span class="n">show</span><span class="p">(</span><span class="s">&quot;exact match:&quot;</span><span class="p">,</span> <span class="nb">repr</span><span class="p">(</span><span class="n">line</span><span class="p">))</span>
+                    <span class="k">break</span>
+                <span class="k">elif</span> <span class="n">fnmatch</span><span class="p">(</span><span class="n">nextline</span><span class="p">,</span> <span class="n">line</span><span class="p">):</span>
+                    <span class="n">show</span><span class="p">(</span><span class="s">&quot;fnmatch:&quot;</span><span class="p">,</span> <span class="nb">repr</span><span class="p">(</span><span class="n">line</span><span class="p">))</span>
+                    <span class="n">show</span><span class="p">(</span><span class="s">&quot;   with:&quot;</span><span class="p">,</span> <span class="nb">repr</span><span class="p">(</span><span class="n">nextline</span><span class="p">))</span>
+                    <span class="k">break</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">nomatchprinted</span><span class="p">:</span>
+                        <span class="n">show</span><span class="p">(</span><span class="s">&quot;nomatch:&quot;</span><span class="p">,</span> <span class="nb">repr</span><span class="p">(</span><span class="n">line</span><span class="p">))</span>
+                        <span class="n">nomatchprinted</span> <span class="o">=</span> <span class="bp">True</span>
+                    <span class="n">show</span><span class="p">(</span><span class="s">&quot;    and:&quot;</span><span class="p">,</span> <span class="nb">repr</span><span class="p">(</span><span class="n">nextline</span><span class="p">))</span>
+                <span class="n">extralines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nextline</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">pytest</span><span class="o">.</span><span class="n">fail</span><span class="p">(</span><span class="s">&quot;remains unmatched: </span><span class="si">%r</span><span class="s">, see stderr&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">line</span><span class="p">,))</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../../contents.html">
+              <img class="logo" src="../../_static/pytest1.png" alt="Logo"/>
+            </a></p><h3><a href="../../contents.html">Table Of Contents</a></h3>
+
+<ul>
+  <li><a href="../../index.html">Home</a></li>
+  <li><a href="../../contents.html">Contents</a></li>
+  <li><a href="../../getting-started.html">Install</a></li>
+  <li><a href="../../example/index.html">Examples</a></li>
+  <li><a href="../../customize.html">Customize</a></li>
+  <li><a href="../../contact.html">Contact</a></li>
+  <li><a href="../../talks.html">Talks/Posts</a></li>
+  <li><a href="../../changelog.html">Changelog</a></li>
+</ul><h3>Related Topics</h3>
+<ul>
+  <li><a href="../../contents.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul><h3>Useful Links</h3>
+<ul>
+  <li><a href="../../index.html">The pytest Website</a></li>
+  <li><a href="../../contributing.html">Contribution Guide</a></li>
+  <li><a href="https://pypi.python.org/pypi/pytest">pytest @ PyPI</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/">pytest @ GitHub</a></li>
+  <li><a href="http://pytest.org/latest/plugins_index/index.html">3rd party plugins</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/issues">Issue Tracker</a></li>
+  <li><a href="http://pytest.org/latest/pytest.pdf">PDF Documentation</a>
+</ul>
+
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+
+  <div class="footer">
+    &copy; Copyright 2015, holger krekel and pytest-dev team.
+    Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+  </div>
+  
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-7597274-13']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+  </body>
+</html>

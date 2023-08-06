@@ -1,0 +1,300 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Monkeypatching/mocking modules and environments</title>
+    
+    <link rel="stylesheet" href="_static/flasky.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '2.7.3.dev376+ng06b1b69.d20150827',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="shortcut icon" href="_static/pytest1favi.ico"/>
+    <link rel="top" title="None" href="contents.html" />
+    <link rel="up" title="pytest reference documentation" href="apiref.html" />
+    <link rel="next" title="xdist: pytest distributed testing plugin" href="xdist.html" />
+    <link rel="prev" title="Capturing of the stdout/stderr output" href="capture.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+  
+  
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="xdist.html" title="xdist: pytest distributed testing plugin"
+             accesskey="N">next</a></li>
+        <li class="right" >
+          <a href="capture.html" title="Capturing of the stdout/stderr output"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="contents.html">pytest-2.7.3.dev376+ng06b1b69.d20150827</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="apiref.html" accesskey="U">pytest reference documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="monkeypatching-mocking-modules-and-environments">
+<h1>Monkeypatching/mocking modules and environments<a class="headerlink" href="#monkeypatching-mocking-modules-and-environments" title="Permalink to this headline">¶</a></h1>
+<p>Sometimes tests need to invoke functionality which depends
+on global settings or which invokes code which cannot be easily
+tested such as network access.  The <code class="docutils literal"><span class="pre">monkeypatch</span></code> function argument
+helps you to safely set/delete an attribute, dictionary item or
+environment variable or to modify <code class="docutils literal"><span class="pre">sys.path</span></code> for importing.
+See the <a class="reference external" href="http://tetamap.wordpress.com/2009/03/03/monkeypatching-in-unit-tests-done-right/">monkeypatch blog post</a> for some introduction material
+and a discussion of its motivation.</p>
+<div class="section" id="simple-example-monkeypatching-functions">
+<h2>Simple example: monkeypatching functions<a class="headerlink" href="#simple-example-monkeypatching-functions" title="Permalink to this headline">¶</a></h2>
+<p>If you want to pretend that <code class="docutils literal"><span class="pre">os.expanduser</span></code> returns a certain
+directory, you can use the <a class="reference internal" href="#_pytest.monkeypatch.monkeypatch.setattr" title="_pytest.monkeypatch.monkeypatch.setattr"><code class="xref py py-meth docutils literal"><span class="pre">monkeypatch.setattr()</span></code></a> method to
+patch this function before calling into a function which uses it:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of test_module.py</span>
+<span class="kn">import</span> <span class="nn">os.path</span>
+<span class="k">def</span> <span class="nf">getssh</span><span class="p">():</span> <span class="c"># pseudo application code</span>
+    <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="s">&quot;~admin&quot;</span><span class="p">),</span> <span class="s">&#39;.ssh&#39;</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">test_mytest</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">mockreturn</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;/abc&#39;</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="s">&#39;expanduser&#39;</span><span class="p">,</span> <span class="n">mockreturn</span><span class="p">)</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">getssh</span><span class="p">()</span>
+    <span class="k">assert</span> <span class="n">x</span> <span class="o">==</span> <span class="s">&#39;/abc/.ssh&#39;</span>
+</pre></div>
+</div>
+<p>Here our test function monkeypatches <code class="docutils literal"><span class="pre">os.path.expanduser</span></code> and
+then calls into an function that calls it.  After the test function
+finishes the <code class="docutils literal"><span class="pre">os.path.expanduser</span></code> modification will be undone.</p>
+</div>
+<div class="section" id="example-preventing-requests-from-remote-operations">
+<h2>example: preventing &#8220;requests&#8221; from remote operations<a class="headerlink" href="#example-preventing-requests-from-remote-operations" title="Permalink to this headline">¶</a></h2>
+<p>If you want to prevent the &#8220;requests&#8221; library from performing http
+requests in all your tests, you can do:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of conftest.py</span>
+<span class="kn">import</span> <span class="nn">pytest</span>
+<span class="nd">@pytest.fixture</span><span class="p">(</span><span class="n">autouse</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">no_requests</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">delattr</span><span class="p">(</span><span class="s">&quot;requests.sessions.Session.request&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>This autouse fixture will be executed for each test function and it
+will delete the method <code class="docutils literal"><span class="pre">request.session.Session.request</span></code>
+so that any attempts within tests to create http requests will fail.</p>
+</div>
+<div class="section" id="example-setting-an-attribute-on-some-class">
+<h2>example: setting an attribute on some class<a class="headerlink" href="#example-setting-an-attribute-on-some-class" title="Permalink to this headline">¶</a></h2>
+<p>If you need to patch out <code class="docutils literal"><span class="pre">os.getcwd()</span></code> to return an artificial
+value:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">test_some_interaction</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="s">&quot;os.getcwd&quot;</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="s">&quot;/&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>which is equivalent to the long form:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">test_some_interaction</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">):</span>
+    <span class="kn">import</span> <span class="nn">os</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setattr</span><span class="p">(</span><span class="n">os</span><span class="p">,</span> <span class="s">&quot;getcwd&quot;</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="s">&quot;/&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="method-reference-of-the-monkeypatch-function-argument">
+<h2>Method reference of the monkeypatch function argument<a class="headerlink" href="#method-reference-of-the-monkeypatch-function-argument" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="_pytest.monkeypatch.monkeypatch">
+<em class="property">class </em><code class="descname">monkeypatch</code><a class="reference internal" href="_modules/_pytest/monkeypatch.html#monkeypatch"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#_pytest.monkeypatch.monkeypatch" title="Permalink to this definition">¶</a></dt>
+<dd><p>Object keeping a record of setattr/item/env/syspath changes.</p>
+<dl class="method">
+<dt id="_pytest.monkeypatch.monkeypatch.setattr">
+<code class="descname">setattr</code><span class="sig-paren">(</span><em>target</em>, <em>name</em>, <em>value=&lt;notset&gt;</em>, <em>raising=True</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/_pytest/monkeypatch.html#monkeypatch.setattr"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#_pytest.monkeypatch.monkeypatch.setattr" title="Permalink to this definition">¶</a></dt>
+<dd><p>Set attribute value on target, memorizing the old value.
+By default raise AttributeError if the attribute did not exist.</p>
+<p>For convenience you can specify a string as <code class="docutils literal"><span class="pre">target</span></code> which
+will be interpreted as a dotted import path, with the last part
+being the attribute name.  Example:
+<code class="docutils literal"><span class="pre">monkeypatch.setattr(&quot;os.getcwd&quot;,</span> <span class="pre">lambda</span> <span class="pre">x:</span> <span class="pre">&quot;/&quot;)</span></code>
+would set the <code class="docutils literal"><span class="pre">getcwd</span></code> function of the <code class="docutils literal"><span class="pre">os</span></code> module.</p>
+<p>The <code class="docutils literal"><span class="pre">raising</span></code> value determines if the setattr should fail
+if the attribute is not already present (defaults to True
+which means it will raise).</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="_pytest.monkeypatch.monkeypatch.delattr">
+<code class="descname">delattr</code><span class="sig-paren">(</span><em>target</em>, <em>name=&lt;notset&gt;</em>, <em>raising=True</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/_pytest/monkeypatch.html#monkeypatch.delattr"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#_pytest.monkeypatch.monkeypatch.delattr" title="Permalink to this definition">¶</a></dt>
+<dd><p>Delete attribute <code class="docutils literal"><span class="pre">name</span></code> from <code class="docutils literal"><span class="pre">target</span></code>, by default raise
+AttributeError it the attribute did not previously exist.</p>
+<p>If no <code class="docutils literal"><span class="pre">name</span></code> is specified and <code class="docutils literal"><span class="pre">target</span></code> is a string
+it will be interpreted as a dotted import path with the
+last part being the attribute name.</p>
+<p>If <code class="docutils literal"><span class="pre">raising</span></code> is set to False, no exception will be raised if the
+attribute is missing.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="_pytest.monkeypatch.monkeypatch.setitem">
+<code class="descname">setitem</code><span class="sig-paren">(</span><em>dic</em>, <em>name</em>, <em>value</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/_pytest/monkeypatch.html#monkeypatch.setitem"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#_pytest.monkeypatch.monkeypatch.setitem" title="Permalink to this definition">¶</a></dt>
+<dd><p>Set dictionary entry <code class="docutils literal"><span class="pre">name</span></code> to value.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="_pytest.monkeypatch.monkeypatch.delitem">
+<code class="descname">delitem</code><span class="sig-paren">(</span><em>dic</em>, <em>name</em>, <em>raising=True</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/_pytest/monkeypatch.html#monkeypatch.delitem"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#_pytest.monkeypatch.monkeypatch.delitem" title="Permalink to this definition">¶</a></dt>
+<dd><p>Delete <code class="docutils literal"><span class="pre">name</span></code> from dict. Raise KeyError if it doesn&#8217;t exist.</p>
+<p>If <code class="docutils literal"><span class="pre">raising</span></code> is set to False, no exception will be raised if the
+key is missing.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="_pytest.monkeypatch.monkeypatch.setenv">
+<code class="descname">setenv</code><span class="sig-paren">(</span><em>name</em>, <em>value</em>, <em>prepend=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/_pytest/monkeypatch.html#monkeypatch.setenv"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#_pytest.monkeypatch.monkeypatch.setenv" title="Permalink to this definition">¶</a></dt>
+<dd><p>Set environment variable <code class="docutils literal"><span class="pre">name</span></code> to <code class="docutils literal"><span class="pre">value</span></code>.  If <code class="docutils literal"><span class="pre">prepend</span></code>
+is a character, read the current environment variable value
+and prepend the <code class="docutils literal"><span class="pre">value</span></code> adjoined with the <code class="docutils literal"><span class="pre">prepend</span></code> character.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="_pytest.monkeypatch.monkeypatch.delenv">
+<code class="descname">delenv</code><span class="sig-paren">(</span><em>name</em>, <em>raising=True</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/_pytest/monkeypatch.html#monkeypatch.delenv"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#_pytest.monkeypatch.monkeypatch.delenv" title="Permalink to this definition">¶</a></dt>
+<dd><p>Delete <code class="docutils literal"><span class="pre">name</span></code> from the environment. Raise KeyError it does not
+exist.</p>
+<p>If <code class="docutils literal"><span class="pre">raising</span></code> is set to False, no exception will be raised if the
+environment variable is missing.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="_pytest.monkeypatch.monkeypatch.syspath_prepend">
+<code class="descname">syspath_prepend</code><span class="sig-paren">(</span><em>path</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/_pytest/monkeypatch.html#monkeypatch.syspath_prepend"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#_pytest.monkeypatch.monkeypatch.syspath_prepend" title="Permalink to this definition">¶</a></dt>
+<dd><p>Prepend <code class="docutils literal"><span class="pre">path</span></code> to <code class="docutils literal"><span class="pre">sys.path</span></code> list of import locations.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="_pytest.monkeypatch.monkeypatch.chdir">
+<code class="descname">chdir</code><span class="sig-paren">(</span><em>path</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/_pytest/monkeypatch.html#monkeypatch.chdir"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#_pytest.monkeypatch.monkeypatch.chdir" title="Permalink to this definition">¶</a></dt>
+<dd><p>Change the current working directory to the specified path.
+Path can be a string or a py.path.local object.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="_pytest.monkeypatch.monkeypatch.undo">
+<code class="descname">undo</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/_pytest/monkeypatch.html#monkeypatch.undo"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#_pytest.monkeypatch.monkeypatch.undo" title="Permalink to this definition">¶</a></dt>
+<dd><p>Undo previous changes.  This call consumes the
+undo stack. Calling it a second time has no effect unless
+you do more monkeypatching after the undo call.</p>
+</dd></dl>
+
+</dd></dl>
+
+<p><code class="docutils literal"><span class="pre">monkeypatch.setattr/delattr/delitem/delenv()</span></code> all
+by default raise an Exception if the target does not exist.
+Pass <code class="docutils literal"><span class="pre">raising=False</span></code> if you want to skip this check.</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="contents.html">
+              <img class="logo" src="_static/pytest1.png" alt="Logo"/>
+            </a></p><h3><a href="contents.html">Table Of Contents</a></h3>
+
+<ul>
+  <li><a href="index.html">Home</a></li>
+  <li><a href="contents.html">Contents</a></li>
+  <li><a href="getting-started.html">Install</a></li>
+  <li><a href="example/index.html">Examples</a></li>
+  <li><a href="customize.html">Customize</a></li>
+  <li><a href="contact.html">Contact</a></li>
+  <li><a href="talks.html">Talks/Posts</a></li>
+  <li><a href="changelog.html">Changelog</a></li>
+</ul>
+  <hr>
+  <ul>
+<li><a class="reference internal" href="#">Monkeypatching/mocking modules and environments</a><ul>
+<li><a class="reference internal" href="#simple-example-monkeypatching-functions">Simple example: monkeypatching functions</a></li>
+<li><a class="reference internal" href="#example-preventing-requests-from-remote-operations">example: preventing &#8220;requests&#8221; from remote operations</a></li>
+<li><a class="reference internal" href="#example-setting-an-attribute-on-some-class">example: setting an attribute on some class</a></li>
+<li><a class="reference internal" href="#method-reference-of-the-monkeypatch-function-argument">Method reference of the monkeypatch function argument</a></li>
+</ul>
+</li>
+</ul>
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="contents.html">Documentation overview</a><ul>
+  <li><a href="apiref.html">pytest reference documentation</a><ul>
+      <li>Previous: <a href="capture.html" title="previous chapter">Capturing of the stdout/stderr output</a></li>
+      <li>Next: <a href="xdist.html" title="next chapter">xdist: pytest distributed testing plugin</a></li>
+  </ul></li>
+  </ul></li>
+</ul><h3>Useful Links</h3>
+<ul>
+  <li><a href="index.html">The pytest Website</a></li>
+  <li><a href="contributing.html">Contribution Guide</a></li>
+  <li><a href="https://pypi.python.org/pypi/pytest">pytest @ PyPI</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/">pytest @ GitHub</a></li>
+  <li><a href="http://pytest.org/latest/plugins_index/index.html">3rd party plugins</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/issues">Issue Tracker</a></li>
+  <li><a href="http://pytest.org/latest/pytest.pdf">PDF Documentation</a>
+</ul>
+
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+
+  <div class="footer">
+    &copy; Copyright 2015, holger krekel and pytest-dev team.
+    Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+  </div>
+  
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-7597274-13']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+  </body>
+</html>

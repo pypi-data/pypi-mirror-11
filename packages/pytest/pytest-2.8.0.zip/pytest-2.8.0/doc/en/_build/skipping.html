@@ -1,0 +1,443 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Skip and xfail: dealing with tests that can not succeed</title>
+    
+    <link rel="stylesheet" href="_static/flasky.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '2.7.3.dev376+ng06b1b69.d20150827',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="shortcut icon" href="_static/pytest1favi.ico"/>
+    <link rel="top" title="None" href="contents.html" />
+    <link rel="up" title="pytest reference documentation" href="apiref.html" />
+    <link rel="next" title="Asserting Warnings" href="recwarn.html" />
+    <link rel="prev" title="Marking test functions with attributes" href="mark.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+  
+  
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="recwarn.html" title="Asserting Warnings"
+             accesskey="N">next</a></li>
+        <li class="right" >
+          <a href="mark.html" title="Marking test functions with attributes"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="contents.html">pytest-2.7.3.dev376+ng06b1b69.d20150827</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="apiref.html" accesskey="U">pytest reference documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="skip-and-xfail-dealing-with-tests-that-can-not-succeed">
+<span id="skipping"></span><span id="skip-and-xfail"></span><h1>Skip and xfail: dealing with tests that can not succeed<a class="headerlink" href="#skip-and-xfail-dealing-with-tests-that-can-not-succeed" title="Permalink to this headline">¶</a></h1>
+<p>If you have test functions that cannot be run on certain platforms
+or that you expect to fail you can mark them accordingly or you
+may call helper functions during execution of setup or test functions.</p>
+<p>A <em>skip</em> means that you expect your test to pass unless the environment
+(e.g. wrong Python interpreter, missing dependency) prevents it to run.
+And <em>xfail</em> means that your test can run but you expect it to fail
+because there is an implementation problem.</p>
+<p><code class="docutils literal"><span class="pre">pytest</span></code> counts and lists <em>skip</em> and <em>xfail</em> tests separately. Detailed
+information about skipped/xfailed tests is not shown by default to avoid
+cluttering the output.  You can use the <code class="docutils literal"><span class="pre">-r</span></code> option to see details
+corresponding to the &#8220;short&#8221; letters shown in the test progress:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">py</span><span class="o">.</span><span class="n">test</span> <span class="o">-</span><span class="n">rxs</span>  <span class="c"># show extra info on skips and xfails</span>
+</pre></div>
+</div>
+<p>(See <a class="reference internal" href="customize.html#how-to-change-command-line-options-defaults"><span>How to change command line options defaults</span></a>)</p>
+<div class="section" id="marking-a-test-function-to-be-skipped">
+<span id="condition-booleans"></span><span id="skipif"></span><h2>Marking a test function to be skipped<a class="headerlink" href="#marking-a-test-function-to-be-skipped" title="Permalink to this headline">¶</a></h2>
+<div class="versionadded">
+<p><span class="versionmodified">New in version 2.0,: </span>2.4</p>
+</div>
+<p>Here is an example of marking a test function to be skipped
+when run on a Python3.3 interpreter:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">sys</span>
+<span class="nd">@pytest.mark.skipif</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">version_info</span> <span class="o">&lt;</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span><span class="mi">3</span><span class="p">),</span>
+                    <span class="n">reason</span><span class="o">=</span><span class="s">&quot;requires python3.3&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">test_function</span><span class="p">():</span>
+    <span class="o">...</span>
+</pre></div>
+</div>
+<p>During test function setup the condition (&#8220;sys.version_info &gt;= (3,3)&#8221;) is
+checked.  If it evaluates to True, the test function will be skipped
+with the specified reason.  Note that pytest enforces specifying a reason
+in order to report meaningful &#8220;skip reasons&#8221; (e.g. when using <code class="docutils literal"><span class="pre">-rs</span></code>).
+If the condition is a string, it will be evaluated as python expression.</p>
+<p>You can share skipif markers between modules.  Consider this test module:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># content of test_mymodule.py</span>
+
+<span class="kn">import</span> <span class="nn">mymodule</span>
+<span class="n">minversion</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">skipif</span><span class="p">(</span><span class="n">mymodule</span><span class="o">.</span><span class="n">__versioninfo__</span> <span class="o">&lt;</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">),</span>
+                                <span class="n">reason</span><span class="o">=</span><span class="s">&quot;at least mymodule-1.1 required&quot;</span><span class="p">)</span>
+<span class="nd">@minversion</span>
+<span class="k">def</span> <span class="nf">test_function</span><span class="p">():</span>
+    <span class="o">...</span>
+</pre></div>
+</div>
+<p>You can import it from another test module:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># test_myothermodule.py</span>
+<span class="kn">from</span> <span class="nn">test_mymodule</span> <span class="kn">import</span> <span class="n">minversion</span>
+
+<span class="nd">@minversion</span>
+<span class="k">def</span> <span class="nf">test_anotherfunction</span><span class="p">():</span>
+    <span class="o">...</span>
+</pre></div>
+</div>
+<p>For larger test suites it&#8217;s usually a good idea to have one file
+where you define the markers which you then consistently apply
+throughout your test suite.</p>
+<p>Alternatively, the pre pytest-2.4 way to specify <a class="reference internal" href="#string-conditions"><span>condition strings</span></a> instead of booleans will remain fully supported in future
+versions of pytest.  It couldn&#8217;t be easily used for importing markers
+between test modules so it&#8217;s no longer advertised as the primary method.</p>
+</div>
+<div class="section" id="skip-all-test-functions-of-a-class-or-module">
+<h2>Skip all test functions of a class or module<a class="headerlink" href="#skip-all-test-functions-of-a-class-or-module" title="Permalink to this headline">¶</a></h2>
+<p>As with all function <a class="reference internal" href="mark.html#mark"><span>marking</span></a> you can skip test functions at the
+<a class="reference external" href="mark.html#scoped-marking">whole class- or module level</a>.  If your code targets python2.6 or above you
+use the skipif decorator (and any other marker) on classes:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="nd">@pytest.mark.skipif</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">platform</span> <span class="o">!=</span> <span class="s">&#39;win32&#39;</span><span class="p">,</span>
+                    <span class="n">reason</span><span class="o">=</span><span class="s">&quot;requires windows&quot;</span><span class="p">)</span>
+<span class="k">class</span> <span class="nc">TestPosixCalls</span><span class="p">:</span>
+
+    <span class="k">def</span> <span class="nf">test_function</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s">&quot;will not be setup or run under &#39;win32&#39; platform&quot;</span>
+</pre></div>
+</div>
+<p>If the condition is true, this marker will produce a skip result for
+each of the test methods.</p>
+<p>If your code targets python2.5 where class-decorators are not available,
+you can set the <code class="docutils literal"><span class="pre">pytestmark</span></code> attribute of a class:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">class</span> <span class="nc">TestPosixCalls</span><span class="p">:</span>
+    <span class="n">pytestmark</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">skipif</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">platform</span> <span class="o">!=</span> <span class="s">&#39;win32&#39;</span><span class="p">,</span>
+                                    <span class="n">reason</span><span class="o">=</span><span class="s">&quot;requires Windows&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">test_function</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s">&quot;will not be setup or run under &#39;win32&#39; platform&quot;</span>
+</pre></div>
+</div>
+<p>As with the class-decorator, the <code class="docutils literal"><span class="pre">pytestmark</span></code> special name tells
+<code class="docutils literal"><span class="pre">pytest</span></code> to apply it to each test function in the class.</p>
+<p>If you want to skip all test functions of a module, you must use
+the <code class="docutils literal"><span class="pre">pytestmark</span></code> name on the global level:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># test_module.py</span>
+<span class="n">pytestmark</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">skipif</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>If multiple &#8220;skipif&#8221; decorators are applied to a test function, it
+will be skipped if any of the skip conditions is true.</p>
+</div>
+<div class="section" id="mark-a-test-function-as-expected-to-fail">
+<span id="xfail"></span><h2>Mark a test function as expected to fail<a class="headerlink" href="#mark-a-test-function-as-expected-to-fail" title="Permalink to this headline">¶</a></h2>
+<p>You can use the <code class="docutils literal"><span class="pre">xfail</span></code> marker to indicate that you
+expect the test to fail:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="nd">@pytest.mark.xfail</span>
+<span class="k">def</span> <span class="nf">test_function</span><span class="p">():</span>
+    <span class="o">...</span>
+</pre></div>
+</div>
+<p>This test will be run but no traceback will be reported
+when it fails. Instead terminal reporting will list it in the
+&#8220;expected to fail&#8221; or &#8220;unexpectedly passing&#8221; sections.</p>
+<p>By specifying on the commandline:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">pytest</span> <span class="o">--</span><span class="n">runxfail</span>
+</pre></div>
+</div>
+<p>you can force the running and reporting of an <code class="docutils literal"><span class="pre">xfail</span></code> marked test
+as if it weren&#8217;t marked at all.</p>
+<p>As with <a class="reference internal" href="#skipif">skipif</a> you can also mark your expectation of a failure
+on a particular platform:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="nd">@pytest.mark.xfail</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">version_info</span> <span class="o">&gt;=</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span><span class="mi">3</span><span class="p">),</span>
+                   <span class="n">reason</span><span class="o">=</span><span class="s">&quot;python3.3 api changes&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">test_function</span><span class="p">():</span>
+    <span class="o">...</span>
+</pre></div>
+</div>
+<p>If you want to be more specific as to why the test is failing, you can specify
+a single exception, or a list of exceptions, in the <code class="docutils literal"><span class="pre">raises</span></code> argument. Then
+the test will be reported as a regular failure if it fails with an
+exception not mentioned in <code class="docutils literal"><span class="pre">raises</span></code>.</p>
+<p>You can furthermore prevent the running of an &#8220;xfail&#8221; test or
+specify a reason such as a bug ID or similar.  Here is
+a simple test file with the several usages:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">pytest</span>
+<span class="n">xfail</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">xfail</span>
+
+<span class="nd">@xfail</span>
+<span class="k">def</span> <span class="nf">test_hello</span><span class="p">():</span>
+    <span class="k">assert</span> <span class="mi">0</span>
+
+<span class="nd">@xfail</span><span class="p">(</span><span class="n">run</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">test_hello2</span><span class="p">():</span>
+    <span class="k">assert</span> <span class="mi">0</span>
+
+<span class="nd">@xfail</span><span class="p">(</span><span class="s">&quot;hasattr(os, &#39;sep&#39;)&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">test_hello3</span><span class="p">():</span>
+    <span class="k">assert</span> <span class="mi">0</span>
+
+<span class="nd">@xfail</span><span class="p">(</span><span class="n">reason</span><span class="o">=</span><span class="s">&quot;bug 110&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">test_hello4</span><span class="p">():</span>
+    <span class="k">assert</span> <span class="mi">0</span>
+
+<span class="nd">@xfail</span><span class="p">(</span><span class="s">&#39;pytest.__version__[0] != &quot;17&quot;&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">test_hello5</span><span class="p">():</span>
+    <span class="k">assert</span> <span class="mi">0</span>
+
+<span class="k">def</span> <span class="nf">test_hello6</span><span class="p">():</span>
+    <span class="n">pytest</span><span class="o">.</span><span class="n">xfail</span><span class="p">(</span><span class="s">&quot;reason&quot;</span><span class="p">)</span>
+
+<span class="nd">@xfail</span><span class="p">(</span><span class="n">raises</span><span class="o">=</span><span class="ne">IndexError</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">test_hello7</span><span class="p">():</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+</pre></div>
+</div>
+<p>Running it with the report-on-xfail option gives this output:</p>
+<div class="highlight-python"><div class="highlight"><pre>example $ py.test -rx xfail_demo.py
+======= test session starts ========
+platform linux2 -- Python 2.7.9, pytest-2.8.0.dev4, py-1.4.28, pluggy-0.3.0
+rootdir: $PWD/doc/en, inifile: pytest.ini
+collected 7 items
+
+xfail_demo.py xxxxxxx
+======= short test summary info ========
+XFAIL xfail_demo.py::test_hello
+XFAIL xfail_demo.py::test_hello2
+  reason: [NOTRUN]
+XFAIL xfail_demo.py::test_hello3
+  condition: hasattr(os, &#39;sep&#39;)
+XFAIL xfail_demo.py::test_hello4
+  bug 110
+XFAIL xfail_demo.py::test_hello5
+  condition: pytest.__version__[0] != &quot;17&quot;
+XFAIL xfail_demo.py::test_hello6
+  reason: reason
+XFAIL xfail_demo.py::test_hello7
+
+======= 7 xfailed in 0.12 seconds ========
+</pre></div>
+</div>
+</div>
+<div class="section" id="skip-xfail-with-parametrize">
+<span id="id1"></span><h2>Skip/xfail with parametrize<a class="headerlink" href="#skip-xfail-with-parametrize" title="Permalink to this headline">¶</a></h2>
+<p>It is possible to apply markers like skip and xfail to individual
+test instances when using parametrize:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">pytest</span>
+
+<span class="nd">@pytest.mark.parametrize</span><span class="p">((</span><span class="s">&quot;n&quot;</span><span class="p">,</span> <span class="s">&quot;expected&quot;</span><span class="p">),</span> <span class="p">[</span>
+    <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
+    <span class="n">pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">xfail</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)),</span>
+    <span class="n">pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">xfail</span><span class="p">(</span><span class="n">reason</span><span class="o">=</span><span class="s">&quot;some bug&quot;</span><span class="p">)((</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">)),</span>
+    <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
+    <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span>
+    <span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span>
+    <span class="n">pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">skipif</span><span class="p">(</span><span class="s">&quot;sys.version_info &gt;= (3,0)&quot;</span><span class="p">)((</span><span class="mi">10</span><span class="p">,</span> <span class="mi">11</span><span class="p">)),</span>
+<span class="p">])</span>
+<span class="k">def</span> <span class="nf">test_increment</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">expected</span><span class="p">):</span>
+    <span class="k">assert</span> <span class="n">n</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">==</span> <span class="n">expected</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="imperative-xfail-from-within-a-test-or-setup-function">
+<h2>Imperative xfail from within a test or setup function<a class="headerlink" href="#imperative-xfail-from-within-a-test-or-setup-function" title="Permalink to this headline">¶</a></h2>
+<p>If you cannot declare xfail- of skipif conditions at import
+time you can also imperatively produce an according outcome
+imperatively, in test or setup code:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">test_function</span><span class="p">():</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">valid_config</span><span class="p">():</span>
+        <span class="n">pytest</span><span class="o">.</span><span class="n">xfail</span><span class="p">(</span><span class="s">&quot;failing configuration (but should work)&quot;</span><span class="p">)</span>
+        <span class="c"># or</span>
+        <span class="n">pytest</span><span class="o">.</span><span class="n">skip</span><span class="p">(</span><span class="s">&quot;unsupported configuration&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="skipping-on-a-missing-import-dependency">
+<h2>Skipping on a missing import dependency<a class="headerlink" href="#skipping-on-a-missing-import-dependency" title="Permalink to this headline">¶</a></h2>
+<p>You can use the following import helper at module level
+or within a test or test setup function:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">docutils</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">importorskip</span><span class="p">(</span><span class="s">&quot;docutils&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>If <code class="docutils literal"><span class="pre">docutils</span></code> cannot be imported here, this will lead to a
+skip outcome of the test.  You can also skip based on the
+version number of a library:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">docutils</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">importorskip</span><span class="p">(</span><span class="s">&quot;docutils&quot;</span><span class="p">,</span> <span class="n">minversion</span><span class="o">=</span><span class="s">&quot;0.3&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The version will be read from the specified
+module&#8217;s <code class="docutils literal"><span class="pre">__version__</span></code> attribute.</p>
+</div>
+<div class="section" id="specifying-conditions-as-strings-versus-booleans">
+<span id="string-conditions"></span><h2>specifying conditions as strings versus booleans<a class="headerlink" href="#specifying-conditions-as-strings-versus-booleans" title="Permalink to this headline">¶</a></h2>
+<p>Prior to pytest-2.4 the only way to specify skipif/xfail conditions was
+to use strings:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="kn">import</span> <span class="nn">sys</span>
+<span class="nd">@pytest.mark.skipif</span><span class="p">(</span><span class="s">&quot;sys.version_info &gt;= (3,3)&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">test_function</span><span class="p">():</span>
+    <span class="o">...</span>
+</pre></div>
+</div>
+<p>During test function setup the skipif condition is evaluated by calling
+<code class="docutils literal"><span class="pre">eval('sys.version_info</span> <span class="pre">&gt;=</span> <span class="pre">(3,0)',</span> <span class="pre">namespace)</span></code>.  The namespace contains
+all the module globals, and <code class="docutils literal"><span class="pre">os</span></code> and <code class="docutils literal"><span class="pre">sys</span></code> as a minimum.</p>
+<p>Since pytest-2.4 <a class="reference internal" href="#condition-booleans">condition booleans</a> are considered preferable
+because markers can then be freely imported between test modules.
+With strings you need to import not only the marker but all variables
+everything used by the marker, which violates encapsulation.</p>
+<p>The reason for specifying the condition as a string was that <code class="docutils literal"><span class="pre">pytest</span></code> can
+report a summary of skip conditions based purely on the condition string.
+With conditions as booleans you are required to specify a <code class="docutils literal"><span class="pre">reason</span></code> string.</p>
+<p>Note that string conditions will remain fully supported and you are free
+to use them if you have no need for cross-importing markers.</p>
+<p>The evaluation of a condition string in <code class="docutils literal"><span class="pre">pytest.mark.skipif(conditionstring)</span></code>
+or <code class="docutils literal"><span class="pre">pytest.mark.xfail(conditionstring)</span></code> takes place in a namespace
+dictionary which is constructed as follows:</p>
+<ul class="simple">
+<li>the namespace is initialized by putting the <code class="docutils literal"><span class="pre">sys</span></code> and <code class="docutils literal"><span class="pre">os</span></code> modules
+and the pytest <code class="docutils literal"><span class="pre">config</span></code> object into it.</li>
+<li>updated with the module globals of the test function for which the
+expression is applied.</li>
+</ul>
+<p>The pytest <code class="docutils literal"><span class="pre">config</span></code> object allows you to skip based on a test
+configuration value which you might have added:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="nd">@pytest.mark.skipif</span><span class="p">(</span><span class="s">&quot;not config.getvalue(&#39;db&#39;)&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">test_function</span><span class="p">(</span><span class="o">...</span><span class="p">):</span>
+    <span class="o">...</span>
+</pre></div>
+</div>
+<p>The equivalent with &#8220;boolean conditions&#8221; is:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="nd">@pytest.mark.skipif</span><span class="p">(</span><span class="ow">not</span> <span class="n">pytest</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">getvalue</span><span class="p">(</span><span class="s">&quot;db&quot;</span><span class="p">),</span>
+                    <span class="n">reason</span><span class="o">=</span><span class="s">&quot;--db was not specified&quot;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">test_function</span><span class="p">(</span><span class="o">...</span><span class="p">):</span>
+    <span class="k">pass</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">You cannot use <code class="docutils literal"><span class="pre">pytest.config.getvalue()</span></code> in code
+imported before py.test&#8217;s argument parsing takes place.  For example,
+<code class="docutils literal"><span class="pre">conftest.py</span></code> files are imported before command line parsing and thus
+<code class="docutils literal"><span class="pre">config.getvalue()</span></code> will not execute correctly.</p>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="contents.html">
+              <img class="logo" src="_static/pytest1.png" alt="Logo"/>
+            </a></p><h3><a href="contents.html">Table Of Contents</a></h3>
+
+<ul>
+  <li><a href="index.html">Home</a></li>
+  <li><a href="contents.html">Contents</a></li>
+  <li><a href="getting-started.html">Install</a></li>
+  <li><a href="example/index.html">Examples</a></li>
+  <li><a href="customize.html">Customize</a></li>
+  <li><a href="contact.html">Contact</a></li>
+  <li><a href="talks.html">Talks/Posts</a></li>
+  <li><a href="changelog.html">Changelog</a></li>
+</ul>
+  <hr>
+  <ul>
+<li><a class="reference internal" href="#">Skip and xfail: dealing with tests that can not succeed</a><ul>
+<li><a class="reference internal" href="#marking-a-test-function-to-be-skipped">Marking a test function to be skipped</a></li>
+<li><a class="reference internal" href="#skip-all-test-functions-of-a-class-or-module">Skip all test functions of a class or module</a></li>
+<li><a class="reference internal" href="#mark-a-test-function-as-expected-to-fail">Mark a test function as expected to fail</a></li>
+<li><a class="reference internal" href="#skip-xfail-with-parametrize">Skip/xfail with parametrize</a></li>
+<li><a class="reference internal" href="#imperative-xfail-from-within-a-test-or-setup-function">Imperative xfail from within a test or setup function</a></li>
+<li><a class="reference internal" href="#skipping-on-a-missing-import-dependency">Skipping on a missing import dependency</a></li>
+<li><a class="reference internal" href="#specifying-conditions-as-strings-versus-booleans">specifying conditions as strings versus booleans</a></li>
+</ul>
+</li>
+</ul>
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="contents.html">Documentation overview</a><ul>
+  <li><a href="apiref.html">pytest reference documentation</a><ul>
+      <li>Previous: <a href="mark.html" title="previous chapter">Marking test functions with attributes</a></li>
+      <li>Next: <a href="recwarn.html" title="next chapter">Asserting Warnings</a></li>
+  </ul></li>
+  </ul></li>
+</ul><h3>Useful Links</h3>
+<ul>
+  <li><a href="index.html">The pytest Website</a></li>
+  <li><a href="contributing.html">Contribution Guide</a></li>
+  <li><a href="https://pypi.python.org/pypi/pytest">pytest @ PyPI</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/">pytest @ GitHub</a></li>
+  <li><a href="http://pytest.org/latest/plugins_index/index.html">3rd party plugins</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/issues">Issue Tracker</a></li>
+  <li><a href="http://pytest.org/latest/pytest.pdf">PDF Documentation</a>
+</ul>
+
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+
+  <div class="footer">
+    &copy; Copyright 2015, holger krekel and pytest-dev team.
+    Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+  </div>
+  
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-7597274-13']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+  </body>
+</html>

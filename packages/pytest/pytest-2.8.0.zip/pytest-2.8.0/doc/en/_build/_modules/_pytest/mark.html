@@ -1,0 +1,438 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>_pytest.mark</title>
+    
+    <link rel="stylesheet" href="../../_static/flasky.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '2.7.3.dev376+ng06b1b69.d20150827',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../_static/pytest1favi.ico"/>
+    <link rel="top" title="None" href="../../contents.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+  
+  
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="nav-item nav-item-0"><a href="../../contents.html">pytest-2.7.3.dev376+ng06b1b69.d20150827</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for _pytest.mark</h1><div class="highlight"><pre>
+<span class="sd">&quot;&quot;&quot; generic mechanism for marking and selecting python functions. &quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">inspect</span>
+
+
+<span class="k">class</span> <span class="nc">MarkerError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+
+    <span class="sd">&quot;&quot;&quot;Error in use of a pytest marker/attribute.&quot;&quot;&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">pytest_namespace</span><span class="p">():</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s">&#39;mark&#39;</span><span class="p">:</span> <span class="n">MarkGenerator</span><span class="p">()}</span>
+
+
+<span class="k">def</span> <span class="nf">pytest_addoption</span><span class="p">(</span><span class="n">parser</span><span class="p">):</span>
+    <span class="n">group</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">getgroup</span><span class="p">(</span><span class="s">&quot;general&quot;</span><span class="p">)</span>
+    <span class="n">group</span><span class="o">.</span><span class="n">_addoption</span><span class="p">(</span>
+        <span class="s">&#39;-k&#39;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s">&quot;store&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;keyword&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s">&quot;EXPRESSION&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s">&quot;only run tests which match the given substring expression. &quot;</span>
+             <span class="s">&quot;An expression is a python evaluatable expression &quot;</span>
+             <span class="s">&quot;where all names are substring-matched against test names &quot;</span>
+             <span class="s">&quot;and their parent classes. Example: -k &#39;test_method or test &quot;</span>
+             <span class="s">&quot;other&#39; matches all test functions and classes whose name &quot;</span>
+             <span class="s">&quot;contains &#39;test_method&#39; or &#39;test_other&#39;. &quot;</span>
+             <span class="s">&quot;Additionally keywords are matched to classes and functions &quot;</span>
+             <span class="s">&quot;containing extra names in their &#39;extra_keyword_matches&#39; set, &quot;</span>
+             <span class="s">&quot;as well as functions which have names assigned directly to them.&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">group</span><span class="o">.</span><span class="n">_addoption</span><span class="p">(</span>
+        <span class="s">&quot;-m&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s">&quot;store&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;markexpr&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s">&quot;&quot;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s">&quot;MARKEXPR&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s">&quot;only run tests matching given mark expression.  &quot;</span>
+             <span class="s">&quot;example: -m &#39;mark1 and not mark2&#39;.&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">group</span><span class="o">.</span><span class="n">addoption</span><span class="p">(</span>
+        <span class="s">&quot;--markers&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s">&quot;show markers (builtin, plugin and per-project ones).&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">addini</span><span class="p">(</span><span class="s">&quot;markers&quot;</span><span class="p">,</span> <span class="s">&quot;markers for test functions&quot;</span><span class="p">,</span> <span class="s">&#39;linelist&#39;</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">pytest_cmdline_main</span><span class="p">(</span><span class="n">config</span><span class="p">):</span>
+    <span class="kn">import</span> <span class="nn">_pytest.config</span>
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="o">.</span><span class="n">markers</span><span class="p">:</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">_do_configure</span><span class="p">()</span>
+        <span class="n">tw</span> <span class="o">=</span> <span class="n">_pytest</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">create_terminal_writer</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">config</span><span class="o">.</span><span class="n">getini</span><span class="p">(</span><span class="s">&quot;markers&quot;</span><span class="p">):</span>
+            <span class="n">name</span><span class="p">,</span> <span class="n">rest</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;:&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">tw</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s">&quot;@pytest.mark.</span><span class="si">%s</span><span class="s">:&quot;</span> <span class="o">%</span> <span class="n">name</span><span class="p">,</span> <span class="n">bold</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+            <span class="n">tw</span><span class="o">.</span><span class="n">line</span><span class="p">(</span><span class="n">rest</span><span class="p">)</span>
+            <span class="n">tw</span><span class="o">.</span><span class="n">line</span><span class="p">()</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">_ensure_unconfigure</span><span class="p">()</span>
+        <span class="k">return</span> <span class="mi">0</span>
+<span class="n">pytest_cmdline_main</span><span class="o">.</span><span class="n">tryfirst</span> <span class="o">=</span> <span class="bp">True</span>
+
+
+<span class="k">def</span> <span class="nf">pytest_collection_modifyitems</span><span class="p">(</span><span class="n">items</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
+    <span class="n">keywordexpr</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="o">.</span><span class="n">keyword</span>
+    <span class="n">matchexpr</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="o">.</span><span class="n">markexpr</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">keywordexpr</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">matchexpr</span><span class="p">:</span>
+        <span class="k">return</span>
+    <span class="c"># pytest used to allow &quot;-&quot; for negating</span>
+    <span class="c"># but today we just allow &quot;-&quot; at the beginning, use &quot;not&quot; instead</span>
+    <span class="c"># we probably remove &quot;-&quot; alltogether soon</span>
+    <span class="k">if</span> <span class="n">keywordexpr</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&quot;-&quot;</span><span class="p">):</span>
+        <span class="n">keywordexpr</span> <span class="o">=</span> <span class="s">&quot;not &quot;</span> <span class="o">+</span> <span class="n">keywordexpr</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+    <span class="n">selectuntil</span> <span class="o">=</span> <span class="bp">False</span>
+    <span class="k">if</span> <span class="n">keywordexpr</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">:]</span> <span class="o">==</span> <span class="s">&quot;:&quot;</span><span class="p">:</span>
+        <span class="n">selectuntil</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="n">keywordexpr</span> <span class="o">=</span> <span class="n">keywordexpr</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+    <span class="n">remaining</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">deselected</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">colitem</span> <span class="ow">in</span> <span class="n">items</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">keywordexpr</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">matchkeyword</span><span class="p">(</span><span class="n">colitem</span><span class="p">,</span> <span class="n">keywordexpr</span><span class="p">):</span>
+            <span class="n">deselected</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">colitem</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">selectuntil</span><span class="p">:</span>
+                <span class="n">keywordexpr</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="k">if</span> <span class="n">matchexpr</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">matchmark</span><span class="p">(</span><span class="n">colitem</span><span class="p">,</span> <span class="n">matchexpr</span><span class="p">):</span>
+                    <span class="n">deselected</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">colitem</span><span class="p">)</span>
+                    <span class="k">continue</span>
+            <span class="n">remaining</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">colitem</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">deselected</span><span class="p">:</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">hook</span><span class="o">.</span><span class="n">pytest_deselected</span><span class="p">(</span><span class="n">items</span><span class="o">=</span><span class="n">deselected</span><span class="p">)</span>
+        <span class="n">items</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">remaining</span>
+
+
+<span class="k">class</span> <span class="nc">MarkMapping</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Provides a local mapping for markers where item access</span>
+<span class="sd">    resolves to True if the marker is present. &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">keywords</span><span class="p">):</span>
+        <span class="n">mymarks</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">keywords</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">MarkInfo</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">MarkDecorator</span><span class="p">):</span>
+                <span class="n">mymarks</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mymarks</span> <span class="o">=</span> <span class="n">mymarks</span>
+
+    <span class="k">def</span> <span class="nf">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mymarks</span>
+
+
+<span class="k">class</span> <span class="nc">KeywordMapping</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Provides a local mapping for keywords.</span>
+<span class="sd">    Given a list of names, map any substring of one of these names to True.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">names</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_names</span> <span class="o">=</span> <span class="n">names</span>
+
+    <span class="k">def</span> <span class="nf">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">subname</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_names</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">subname</span> <span class="ow">in</span> <span class="n">name</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">return</span> <span class="bp">False</span>
+
+
+<span class="k">def</span> <span class="nf">matchmark</span><span class="p">(</span><span class="n">colitem</span><span class="p">,</span> <span class="n">markexpr</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Tries to match on any marker names, attached to the given colitem.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="nb">eval</span><span class="p">(</span><span class="n">markexpr</span><span class="p">,</span> <span class="p">{},</span> <span class="n">MarkMapping</span><span class="p">(</span><span class="n">colitem</span><span class="o">.</span><span class="n">keywords</span><span class="p">))</span>
+
+
+<span class="k">def</span> <span class="nf">matchkeyword</span><span class="p">(</span><span class="n">colitem</span><span class="p">,</span> <span class="n">keywordexpr</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Tries to match given keyword expression to given collector item.</span>
+
+<span class="sd">    Will match on the name of colitem, including the names of its parents.</span>
+<span class="sd">    Only matches names of items which are either a :class:`Class` or a</span>
+<span class="sd">    :class:`Function`.</span>
+<span class="sd">    Additionally, matches on names in the &#39;extra_keyword_matches&#39; set of</span>
+<span class="sd">    any item, as well as names directly assigned to test functions.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mapped_names</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+
+    <span class="c"># Add the names of the current item and any parent items</span>
+    <span class="kn">import</span> <span class="nn">pytest</span>
+    <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">colitem</span><span class="o">.</span><span class="n">listchain</span><span class="p">():</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">pytest</span><span class="o">.</span><span class="n">Instance</span><span class="p">):</span>
+            <span class="n">mapped_names</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+
+    <span class="c"># Add the names added as extra keywords to current or parent items</span>
+    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">colitem</span><span class="o">.</span><span class="n">listextrakeywords</span><span class="p">():</span>
+        <span class="n">mapped_names</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+
+    <span class="c"># Add the names attached to the current function through direct assignment</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">colitem</span><span class="p">,</span> <span class="s">&#39;function&#39;</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">colitem</span><span class="o">.</span><span class="n">function</span><span class="o">.</span><span class="n">__dict__</span><span class="p">:</span>
+            <span class="n">mapped_names</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+
+    <span class="n">mapping</span> <span class="o">=</span> <span class="n">KeywordMapping</span><span class="p">(</span><span class="n">mapped_names</span><span class="p">)</span>
+    <span class="k">if</span> <span class="s">&quot; &quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">keywordexpr</span><span class="p">:</span>
+        <span class="c"># special case to allow for simple &quot;-k pass&quot; and &quot;-k 1.3&quot;</span>
+        <span class="k">return</span> <span class="n">mapping</span><span class="p">[</span><span class="n">keywordexpr</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">keywordexpr</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&quot;not &quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="s">&quot; &quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">keywordexpr</span><span class="p">[</span><span class="mi">4</span><span class="p">:]:</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="n">mapping</span><span class="p">[</span><span class="n">keywordexpr</span><span class="p">[</span><span class="mi">4</span><span class="p">:]]</span>
+    <span class="k">return</span> <span class="nb">eval</span><span class="p">(</span><span class="n">keywordexpr</span><span class="p">,</span> <span class="p">{},</span> <span class="n">mapping</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">pytest_configure</span><span class="p">(</span><span class="n">config</span><span class="p">):</span>
+    <span class="kn">import</span> <span class="nn">pytest</span>
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">option</span><span class="o">.</span><span class="n">strict</span><span class="p">:</span>
+        <span class="n">pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">_config</span> <span class="o">=</span> <span class="n">config</span>
+
+
+<div class="viewcode-block" id="MarkGenerator"><a class="viewcode-back" href="../../mark.html#_pytest.mark.MarkGenerator">[docs]</a><span class="k">class</span> <span class="nc">MarkGenerator</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot; Factory for :class:`MarkDecorator` objects - exposed as</span>
+<span class="sd">    a ``pytest.mark`` singleton instance.  Example::</span>
+
+<span class="sd">         import py</span>
+<span class="sd">         @pytest.mark.slowtest</span>
+<span class="sd">         def test_function():</span>
+<span class="sd">            pass</span>
+
+<span class="sd">    will set a &#39;slowtest&#39; :class:`MarkInfo` object</span>
+<span class="sd">    on the ``test_function`` object. &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__getattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">name</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s">&quot;_&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span><span class="s">&quot;Marker name must NOT start with underscore&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;_config&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_check</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">MarkDecorator</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_check</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_markers</span><span class="p">:</span>
+                <span class="k">return</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_markers</span> <span class="o">=</span> <span class="n">l</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_config</span><span class="o">.</span><span class="n">getini</span><span class="p">(</span><span class="s">&quot;markers&quot;</span><span class="p">):</span>
+            <span class="n">beginning</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;:&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">beginning</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&quot;(&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">l</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_markers</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span><span class="s">&quot;</span><span class="si">%r</span><span class="s"> not a registered marker&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name</span><span class="p">,))</span>
+</div>
+<span class="k">def</span> <span class="nf">istestfunc</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+    <span class="k">return</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="s">&quot;__call__&quot;</span><span class="p">)</span> <span class="ow">and</span> \
+        <span class="nb">getattr</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="s">&quot;__name__&quot;</span><span class="p">,</span> <span class="s">&quot;&lt;lambda&gt;&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="s">&quot;&lt;lambda&gt;&quot;</span>
+
+<div class="viewcode-block" id="MarkDecorator"><a class="viewcode-back" href="../../mark.html#_pytest.mark.MarkDecorator">[docs]</a><span class="k">class</span> <span class="nc">MarkDecorator</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot; A decorator for test functions and test classes.  When applied</span>
+<span class="sd">    it will create :class:`MarkInfo` objects which may be</span>
+<span class="sd">    :ref:`retrieved by hooks as item keywords &lt;excontrolskip&gt;`.</span>
+<span class="sd">    MarkDecorator instances are often created like this::</span>
+
+<span class="sd">        mark1 = pytest.mark.NAME              # simple MarkDecorator</span>
+<span class="sd">        mark2 = pytest.mark.NAME(name1=value) # parametrized MarkDecorator</span>
+
+<span class="sd">    and can then be applied as decorators to test functions::</span>
+
+<span class="sd">        @mark2</span>
+<span class="sd">        def test_function():</span>
+<span class="sd">            pass</span>
+
+<span class="sd">    When a MarkDecorator instance is called it does the following:</span>
+<span class="sd">      1. If called with a single class as its only positional argument and no</span>
+<span class="sd">         additional keyword arguments, it attaches itself to the class so it</span>
+<span class="sd">         gets applied automatically to all test cases found in that class.</span>
+<span class="sd">      2. If called with a single function as its only positional argument and</span>
+<span class="sd">         no additional keyword arguments, it attaches a MarkInfo object to the</span>
+<span class="sd">         function, containing all the arguments already stored internally in</span>
+<span class="sd">         the MarkDecorator.</span>
+<span class="sd">      3. When called in any other case, it performs a &#39;fake construction&#39; call,</span>
+<span class="sd">         i.e. it returns a new MarkDecorator instance with the original</span>
+<span class="sd">         MarkDecorator&#39;s content updated with the arguments passed to this</span>
+<span class="sd">         call.</span>
+
+<span class="sd">    Note: The rules above prevent MarkDecorator objects from storing only a</span>
+<span class="sd">    single function or class reference as their positional argument with no</span>
+<span class="sd">    additional keyword or positional arguments.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="n">args</span> <span class="ow">or</span> <span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kwargs</span> <span class="o">=</span> <span class="n">kwargs</span> <span class="ow">or</span> <span class="p">{}</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">markname</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="c"># for backward-compat (2.4.1 had this attr)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;name&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;MarkDecorator </span><span class="si">%r</span><span class="s"> </span><span class="si">%r</span><span class="s">&gt;&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; if passed a single callable argument: decorate it with mark info.</span>
+<span class="sd">            otherwise add *args/**kwargs in-place to mark information. &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">args</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">kwargs</span><span class="p">:</span>
+            <span class="n">func</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">is_class</span> <span class="o">=</span> <span class="n">inspect</span><span class="o">.</span><span class="n">isclass</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="p">(</span><span class="n">istestfunc</span><span class="p">(</span><span class="n">func</span><span class="p">)</span> <span class="ow">or</span> <span class="n">is_class</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">is_class</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="s">&#39;pytestmark&#39;</span><span class="p">):</span>
+                        <span class="n">mark_list</span> <span class="o">=</span> <span class="n">func</span><span class="o">.</span><span class="n">pytestmark</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mark_list</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+                            <span class="n">mark_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">mark_list</span><span class="p">]</span>
+                        <span class="c"># always work on a copy to avoid updating pytestmark</span>
+                        <span class="c"># from a superclass by accident</span>
+                        <span class="n">mark_list</span> <span class="o">=</span> <span class="n">mark_list</span> <span class="o">+</span> <span class="p">[</span><span class="bp">self</span><span class="p">]</span>
+                        <span class="n">func</span><span class="o">.</span><span class="n">pytestmark</span> <span class="o">=</span> <span class="n">mark_list</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">func</span><span class="o">.</span><span class="n">pytestmark</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">holder</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">holder</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                        <span class="n">holder</span> <span class="o">=</span> <span class="n">MarkInfo</span><span class="p">(</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">kwargs</span>
+                        <span class="p">)</span>
+                        <span class="nb">setattr</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">holder</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">holder</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">kwargs</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">func</span>
+        <span class="n">kw</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kwargs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">kw</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">args</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">+</span> <span class="n">args</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">=</span><span class="n">kw</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="MarkInfo"><a class="viewcode-back" href="../../mark.html#_pytest.mark.MarkInfo">[docs]</a><span class="k">class</span> <span class="nc">MarkInfo</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot; Marking object created by :class:`MarkDecorator` instances. &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">):</span>
+        <span class="c">#: name of attribute</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="c">#: positional argument list, empty if none specified</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="n">args</span>
+        <span class="c">#: keyword argument dictionary, empty if nothing specified</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kwargs</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_arglist</span> <span class="o">=</span> <span class="p">[(</span><span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">copy</span><span class="p">())]</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;MarkInfo </span><span class="si">%r</span><span class="s"> args=</span><span class="si">%r</span><span class="s"> kwargs=</span><span class="si">%r</span><span class="s">&gt;&quot;</span> <span class="o">%</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">kwargs</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="MarkInfo.add"><a class="viewcode-back" href="../../mark.html#_pytest.mark.MarkInfo.add">[docs]</a>    <span class="k">def</span> <span class="nf">add</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; add a MarkInfo with the given args and kwargs. &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_arglist</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">+=</span> <span class="n">args</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kwargs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; yield MarkInfo objects each relating to a marking-call. &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_arglist</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">MarkInfo</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../../contents.html">
+              <img class="logo" src="../../_static/pytest1.png" alt="Logo"/>
+            </a></p><h3><a href="../../contents.html">Table Of Contents</a></h3>
+
+<ul>
+  <li><a href="../../index.html">Home</a></li>
+  <li><a href="../../contents.html">Contents</a></li>
+  <li><a href="../../getting-started.html">Install</a></li>
+  <li><a href="../../example/index.html">Examples</a></li>
+  <li><a href="../../customize.html">Customize</a></li>
+  <li><a href="../../contact.html">Contact</a></li>
+  <li><a href="../../talks.html">Talks/Posts</a></li>
+  <li><a href="../../changelog.html">Changelog</a></li>
+</ul><h3>Related Topics</h3>
+<ul>
+  <li><a href="../../contents.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul><h3>Useful Links</h3>
+<ul>
+  <li><a href="../../index.html">The pytest Website</a></li>
+  <li><a href="../../contributing.html">Contribution Guide</a></li>
+  <li><a href="https://pypi.python.org/pypi/pytest">pytest @ PyPI</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/">pytest @ GitHub</a></li>
+  <li><a href="http://pytest.org/latest/plugins_index/index.html">3rd party plugins</a></li>
+  <li><a href="https://github.com/pytest-dev/pytest/issues">Issue Tracker</a></li>
+  <li><a href="http://pytest.org/latest/pytest.pdf">PDF Documentation</a>
+</ul>
+
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+
+  <div class="footer">
+    &copy; Copyright 2015, holger krekel and pytest-dev team.
+    Created using <a href="http://sphinx.pocoo.org/">Sphinx</a>.
+  </div>
+  
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-7597274-13']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+  </body>
+</html>
