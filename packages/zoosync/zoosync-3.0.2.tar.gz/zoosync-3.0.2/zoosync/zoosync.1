@@ -1,0 +1,233 @@
+.TH ZOOSYNC 1 "July 2014" "CESNET" "Zoosync"
+
+
+.SH NAME
+zoosync \- Service Discovery tool using Zookeeper
+
+
+.SH SYNOPSIS
+\fBzoosync\fR [\fIOPTIONS\fR] [\fICOMMANDS\fR]
+
+
+.SH DESCRIPTION
+\fBzoosync\fR is a simple service discovery tool using Zookeeper as database backend.
+
+
+.SH OPTIONS
+.TP
+\fB-h\fR, \fP--help\fR
+Help usage message.
+
+.TP
+\fB-a\fR, \fP--acl\fR \fIACL\fR
+Additional ACL set for each service node, separated by commas. Default is \fIworld:anyone:r\fR.
+
+When using separated permissions, there should be also the shared admin ACL, for example:
+
+.nf
+.RS
+\fIdigest:indigo-testbed:84VCzhAPjyq3fmBce9rvc3qgme4=:cdrwa,world:anyone:r\fR.
+.RE
+.ni
+
+.TP
+\fB-b\fR, \fP--base\fR \fIBASE_DIRECTORY\fR
+Base zookeeper directory. Default is \fI/indigo-testbed\fR.
+
+.TP
+\fB-H\fR, \fB--hostname\fR \fIHOSTNAME\fR
+Use specified hostname instead of the system one.
+
+.TP
+\fB-m\fR, \fB--multi\fR \fIMODE\fR
+How to treat multiple hostnames in output. It can be \fBfirst\fR, \fBlist\fR, \fBrandom\fR. Default is \fBfirst\fR.
+
+.TP
+\fB-n\fR, \fP--dry\fR
+Do not perform any changes, only read-only network operations.
+
+.TP
+\fB-u\fR, \fP--user\fR
+User name for autentization to Zookeeper service. Default is \fIindigo-testbed\fR.
+
+.TP
+\fB-p\fR, \fP--password\fR
+Password for autentization to Zookeeper service. Default if \fIchangeit\fR.
+
+.TP
+\fB-s\fR, \fP--services\fR \fISERVICE\fR...
+Comma separated list of services.
+
+.TP
+\fB-w\fR, \fP--wait\fR \fITIME\fR
+Time to wait in seconds for \fBwait\fR command. Zero mean wait infinitely. Default is 1800.
+
+.TP
+\fB-v\fR, \fP--version\fR
+Print the version.
+
+.TP
+\fB-z\fR, \fP--zookeeper\fR \fISERVER\fR...
+Comma separated list of Zookeeper servers.
+
+
+.SH COMMANDS
+
+.TP
+\fBcleanup\fR
+Remove all inactive hostnames from services and get information about all requested services. The test of activity is performed by \fIping\fR and \fIping6\fR commands.
+
+.TP
+\fBcreate\fR
+Create service endpoints. If any service/hostname combination is already created and active, error is returned.
+
+.TP
+\fBget\fR
+Get information about all requested services.
+
+.TP
+\fBdeploy\fR
+Configure \fBzoosync\fR on the local system:
+
+ * installs startup script \fI/etc/init.d/zoosync\fR or unit file \fI/etc/systemd/system/zoosync.service\fR and enable \fBzoosync\fR service
+ * creates config file \fI/etc/zoosyncrc\fR, if not exists already
+ * creates default file \fI/etc/default\fR with services, if not exists already
+ * creates daily cron job \fI/etc/cron.d/zoosync\fR
+
+Install root directory can be specified using environment variable \fB$DESTDIR\fR.
+
+Service is not enabled when \fB--dry\fR option is used.
+
+.TP
+\fBlist\fR
+Get information about all active services.
+
+.TP
+\fBpurge\fR
+Purge requested services. It will remove all endpoints and service nodes, active and inactive.
+
+.TP
+\fBread-tag\fR \fITAGNAME\fR...
+Read tags of service endpoints. Hostname option and list of services to select proper endpoints is needed.
+
+.TP
+\fBread-tags\fR
+Read all tags of service endpoints. Hostname option to select proper endpoints is needed. Synonym for \fBtags\fR.
+
+.TP
+\fBregister\fR
+Register service endpoints. If any service/hostname combination is already created or also active, no error is returned.
+
+.TP
+\fBremove\fR
+Deactivate service endpoints (active and inactive) and remove all information. If any service/hostname combination doesn't exist, error is returned.
+
+.TP
+\fBtag\fR \fITAGNAME\fR=\fIVALUE\fR...
+Tag service endpoints. If \fITAGNAME\fR begins with '_' (underscore), the value is protected using more strict ACL.
+
+.TP
+\fBtags\fR
+Read all tags of service endpoints. Hostname option to select proper endpoints is needed. Synonym for \fBread-tags\fR.
+
+.TP
+\fBunregister\fR
+Deactivate service endpoints. If any service/hostname combination doesn't exist or isn't active, no error is returned.
+
+.TP
+\fBuntag\fR \fITAGNAME\fR...
+Remove tag from service endpoints.
+
+.TP
+\fBwait\fR
+Sit and wait, until all required services have an endpoint in Zookeeper.
+
+
+.SH ENVIRONMENT
+
+.TP
+\fBZOOSYNC_CONF\fR
+Location of the configuration file.
+
+
+.SH FILES
+
+.TP
+\fB/etc/zoosyncrc\fR
+Default location of a configuration file. All long options are available, see \fBOPTIONS\fR.
+
+
+.SH EXAMPLES
+
+.SS Cleanup and wait for services
+
+This may be called on the side requiring given service.
+
+.nf
+ ZOOKEEPER_HOSTS='zoo1.example.com,zoo2.example.com,zoo3.example.com'
+ MY_SERVICES='service,service2,service3'
+
+ eval `zoosync --host ${ZOOKEEPER_HOSTS} --services ${MY_SERVICES} cleanup`
+ 
+ echo "active: ${SERVICES}"
+ echo "missing: {MISSING}"
+ 
+ eval `zoosync --host ${ZOOKEEPER_HOSTS} --services ${MY_SERVICES} wait`
+.fi
+
+.SS Service provider start-up
+
+.nf
+ ZOOKEEPER_HOSTS='zoo1.example.com,zoo2.example.com,zoo3.example.com'
+ zoosync --host ${ZOOKEEPER_HOSTS} --services service1 register
+.fi
+
+.SS Service provider shutdown
+
+.nf
+ ZOOKEEPER_HOSTS='zoo1.example.com,zoo2.example.com,zoo3.example.com'
+ zoosync --host ${ZOOKEEPER_HOSTS} --services service1 unregister
+.fi
+
+
+.SH NOTES
+
+.SS Configuration
+
+The config file \fI/etc/zoosyncrc\fR can be used for list for Zookeper servers, credentials, and other options:
+
+.nf
+.RS
+cat > /etc/zoosyncrc <<EOF
+zookeeper=zoo1.example.com,zoo2.example.com,zoo3.example.com
+user=indigo-testbed
+password=changeit
+services=service1,service2,service3
+EOF
+.RE
+.fi
+
+You may need to use system startup scripts on service providers to register and unregister services. See \fBdeploy\fR command.
+
+
+.SS Hierarchical ACL
+
+By default ACLs are created on the base directory by the first service provider client creating the base directory. It is expected all clients are configured with the same credentials.
+
+It is possible to use separated credentials for particular services. In that case set \fBcdrw\fR permissions for all service providers and \fBcdrwa\fR permissions for the administrator identity. For example:
+
+.nf
+.RS
+setAcl /indigo\-testbed digest:indigo\-testbed:84VCzhAPjyq3fmBce9rvc3qgme4=:cdrwa,world:anyone:r,user1:wz6UK/Kzj7hbM8lUA/zNat8T6/M=:cdrw,user2:xkNyJWRcR8+7ugcyJpCXtiQ41rs=:cdrw
+.RE
+.fi
+
+Clients providing the same service must have the same credentials. All clients must have configured shared ACLs for easier cleanups (see \fB\-\-acl\fR in \fBOPTIONS\fR) or admin credentials.
+
+
+.SH BUGS
+Please report all bugs to issue tracker at \fIhttps://github.com/valtri/zoosync/issues\fR.
+
+
+.SH AUTHORS
+CESNET
