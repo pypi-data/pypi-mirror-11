@@ -1,0 +1,2 @@
+trytond-sale-line-warehouse
+==========================
