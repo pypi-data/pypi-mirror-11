@@ -1,0 +1,75 @@
+#!/usr/bin/env python
+
+from lov2pi.main import Lov2pi
+from lov2pi.connections import LoveMe
+import logging
+import os
+import sys
+import json
+from time import sleep
+
+from daemons.prefab import run
+
+
+class Counters(run.RunDaemon):
+
+    def run(self):
+        config_path = os.path.expanduser("~") + '/.lov2pi'
+        if os.path.isfile(config_path):
+            config = json.load(open(config_path))
+            lov = Lov2pi(config['appkey'], config['name'])
+            while True:
+                try:
+                    lov.sync_counter()
+                    sleep(1)
+                except Exception as e:
+                    print e.message
+        else:
+            raise ValueError('config not_found, you should register your lov2pi first')
+
+if __name__ == '__main__':
+
+    if len(sys.argv) <= 2:
+        print 'help text here '
+        sys.exit(0)
+    else:
+        action = sys.argv[1]
+        what = sys.argv[2]
+        logfile = os.path.join(os.getcwd(), "lov2pi.log")
+        metrics_pidfile = os.path.join(os.getcwd(), "lov2pi_metrics.pid")
+
+        ##logging.basicConfig(filename=logfile, level=logging.DEBUG)
+
+        metrics = Counters(pidfile=metrics_pidfile)
+
+        if action == "start":
+            if what == 'metrics':
+                print 'device metric logger is starting...'
+                metrics.start()
+                print 'device metric logger started'
+            else:
+                print 'start should followed by metrics or listener'
+
+        elif action == "stop":
+            print 'stopping...'
+            if what == 'metrics':
+                metrics.stop()
+            else:
+                print 'stop should followed by metrics or listener'
+
+        elif action == "restart":
+            print 'restarting...'
+            if what == 'metrics':
+                metrics.restart()
+            else:
+                print 'restart should followed by metrics or listener'
+
+        elif action == 'register':
+            if len(sys.argv) < 3:
+                print "Usage", sys.argv[0], "register application_id desired_device_name"
+            else:
+                appkey = sys.argv[2]
+                name = sys.argv[3]
+                client = Lov2pi(appkey, name)
+                client.register()
+                sys.exit(0)
