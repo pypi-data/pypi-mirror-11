@@ -1,0 +1,78 @@
+#!/usr/bin/python
+
+import os
+import sys
+import boto
+import click
+import logging
+from cfn_sphere.util import convert_file, get_logger
+from cfn_sphere.config import Config
+from cfn_sphere.main import StackActionHandler
+from cfn_sphere.exceptions import CfnSphereException
+from boto.exception import NoAuthHandlerFound
+
+LOGGER = get_logger(root=True)
+
+
+def get_current_account_alias():
+    try:
+        return boto.connect_iam().get_account_alias().account_aliases[0]
+    except NoAuthHandlerFound as e:
+        click.echo("Authentication error! Please check credentials: {0}".format(e))
+        sys.exit(1)
+
+
+def user_input_handler(message, type):
+    return click.prompt(message, type=type)
+
+
+@click.group(help="This tool manages AWS CloudFormation templates "
+                  "and stacks by providing an application scope and useful tooling.")
+def cli():
+    pass
+
+
+@cli.command(help="Sync AWS resources with definition file")
+@click.argument('filename', type=click.Path(exists=True))
+@click.option('--debug', is_flag=True, default=False, help="Debug output")
+@click.option('--confirm', is_flag=True, default=False, help="Override user confirm dialog with yes")
+def sync(filename, debug, confirm):
+    if debug:
+        LOGGER.setLevel(logging.DEBUG)
+    else:
+        LOGGER.setLevel(logging.INFO)
+
+    if confirm or click.confirm(
+            'This action will modify AWS infrastructure in account: {0}\nAre you sure?'.format(
+                get_current_account_alias()), abort=True):
+        try:
+            working_dir = os.path.dirname(os.path.realpath(filename))
+
+            config = Config(filename)
+            StackActionHandler(config, working_dir, user_input_handler).create_or_update_stacks()
+        except CfnSphereException as e:
+            LOGGER.error("Sync failed, {0}".format(e))
+            sys.exit(1)
+        except Exception as e:
+            LOGGER.error("Sync failed with unexpected error:".format(e))
+            LOGGER.exception(e)
+            sys.exit(1)
+
+
+@cli.command(help="Convert JSON to YAML or vice versa")
+@click.argument('filename', type=click.Path(exists=True))
+@click.option('--debug', is_flag=True, default=False, help="Debug output")
+def convert(filename, debug):
+    if debug:
+        LOGGER.setLevel(logging.DEBUG)
+
+    try:
+        click.echo(convert_file(filename))
+    except Exception as e:
+        LOGGER.error("Error converting {0}:".format(filename))
+        LOGGER.exception(e)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    cli()
