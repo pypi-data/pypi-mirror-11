@@ -1,0 +1,27 @@
+Future releases will include:
+
+- Break-up test cases of ciphers and make them mode-specific
+- Move API documentation from epydoc to sphinx
+- Implement AES with bitslicing
+- Move old ciphers into a Museum submodule
+- Add algorithms:
+    - Poly1305
+    - Elliptic Curves (ECDSA, ECIES, ECDH)
+    - Camellia, GOST
+    - Diffie-Hellman
+    - bcrypt
+    - SRP
+- Add more key management:
+    - Export/import of EC keys
+    - Export/import of DSA domain parameters
+    - JWK
+- Add support for CMS/PKCS#7
+- Add support for RNG backed by PKCS#11 and/or KMIP
+- Add support for Format-Preserving Encryption
+- Add the complete set of NIST test vectors for the various algorithms
+- Remove dependency on libtomcrypto headers
+- Speed up (T)DES with a bitsliced implementation
+- Add support for PCLMULQDQ in AES-GCM
+- Coverage testing
+- Run lint on the C code
+- Add (minimal) support for PGP
