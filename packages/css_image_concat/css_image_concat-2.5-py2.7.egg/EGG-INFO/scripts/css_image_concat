@@ -1,0 +1,256 @@
+#!/usr/bin/python
+"""
+    css_image_concat
+    ~~~~~~~~
+
+    A script that can concat images into one image and create a CSS file.
+    Super useful when you want decrase issuing a lot of HTTP requests
+    due to a lot of small images (like icons).
+
+    This script takes three inputs:
+
+        image_dir: A directory of images
+        out_img: An output path to the concated image
+        out_css: An output path to a CSS file
+
+    Usage is:
+        css_image_concat <image_dir> <out_img> <out_css>
+
+    It will then process all the images of `image_dir` and create one
+    image and one CSS file with classes. The CSS classes have following name:
+
+        cmp_<filename>
+
+    The script will also check if there exist a directory  'image_dir@2x'.
+    If it exists, the script will generated another spirit image 'out_img@2x'
+    with all the images in the 'image_dir@2x' concated. The script will also
+    append the associated CSS class to the 'out_css' file
+
+    This script requires ImageMagick ( http://imagemagick.org/ )
+
+    :copyright: by Amir Salihefendic ( http://amix.dk/ )
+    :license: MIT
+"""
+
+import os, sys
+import re
+
+
+#--- Main functions ----------------------------------------------
+def help():
+    print 'Usage is:'
+    print '   css_image_concat <image_dir> <out_img> <out_css>'
+    print 'Example:'
+    print '   css_image_concat wedoist/static/web/images/icons wedoist/static/web/images/icons.png wedoist/static/web/css/all_icons.css'
+
+
+def main():
+    image_dir = sys.argv[1]
+    output_image = sys.argv[2]
+    output_css = sys.argv[3]
+
+    images = get_images(image_dir)
+    print 'Parsed %s in %s' % (len(images), image_dir)
+
+    im_name = output_image.split('/')[-1]
+    css = generate_css(images, im_name)
+
+    print 'Written CSS file: %s' % output_css
+    with open(output_css, "w") as css_file:
+        css_file.write(css)
+
+    concat_images(images, output_image)
+    print 'Written image file: %s' % output_image
+    print '----'
+
+    retina_image_dir = image_dir + "@2x"
+    if os.path.exists(retina_image_dir):
+        print 'Detected retina image dir'
+
+        retina_images = get_images(retina_image_dir)
+        print 'Parsed %s in %s' % (len(retina_images), retina_image_dir)
+
+        #create path of spirit retina image
+        (file_name_path, file_extension) = os.path.splitext(output_image)
+        output_retina_img_path = file_name_path + "@2x" + file_extension
+
+        retina_css = generate_css_for_retina(retina_images, output_retina_img_path)
+
+        print 'Append Retina image CSS to file: %s' % output_css
+        with open(output_css, "a") as css_file:
+            css_file.write(retina_css)
+
+        print 'Written image file: %s' % output_retina_img_path
+        concat_images(retina_images, output_retina_img_path)
+        print '----'
+
+
+
+
+
+
+#--- Globals ----------------------------------------------
+IMAGE_CLASS_URL = """%s {
+    background: transparent url(%s) 0 0 no-repeat;
+}"""
+
+IMAGE_CLASS_PROPS = """.cmp_%s {
+    background-position: 0 -%spx;
+    width: %spx;
+    height: %spx;
+    padding: 0 !important;
+}"""
+
+RETINA__MEDIA_QUERY_BEGIN = """
+@media only screen and (-webkit-min-device-pixel-ratio: 2),
+	   only screen and (   min--moz-device-pixel-ratio: 2),
+	   only screen and (     -o-min-device-pixel-ratio: 2/1),
+	   only screen and (        min-device-pixel-ratio: 2),
+	   only screen and (                min-resolution: 192dpi),
+	   only screen and (                min-resolution: 2dppx) {
+"""
+
+RETINA__MEDIA_QUERY_END = """
+}
+"""
+
+RETINA_IMAGE_CLASS_PROPS = """.cmp_%s {
+    background-position: 0 -%spx;
+    background-size: %spx %spx;
+    background-repeat: no-repeat;
+    width: %spx;
+    height: %spx;
+    padding: 0 !important;
+}"""
+
+
+IMAGE_MAGIC_CMD = 'convert -gravity West %s -append %s'
+
+
+#--- Functions ----------------------------------------------
+def get_images(dir):
+    """
+    Finds images in dir and returns them as a list.
+    """
+    img_files = []
+    for root, dirs, files in os.walk(dir):
+        for file in files:
+            if file.find('.gif') != -1 or file.find('.png') != -1:
+                try:
+                    order = int(file.split('_')[0])
+                except ValueError:
+                    order = 0
+                img_files.append((order, file))
+        break
+
+    images = []
+    for count, file in sorted(img_files):
+        info = os.popen('identify %s/%s' % (root, file)).read()
+        m_obj = re.search('(\d+)x(\d+)', info)
+
+        images.append({
+            'path': '%s/%s' % (dir, file),
+            'name': file.split('.')[0],
+            'width': int(m_obj.group(1)),
+            'height': int(m_obj.group(2))
+        })
+
+    return images
+
+
+def generate_css(images, output_image):
+    """
+    Generates CSS for images.
+
+    output_image should be the filename only.
+    """
+    # Generate the background-image property
+    cmp_classes = []
+    for image in images:
+        cmp_classes.append('.cmp_%s' % image['name'])
+
+    output_image_partial = re.search(".*(/static.*)", sys.argv[2]).group(1)
+    css_url = IMAGE_CLASS_URL %\
+            (', '.join(cmp_classes), output_image_partial)
+
+    # Generate the CSS properties (height, width, background position)
+    height_offset = 0
+    css = [ css_url ]
+
+    for image in images:
+        name = image['name']
+        w = image['width']
+        h = image['height']
+
+        css_props = IMAGE_CLASS_PROPS %\
+                (name, height_offset, w, h)
+        css.append(css_props)
+
+        height_offset += image['height']
+
+    return '\n'.join(css)
+
+
+def generate_css_for_retina(images, output_image_path):
+    # Generate the background-image property
+    cmp_classes = []
+    for image in images:
+        cmp_classes.append('.cmp_%s' % image['name'])
+
+    # change file name to @2x
+    output_image_partial_path = re.search(".*(/static.*)", output_image_path).group(1)
+
+    css_url = IMAGE_CLASS_URL % \
+              (', '.join(cmp_classes), output_image_partial_path)
+
+    # Generate the CSS properties (height, width, background position)
+    height_offset = 0
+    css = [ RETINA__MEDIA_QUERY_BEGIN, css_url ]
+
+
+    total_width = max([image['width'] for image in images])
+    total_height = sum([image['height'] for image in images])
+    background_size = ((total_width / 2), (total_height / 2))
+
+    for image in images:
+        name = image['name']
+        img_w = image['width']
+        img_h = image['height']
+
+        css_props = (RETINA_IMAGE_CLASS_PROPS %
+                     (name,
+                      height_offset,
+                      background_size[0],
+                      background_size[1],
+                      (img_w / 2),
+                      (img_h / 2)))
+
+        css.append(css_props)
+
+        height_offset += (img_h / 2)
+
+    css.append(RETINA__MEDIA_QUERY_END)
+
+    return '\n'.join(css)
+
+
+def concat_images(images, output_image):
+    """
+    Concats images using image magick.
+
+    output should be the full path of the image
+    """
+    try:
+        os.remove(output_image)
+    except:
+        pass
+
+    file_names = [image['path'] for image in images]
+    os.popen(IMAGE_MAGIC_CMD % (' '.join(file_names), output_image))
+
+
+if __name__ == '__main__':
+    if len(sys.argv) != 4:
+        help()
+    else:
+        main()
