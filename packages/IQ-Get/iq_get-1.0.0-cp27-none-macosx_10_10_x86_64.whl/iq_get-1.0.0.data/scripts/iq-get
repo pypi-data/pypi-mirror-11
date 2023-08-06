@@ -1,0 +1,122 @@
+#!python
+"""Retrieve Hive results from Qubole and write to a file"""
+
+import argparse
+import csv
+import os
+import sys
+import tempfile
+import time
+import qds_sdk
+from qds_sdk.commands import Qubole, HiveCommand
+from qds_sdk.exception import ServerError
+
+try:
+    input = raw_input
+except NameError:
+    pass
+
+
+def write_intermediate_results(tmpFile, hc):
+    """
+    Write intermediate results to a Temporary file
+    :param tmpFile: file Open file object to write intermediate results
+    :param hc: HiveCommand HiveCommand object to use for retrieving results
+    """
+    try:
+        hc.get_results(fp=tmpFile, delim='\t')
+    except ServerError:
+        # If we hit a server error, retry once
+        time.sleep(10)
+        hc.get_results(fp=tmpFile, delim='\t')
+
+
+def get_output_path(output_filename):
+    """
+    Get the final output path
+    :param output_filename: str Base filename for results
+    """
+    output_path = '%s%s' % (os.path.expanduser('~/Desktop/'), output_filename,)
+    # If the filename already exists, ask to overwrite it
+    if os.path.exists(output_path):
+        sys.stdout.write("File %s already exists.\n\
+            Do you want to overwrite it? y/n\t" % output_path)
+        choice = input().lower()
+        if choice != 'y':
+            version = 1
+            filename, ext = os.path.splitext(output_path)
+            output_path = '%s(%d)%s' % (filename, version, ext,)
+            while os.path.exists(output_path):
+                version += 1
+                output_path = '%s(%d)%s' % (filename, version, ext,)
+    return output_path
+
+
+def write_final_output(out_file, delimiter, tmpFile):
+    """
+    Format the final output into however the user specified.
+
+    :param out_file: str Full path of the output file
+    :param delimiter: str Field delimiter for results
+    :param tmpFile: file Open file object from which to read results
+    """
+    if delimiter == '\t':
+        writer = csv.writer(out_file, dialect='excel-tab',
+                            quoting=csv.QUOTE_MINIMAL, lineterminator='\n')
+    else:
+        writer = csv.writer(out_file, delimiter=delimiter, dialect='excel',
+                            quoting=csv.QUOTE_MINIMAL, lineterminator='\n')
+    for line in tmpFile:
+        sl = line.decode('UTF-8').strip().split('\t')
+        writer.writerow(sl)
+
+
+def main(args):
+    """
+    Tie everything together
+    :params args: Namespace Command-line arguments
+    """
+    Qubole.configure(api_token=args.Token)
+    query_id = args.Query_ID
+    # Default to CSV output format
+    extension = 'csv'
+    delimiter = ','
+    # Try to infer file extension from delimiter
+    if args.delimiter is not None:
+        if args.delimiter == '\t':
+            extension = 'tsv'
+        else:
+            extension = 'txt'
+        delimiter = args.delimiter
+    # Use output filename if given, else use query ID
+    if args.output is not None:
+        out_file_name = args.output
+    else:
+        out_file_name = 'full_result_%s.%s' % (str(query_id), extension,)
+    try:
+        hc = HiveCommand.find(query_id)
+    except qds_sdk.exception.ResourceNotFound:
+        sys.stderr.write("Invalid query ID.\n")
+        sys.exit(-1)
+    with tempfile.TemporaryFile() as tmpFile:
+        write_intermediate_results(tmpFile, hc)
+        tmpFile.seek(0)
+        output_path = get_output_path(out_file_name)
+        # Write results with the specified delimiter to the specified file path
+        with open(output_path, 'w') as out_file:
+            write_final_output(out_file, delimiter, tmpFile)
+    sys.stdout.write('Successfully wrote results to %s.\n' % output_path)
+    sys.exit()
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('Token', type=str,
+                        help='API token of the account from which this query ran')
+    parser.add_argument('Query_ID', type=int,
+                        help='The ID of the query whose results you wish to download')
+    parser.add_argument('-o', '--output',
+                        help='The name of the file you wish to write to')
+    parser.add_argument('-d', '--delimiter', type=str,
+                        help='Custom delimiter you would like to use')
+    args = parser.parse_args()
+    main(args)
