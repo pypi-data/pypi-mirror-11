@@ -1,0 +1,88 @@
+
+ * add YAML direct read/write feature - and maybe INI
+ * a decorator for auto-interpreting kwarg pushes ?
+
+ * fix the graphical link that shows the structure of options
+   droplr no longer serving it
+
+should we try to use metaprogramming magic to make optinns into instance attributes,
+and/or auto-process the args, kwargs on method entry??
+
+  * add property like setters
+  * extend setters to multiple options
+  * clean up quoteroptions as a result
+
+
+  * There are some indications that some options should be only private
+    and some should be only transient
+
+  * https://github.com/DasIch/brownie/blob/master/brownie/context.py Might
+    provide some insights as to how to proceed with threading.
+
+  * consider http://pythonhosted.org/funconf/funconf.html
+
+ * Open question: Could "magic" parameter processing be
+   improved with a properties-based approach akin to that of `basicproperty <http://pypi.python.org/pypi/basicproperty>`_,
+   `propertylib <http://pypi.python.org/pypi/propertylib>`_,
+   `classproperty <http://pypi.python.org/pypi/classproperty>`_, and `realproperty <http://pypi.python.org/pypi/rwproperty>`_.
+
+ * Open question: Should "magic" parameter setters be allow to change
+   multiple options at once? A use case for this: "Abbreviation"
+   options that combine multiple changes into one compact option. These would
+   probably not have stored values themselves. It would require setting the
+   "dependent" option values via side-effect rather than functional return values.
+
+
+ * In the future, it may be possible to use more metaprogramming to
+   further simplify options usage. It probably doesn't make sense to
+   use an instance's __dict__ as where the options are stored; that would
+   allow
+   self.varname to be used, but that is probably too confusing. Requiring
+   more explicit practices different from Python standards is probably
+   the way to go, since we do differ from Python norms.
+   Have considered having
+
+   OptionsClass use ``__slots__ = ('options')`` to avoid even having a
+   ``__dict__``, and that's still possible.  But then clients would have
+   to state ``__slots__ = ()`` explicitly, which gets into the "someone
+   would screw it up" territory.
+
+   Still possible: using metaclasses or decorators to handle the
+   different ways that kwargs are used. We might be able to save the
+   ``opts = self.options.push(kwargs)`` statement for each method. E.g.,
+   if there were an ``@optioned`` decorator and the method used ``**opts``
+   for its keyword args, it might be possible to transparently underlay
+   ``opts`` and save the statement. But is it worth it?
+
+   The local notebook has a decorator:
+
+   def optioned(f):
+       print type(f)
+       def newf(self, *args, **kwargs):
+           opts = self.options.push(kwargs)
+           f(self, *args, opts=opts)
+       return newf
+
+   that works for methods to make them optioned, without explicit
+   kwarg conversion. It doesn't work on functions, but could probably
+   be made to through introspection. A decorator might be an
+   alterantvie to explict option setting.
+
+   Might need another decorator for __init__ to make it work without
+   the boilerplate.
+
+ * For named styles, need to rewrite the module so that OptionsChain is
+   the key, and that Options is not a separate mapping itself.
+
+ * Extend the push method with **kwargs and a parent kwarg. Parent would
+   be used for implementing styles, and  kwargs for replacing add with
+   a more inclusive push. SHould proably have some sort of kwarg flag
+   like leftovers=False that would disallow leftovers as described
+   in docs; and situations where leftovers are desirable could set
+   them differently. Leftovers might be a setting of Options, rather
+   than just an instance var
+
+  * Might also provide a mechansim for initializing Options from a list,
+    so that ordering may be preserved.
+
+  * consider https://pypi.python.org/pypi/configs/2.0.6 for config file mgt?
