@@ -1,0 +1,48 @@
+# README #
+
+A Python client for Telemetron.
+
+## Dependencies
+
+    Python 2.6+
+    Python-setuptools
+
+
+## How to use the client
+
+### Sending a counter using _UDP_, to localhost:2013:
+
+
+    from telemetron.client import Client
+    client = Client(prefix="foo")  # UDP localhost:2013
+    client.inc("mycounter", 1000)
+    client.flush()
+
+
+### Sending a counter using _TCP_, to _metrics.external.com:2014_:
+
+
+    from telemetron.client import Client
+    client = Client(
+        host="metrics.external.com",
+        port=2014
+        socket_type=Client.TCP_SOCKET,
+        prefix="bar")
+    client.inc("mycounter", 1000)
+    client.flush()
+
+
+## How to run tests
+
+    python setup.py nosetests
+
+
+## Deployment instructions
+
+### Local install:
+
+    python setup.py install
+
+### Using pip:
+
+    pip install telemetron-client
