@@ -1,0 +1,166 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+import curses
+from math import floor
+from datetime import datetime as date
+import sys
+import time
+import argparse
+import signal
+
+
+
+def get_args():
+    parser = argparse.ArgumentParser(
+        description='Simple curses clock written in Python.\n\
+                Press q to exit.',
+        epilog="Made with help from #linuxmasterrace on Snoonet thanks to n473,\
+                thimoteus, AWindowsKrill, timawesomeness, calexil, tirkaz \
+                and somehow R0flcopt3r, with additional help from bdalenoord and Noremac201.")
+    parser.add_argument('-V', '-v', '--version', 
+                    action='version',                    
+                    version='%(prog)s (version 0.5)')
+    parser.add_argument(
+        '-c', '--color', type=str, help='changes color of clock respectively', required=False)
+    parser.add_argument(
+        '-n', '--nodate', action='store_true', help='does not print the date in the clock', required=False)
+    parser.add_argument(
+        '-t', '--twentyfourhours', action='store_true', help='prints the time in 24-hour format', required=False, default=None)
+    args = parser.parse_args()
+    color = args.color
+    nodate = args.nodate
+    twentyfourhourarg = args.twentyfourhours
+    return color, nodate, twentyfourhourarg
+
+color, nodate, twentyfourhourarg = get_args()
+
+
+screen          = curses.initscr()
+last_width      = 0
+last_height     = 0
+glyph           = {
+    '0': ["  #####   ", " ##   ##  ", "##     ## ", "##     ## ", "##     ## ", " ##   ##  ", "  #####   "],
+    '1': ["    ##    ", "  ####    ", "    ##    ", "    ##    ", "    ##    ", "    ##    ", "  ######  "],
+    '2': [" #######  ", "##     ## ", "       ## ", " #######  ", "##        ", "##        ", "######### "],
+    '3': [" #######  ", "##     ## ", "       ## ", " #######  ", "       ## ", "##     ## ", " #######  "],
+    '4': ["##        ", "##    ##  ", "##    ##  ", "##    ##  ", "######### ", "      ##  ", "      ##  "],
+    '5': [" ######## ", " ##       ", " ##       ", " #######  ", "       ## ", " ##    ## ", "  ######  "],
+    '6': [" #######  ", "##     ## ", "##        ", "########  ", "##     ## ", "##     ## ", " #######  "],
+    '7': [" ######## ", " ##    ## ", "     ##   ", "    ##    ", "   ##     ", "   ##     ", "   ##     "],
+    '8': [" #######  ", "##     ## ", "##     ## ", " #######  ", "##     ## ", "##     ## ", " #######  "],
+    '9': [" #######  ", "##     ## ", "##     ## ", " ######## ", "       ## ", "##     ## ", " #######  "],
+    ':': ["   ", "   ", " # ", "   ", " # ", "   ", "   "]
+}
+maincolor = 0
+bgcolor = -1
+
+def getcolor():
+    if color in  ["red"]:
+        curses.init_pair(1, 0, -1)
+        curses.init_pair(2, 1, -1)
+        curses.init_pair(3, 0, 1)
+    if color in ["green"]:
+        curses.init_pair(1, 0, -1)
+        curses.init_pair(2, 2, -1)
+        curses.init_pair(3, 0, 2)
+    if color in ["yellow"]:
+        curses.init_pair(1, 0, -1)
+        curses.init_pair(2, 3, -1)
+        curses.init_pair(3, 0, 3)
+    if color in ["blue"]:
+        curses.init_pair(1, 0, -1)
+        curses.init_pair(2, 4, -1)
+        curses.init_pair(3, 0, 4)
+    if color in ["magenta"]:
+        curses.init_pair(1, 0, -1)
+        curses.init_pair(2, 5, -1)
+        curses.init_pair(3, 0, 5)
+    if color in ["cyan"]:
+        curses.init_pair(1, 0, -1)
+        curses.init_pair(2, 6, -1)
+        curses.init_pair(3, 0, 6)
+    if color in ["white"]:
+        curses.init_pair(1, 0, -1)
+        curses.init_pair(2, 7, -1)
+        curses.init_pair(3, 0, 7)
+    else:
+        pass
+
+def addstr(y, x, string, color):
+    try:
+                screen.addstr( origin_y + y, origin_x + x, string, color)
+                screen.refresh()
+    except: return
+
+def print_time(now):
+    twentyfourhours = twentyfourhourarg
+    time_line = now.strftime("%H:%M:%S" if twentyfourhours else "%I:%M:%S")
+    time_array = ["" for i in range(0, 7)]
+
+    for char in time_line:
+        char_array = glyph[char]
+        for row in range(0, len(char_array)):
+            time_array[row] += char_array[row]
+
+    for y in range(0, len(time_array)):
+        for x in range(0, len(time_array[y])):
+            char = time_array[y][x]
+            color = 1 if char == " " else 3
+            addstr(y, x, " ",
+                    curses.color_pair(color))
+
+    if not twentyfourhours:
+        addstr(6, len(time_array[0]), now.strftime("%p"),
+                curses.color_pair(2) | curses.A_BOLD)
+
+def print_date(now):
+    day_line = now.strftime("%A").center(11, " ")
+    date_line = now.strftime("%B %d, %Y")
+    if nodate:
+        pass
+    else:
+        addstr(8, 0, day_line, curses.color_pair(3))
+        addstr(8, len(day_line) + 40, date_line, curses.color_pair(2) | curses.A_BOLD)
+
+def gracefull_exit(signal = None, frame = None):
+    curses.endwin()
+    sys.exit()
+
+screen.keypad(1)
+curses.curs_set(0)
+curses.start_color()
+curses.use_default_colors()
+#if no arguments use these values
+curses.init_pair(1, 0, -1)
+curses.init_pair(2, 3, -1)
+curses.init_pair(3, 0, 3)
+#
+curses.noecho()
+curses.cbreak()
+
+# Register signal handlers for gracefull exit on for instance CTRL-C
+signal.signal(signal.SIGINT, gracefull_exit)
+signal.signal(signal.SIGTERM, gracefull_exit)
+
+a = 0
+while True:
+    getcolor()
+    width = screen.getmaxyx()[1]
+    height = screen.getmaxyx()[0]
+    origin_x = floor(width / 2) - 34
+    origin_y = floor(height / 2) - 4
+    now = date.now()
+
+    if width != last_width or height != last_height: screen.clear()
+    last_width = width
+    last_height = height
+
+    print_time(now)
+    print_date(now)
+    time.sleep(1)
+
+    screen.timeout(30)
+    char = screen.getch()
+    if char == 113: break
+
+gracefull_exit()
