@@ -1,0 +1,92 @@
+{% extends "flowr/base.html" %}
+{% load staticfiles %}
+
+{% block extra_head %}
+  <script src="{% static 'flowr/js/w2ui-1.4.3.min.js' %}"></script>
+
+  <link rel="stylesheet" type="text/css" 
+    href="{% static 'flowr/js/w2ui-1.4.3.min.css' %}"/>
+{% endblock extra_head %}
+
+{% block body %}
+  {% include "flowr/header.html" %}
+
+  <div id="layout-panels"></div>
+{% endblock body %}
+
+{% block body_post %}
+<script type="text/javascript">
+var node_selected;
+var prune_select;
+
+function clear_highlights() {
+  cy.nodes().removeClass('highlight');
+}
+
+function show_error() {
+  $('#rhs').html(
+    '<h1>Error</h1>' + 
+    '<p>' +
+    '  An error has occurred communicating with the server' + 
+    '</p>'
+  );
+}
+
+$(function() {
+  var h = $(window).height();
+  console.debug('window h:' + h + ' header h:' + $('#header').height());
+  h -= $('#header').height() + 20;
+  console.debug('calced h:' + h);
+  $('#layout-panels').height(h);
+
+  $('#layout-panels').w2layout({
+    name:'layout',
+    panels:[
+      { 
+        type:'main',
+        size:'50%',
+        content:'<div id="cy" style="height:500px"></div>',
+      },
+      {
+        type:'right',
+        size:'50%',
+        resizable: true,
+        content:'<div id="rhs"><h3 class="text-muted">Select a node</h3></div>',
+      }
+    ],
+    onResize: function(event) {
+      event.onComplete = function() {
+        if( typeof cy !== 'undefined' ) {
+          var container = $('#cy').parent().parent();
+          console.log('container w:' + container.width());
+          $('#cy').css('width', container.width());
+          updateBounds();
+        }
+      }
+    },
+  });
+});
+
+  {% include "flowr/graph.js" %}
+
+$(function() {
+  cy.on('tap', 'node', function(event) {
+    clear_highlights();
+    $('body').css('cursor', 'wait');
+    $.ajax({
+      url:"/flowr/node_selected/" + event.cyTarget.id() + "/",
+      success: function(data) {
+        node_selected = event.cyTarget;
+        prune_select = data['prune'];
+        $('#rhs').html(data['html']);
+      },
+      error: show_error,
+      complete: function() {
+        $('body').css('cursor', 'auto');
+      },
+    });
+
+  });
+});
+</script>
+{% endblock body_post %}
