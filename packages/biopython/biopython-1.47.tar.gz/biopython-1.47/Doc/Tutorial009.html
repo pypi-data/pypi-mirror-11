@@ -1,0 +1,229 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+            "http://www.w3.org/TR/REC-html40/loose.dtd">
+<HTML>
+<HEAD>
+
+<META http-equiv="Content-Type" content="text/html; charset=US-ASCII">
+<META name="GENERATOR" content="hevea 1.10">
+<LINK rel="stylesheet" type="text/css" href="Tutorial.css">
+<TITLE>Swiss-Prot, Prosite, Prodoc, and ExPASy</TITLE>
+</HEAD>
+<BODY >
+<A HREF="Tutorial008.html"><IMG SRC="previous_motif.gif" ALT="Previous"></A>
+<A HREF="index.html"><IMG SRC="contents_motif.gif" ALT="Up"></A>
+<A HREF="Tutorial010.html"><IMG SRC="next_motif.gif" ALT="Next"></A>
+<HR>
+<H1 CLASS="chapter"><A NAME="htoc73">Chapter&#XA0;8</A>&#XA0;&#XA0;Swiss-Prot, Prosite, Prodoc, and ExPASy</H1><P>
+<A NAME="chapter:swiss_prot"></A></P><H2 CLASS="section"><A NAME="toc42"></A><A NAME="htoc74">8.1</A>&#XA0;&#XA0;Bio.SwissProt: Parsing Swiss-Prot files</H2><H3 CLASS="subsection"><A NAME="htoc75">8.1.1</A>&#XA0;&#XA0;Parsing Swiss-Prot records</H3><P>Swiss-Prot (<A HREF="http://www.expasy.org/sprot"><TT>http://www.expasy.org/sprot</TT></A>) is a hand-curated database of protein sequences. In Section&#XA0;<A HREF="Tutorial005.html#sec:SeqIO_ExPASy_and_SwissProt">4.2.2</A>, we described how to extract the sequence of a Swiss-Prot record as a <CODE>SeqRecord</CODE> object. Alternatively, you can store the Swiss-Prot record in a <CODE>Bio.SwissProt.SProt.Record</CODE> object, which in fact stores the complete information contained in the Swiss-Prot record. In this Section, we describe how to extract <CODE>Bio.SwissProt.SProt.Record</CODE> objects from a Swiss-Prot file.</P><P>To parse a Swiss-Prot record, we first get a handle to a Swiss-Prot record. There are several ways to do so, depending on where and how the Swiss-Prot record is stored:
+</P><UL CLASS="itemize"><LI CLASS="li-itemize">
+Open a Swiss-Prot file locally:<BR>
+<CODE>&gt;&gt;&gt; handle = open("myswissprotfile.dat")</CODE>
+</LI><LI CLASS="li-itemize">Open a gzipped Swiss-Prot file:
+<PRE CLASS="verbatim">&gt;&gt;&gt; import gzip
+&gt;&gt;&gt; handle = gzip.open("myswissprotfile.dat.gz")
+</PRE></LI><LI CLASS="li-itemize">Open a Swiss-Prot file over the internet:
+<PRE CLASS="verbatim">&gt;&gt;&gt; import urllib
+&gt;&gt;&gt; handle = urllib.urlopen("http://www.somelocation.org/data/someswissprotfile.dat")
+</PRE></LI><LI CLASS="li-itemize">Open a Swiss-Prot file over the internet from the ExPASy database
+(see section <A HREF="#subsec:expasy_swissprot">8.4.1</A>):
+<PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import ExPASy
+&gt;&gt;&gt; handle = ExPASy.get_sprot_raw(myaccessionnumber)
+</PRE></LI></UL><P>
+The key point is that for the parser, it doesn&#X2019;t matter how the handle was created, as long as it points to data in the Swiss-Prot format.</P><P>We can use Bio.SeqIO as described in Section&#XA0;<A HREF="Tutorial005.html#sec:SeqIO_ExPASy_and_SwissProt">4.2.2</A> to get file format agnostic <CODE>SeqRecord</CODE> objects. Alternatively, we can get <CODE>Bio.SwissProt.SProt.Record</CODE> objects which are a much closer match to the underlying file format, using following code.</P><P>To read one Swiss-Prot record from the handle, we use the function <CODE>read()</CODE>:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import SwissProt
+&gt;&gt;&gt; record = SwissProt.read(handle)
+</PRE><P>This function should be used if the handle points to exactly one Swiss-Prot record. It raises a <CODE>ValueError</CODE> if no Swiss-Prot record was found, and also if more than one record was found.</P><P>We can now print out some information about this record:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; print record.description
+CHALCONE SYNTHASE 3 (EC 2.3.1.74) (NARINGENIN-CHALCONE SYNTHASE 3).
+&gt;&gt;&gt; for ref in record.references:
+...     print "authors:", ref.authors
+...     print "title:", ref.title
+...
+authors: Liew C.F., Lim S.H., Loh C.S., Goh C.J.;
+title: "Molecular cloning and sequence analysis of chalcone synthase cDNAs of
+Bromheadia finlaysoniana.";
+&gt;&gt;&gt; print record.organism_classification
+['Eukaryota', 'Viridiplantae', 'Embryophyta', 'Tracheophyta', 'Spermatophyta',
+'Magnoliophyta', 'Liliopsida', 'Asparagales', 'Orchidaceae', 'Bromheadia']
+</PRE><P>To parse a file that contains more than one Swiss-Prot record, we use the <CODE>parse</CODE> function instead. This function allows us to iterate over the records in the file. For example, let&#X2019;s parse the full Swiss-Prot database and collect all the descriptions. The full Swiss-Prot database, downloaded from ExPASy on 4 December 2007, contains 290484 Swiss-Prot records in a single gzipped-file <CODE>uniprot_sprot.dat.gz</CODE>.</P><PRE CLASS="verbatim">&gt;&gt;&gt; import gzip
+&gt;&gt;&gt; input = gzip.open("uniprot_sprot.dat.gz")
+&gt;&gt;&gt; from Bio import SwissProt
+&gt;&gt;&gt; records = SwissProt.parse(input)
+&gt;&gt;&gt; descriptions = []
+&gt;&gt;&gt; for record in records:
+...     description = record.description
+...     descriptions.append(description)
+...
+&gt;&gt;&gt; len(descriptions)
+290484
+&gt;&gt;&gt; descriptions[:3]
+['104 kDa microneme/rhoptry antigen precursor (p104).',
+ '104 kDa microneme/rhoptry antigen precursor (p104).',
+ 'Protein 108 precursor.']
+</PRE><P>It is equally easy to extract any kind of information you&#X2019;d like from Swiss-Prot records. To see the members of a Swiss-Prot record, use
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; dir(record)
+['__doc__', '__init__', '__module__', 'accessions', 'annotation_update',
+'comments', 'created', 'cross_references', 'data_class', 'description',
+'entry_name', 'features', 'gene_name', 'host_organism', 'keywords',
+'molecule_type', 'organelle', 'organism', 'organism_classification',
+'references', 'seqinfo', 'sequence', 'sequence_length',
+'sequence_update', 'taxonomy_id']
+</PRE><H3 CLASS="subsection"><A NAME="htoc76">8.1.2</A>&#XA0;&#XA0;Parsing the Swiss-Prot keyword and category list</H3><P>Swiss-Prot also distributes a file <CODE>keywlist.txt</CODE>, which lists the keywords and categories used in Swiss-Prot. The file contains entries in the following form:</P><PRE CLASS="verbatim">ID   2Fe-2S.
+AC   KW-0001
+DE   Protein which contains at least one 2Fe-2S iron-sulfur cluster: 2 iron
+DE   atoms complexed to 2 inorganic sulfides and 4 sulfur atoms of
+DE   cysteines from the protein.
+SY   Fe2S2; [2Fe-2S] cluster; [Fe2S2] cluster; Fe2/S2 (inorganic) cluster;
+SY   Di-mu-sulfido-diiron; 2 iron, 2 sulfur cluster binding.
+GO   GO:0051537; 2 iron, 2 sulfur cluster binding
+HI   Ligand: Iron; Iron-sulfur; 2Fe-2S.
+HI   Ligand: Metal-binding; 2Fe-2S.
+CA   Ligand.
+//
+ID   3D-structure.
+AC   KW-0002
+DE   Protein, or part of a protein, whose three-dimensional structure has
+DE   been resolved experimentally (for example by X-ray crystallography or
+DE   NMR spectroscopy) and whose coordinates are available in the PDB
+DE   database. Can also be used for theoretical models.
+HI   Technical term: 3D-structure.
+CA   Technical term.
+//
+ID   3Fe-4S.
+...
+</PRE><P>The entries in this file can be parsed by the <CODE>parse</CODE> function in the <CODE>Bio.SwissProt.KeyWList</CODE> module. Each entry is then stored as a <CODE>Bio.SwissProt.KeyWList.Record</CODE>, which is a Python dictionary.</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio.SwissProt import KeyWList
+&gt;&gt;&gt; handle = open("keywlist.txt")
+&gt;&gt;&gt; records = KeyWList.parse(handle)
+&gt;&gt;&gt; for record in records:
+...     print record['ID']
+...     print record['DE']
+</PRE><P>This prints
+</P><PRE CLASS="verbatim">2Fe-2S.
+Protein which contains at least one 2Fe-2S iron-sulfur cluster: 2 iron atoms
+complexed to 2 inorganic sulfides and 4 sulfur atoms of cysteines from the
+protein.
+...
+</PRE><H2 CLASS="section"><A NAME="toc43"></A><A NAME="htoc77">8.2</A>&#XA0;&#XA0;Bio.Prosite: Parsing Prosite records</H2><P>Prosite is a database containing protein domains, protein families, functional sites, as well as the patterns and profiles to recognize them. Prosite was developed in parallel with Swiss-Prot. In Biopython, a Prosite record is represented by the <CODE>Bio.Prosite.Record</CODE> class, whose members correspond to the different fields in a Prosite record.</P><P>In general, a Prosite file can contain more than one Prosite records. For example, the full set of Prosite records, which can be downloaded as a single file (<CODE>prosite.dat</CODE>) from ExPASy, contains 2073 records in (version 20.24 released on 4 December 2007). To parse such a file, we again make use of an iterator:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import Prosite
+&gt;&gt;&gt; handle = open("myprositefile.dat")
+&gt;&gt;&gt; records = Prosite.parse(handle)
+</PRE><P>We can now take the records one at a time and print out some information. For example, using the file containing the complete Prosite database, we&#X2019;d find
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import Prosite
+&gt;&gt;&gt; handle = open("prosite.dat")
+&gt;&gt;&gt; records = Prosite.parse(handle)
+&gt;&gt;&gt; record = records.next()
+&gt;&gt;&gt; record.accession
+'PS00001'
+&gt;&gt;&gt; record.name
+'ASN_GLYCOSYLATION'
+&gt;&gt;&gt; record.pdoc
+'PDOC00001'
+&gt;&gt;&gt; record = records.next()
+&gt;&gt;&gt; record.accession
+'PS00004'
+&gt;&gt;&gt; record.name
+'CAMP_PHOSPHO_SITE'
+&gt;&gt;&gt; record.pdoc
+'PDOC00004'
+&gt;&gt;&gt; record = records.next()
+&gt;&gt;&gt; record.accession
+'PS00005'
+&gt;&gt;&gt; record.name
+'PKC_PHOSPHO_SITE'
+&gt;&gt;&gt; record.pdoc
+'PDOC00005'
+</PRE><P>and so on. If you&#X2019;re interested in how many Prosite records there are, you could use
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import Prosite
+&gt;&gt;&gt; handle = open("prosite.dat")
+&gt;&gt;&gt; records = Prosite.parse(handle)
+&gt;&gt;&gt; n = 0
+&gt;&gt;&gt; for record in records: n+=1
+...
+&gt;&gt;&gt; print n
+2073
+</PRE><P>To read exactly one Prosite from the handle, you can use the <CODE>read</CODE> function:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import Prosite
+&gt;&gt;&gt; handle = open("mysingleprositerecord.dat")
+&gt;&gt;&gt; record = Prosite.read(handle)
+</PRE><P>This function raises a ValueError if no Prosite record is found, and also if more than one Prosite record is found.</P><H2 CLASS="section"><A NAME="toc44"></A><A NAME="htoc78">8.3</A>&#XA0;&#XA0;Bio.Prosite.Prodoc: Parsing Prodoc records</H2><P>In the Prosite example above, the <CODE>record.pdoc</CODE> accession numbers <CODE>'PDOC00001'</CODE>, <CODE>'PDOC00004'</CODE>, <CODE>'PDOC00005'</CODE> and so on refer to Prodoc records, which contain the Prosite Documentation. The Prodoc records are available from ExPASy as individual files, and as one file (<CODE>prosite.doc</CODE>) containing all Prodoc records.</P><P>We use the parser in <CODE>Bio.Prosite.Prodoc</CODE> to parse Prodoc records. For example, to create a list of all Prodoc accession numbers, you can use</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio.Prosite import Prodoc
+&gt;&gt;&gt; handle = open("prosite.doc")
+&gt;&gt;&gt; records = Prodoc.parse(handle)
+&gt;&gt;&gt; accessions = [record.accession for record in records]
+</PRE><P>Again a <CODE>read()</CODE> function is provided to read exactly one Prodoc record from the handle.</P><H2 CLASS="section"><A NAME="toc45"></A><A NAME="htoc79">8.4</A>&#XA0;&#XA0;Bio.ExPASy: Accessing the ExPASy server</H2><P>Swiss-Prot, Prosite, and Prodoc records can be downloaded from the ExPASy web server at <A HREF="http://www.expasy.org"><TT>http://www.expasy.org</TT></A>. Six kinds of queries are available from ExPASy:
+</P><DL CLASS="description"><DT CLASS="dt-description">
+<B>get_prodoc_entry</B></DT><DD CLASS="dd-description">To download a Prodoc record in HTML format
+</DD><DT CLASS="dt-description"><B>get_prosite_entry</B></DT><DD CLASS="dd-description">To download a Prosite record in HTML format
+</DD><DT CLASS="dt-description"><B>get_prosite_raw</B></DT><DD CLASS="dd-description">To download a Prosite or Prodoc record in raw format
+</DD><DT CLASS="dt-description"><B>get_sprot_raw</B></DT><DD CLASS="dd-description">To download a Swiss-Prot record in raw format
+</DD><DT CLASS="dt-description"><B>sprot_search_ful</B></DT><DD CLASS="dd-description">To search for a Swiss-Prot record
+</DD><DT CLASS="dt-description"><B>sprot_search_de</B></DT><DD CLASS="dd-description">To search for a Swiss-Prot record
+</DD></DL><P>
+To access this web server from a Python script, we use the <CODE>Bio.ExPASy</CODE> module.</P><H3 CLASS="subsection"><A NAME="htoc80">8.4.1</A>&#XA0;&#XA0;Retrieving a Swiss-Prot record</H3><P>
+<A NAME="subsec:expasy_swissprot"></A></P><P>Let&#X2019;s say we are looking at chalcone synthases for Orchids (see section&#XA0;<A HREF="Tutorial003.html#sec:orchids">2.3</A> for some justification for looking for interesting things about orchids). Chalcone synthase is involved in flavanoid biosynthesis in plants, and flavanoids make lots of cool things like pigment colors and UV protectants. </P><P>If you do a search on Swiss-Prot, you can find three orchid proteins for Chalcone Synthase, id numbers O23729, O23730, O23731. Now, let&#X2019;s write a script which grabs these, and parses out some interesting information.</P><P>First, we grab the records, using the <CODE>get_sprot_raw()</CODE> function of <CODE>Bio.ExPASy</CODE>. This function is very nice since you can feed it an id and get back a handle to a raw text record (no html to mess with!). We can the use <CODE>Bio.SwissProt.read</CODE> to pull out the Swiss-Prot record, or <CODE>Bio.SeqIO.read</CODE> to get a SeqRecord. The following code accomplishes what I just wrote:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import ExPASy
+&gt;&gt;&gt; from Bio import SwissProt
+
+&gt;&gt;&gt; accessions = ["O23729", "O23730", "O23731"]
+&gt;&gt;&gt; records = []
+
+&gt;&gt;&gt; for accession in accessions:
+...     handle = ExPASy.get_sprot_raw(accession)
+...     record = SwissProt.read(handle)
+...     records.append(record)
+</PRE><P>If the accession number you provided to <CODE>ExPASy.get_sprot_raw</CODE> does not exist, then <CODE>SwissProt.read(handle)</CODE> will raise a <CODE>ValueError</CODE>. You can catch <CODE>ValueException</CODE> exceptions to detect invalid accession numbers:</P><PRE CLASS="verbatim">&gt;&gt;&gt; for accession in accessions:
+...     handle = ExPASy.get_sprot_raw(accession)
+...     try:
+...         record = SwissProt.read(handle)
+...     except ValueException:
+...         print "WARNING: Accession %s not found" % accession
+...     records.append(record)
+</PRE><H3 CLASS="subsection"><A NAME="htoc81">8.4.2</A>&#XA0;&#XA0;Searching Swiss-Prot</H3><P>Now, you may remark that I knew the records&#X2019; accession numbers
+beforehand. Indeed, <CODE>get_sprot_raw()</CODE> needs either the entry name
+or an accession number. When you don&#X2019;t have them handy, you can use
+one of the <CODE>sprot_search_de()</CODE> or <CODE>sprot_search_ful()</CODE>
+functions.</P><P><CODE>sprot_search_de()</CODE> searches in the ID, DE, GN, OS and OG lines;
+<CODE>sprot_search_ful()</CODE> searches in (nearly) all the fields. They
+are detailed on
+<A HREF="http://www.expasy.org/cgi-bin/sprot-search-de"><TT>http://www.expasy.org/cgi-bin/sprot-search-de</TT></A> and
+<A HREF="http://www.expasy.org/cgi-bin/sprot-search-ful"><TT>http://www.expasy.org/cgi-bin/sprot-search-ful</TT></A>
+respectively. Note that they don&#X2019;t search in TrEMBL by default
+(argument <CODE>trembl</CODE>). Note also that they return html pages;
+however, accession numbers are quite easily extractable:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import ExPASy
+&gt;&gt;&gt; import re
+
+&gt;&gt;&gt; handle = ExPASy.sprot_search_de("Orchid Chalcone Synthase")
+&gt;&gt;&gt; # or:
+&gt;&gt;&gt; # handle = ExPASy.sprot_search_ful("Orchid and {Chalcone Synthase}")
+&gt;&gt;&gt; html_results = handle.read()
+&gt;&gt;&gt; if "Number of sequences found" in html_results:
+...     ids = re.findall(r'HREF="/uniprot/(\w+)"', html_results)
+... else:
+...     ids = re.findall(r'href="/cgi-bin/niceprot\.pl\?(\w+)"', html_results)
+</PRE><H3 CLASS="subsection"><A NAME="htoc82">8.4.3</A>&#XA0;&#XA0;Retrieving Prosite and Prodoc records</H3><P>Prosite and Prodoc records can be retrieved either in HTML format, or in raw format. To parse Prosite and Prodoc records with Biopython, you should retrieve the records in raw format. For other purposes, however, you may be interested in these records in HTML format.</P><P>To retrieve a Prosite or Prodoc record in raw format, use <CODE>get_prosite_raw()</CODE>. Although this function has <CODE>prosite</CODE> in the name, it can be used for Prodoc records as well. For example, to download a Prosite record and print it out in raw text format, use</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import ExPASy
+&gt;&gt;&gt; handle = ExPASy.get_prosite_raw('PS00001')
+&gt;&gt;&gt; text = handle.read()
+&gt;&gt;&gt; print text
+</PRE><P>To retrieve a Prosite record and parse it into a <CODE>Bio.Prosite.Record</CODE> object, use</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import ExPASy
+&gt;&gt;&gt; from Bio import Prosite
+&gt;&gt;&gt; handle = ExPASy.get_prosite_raw('PS00001')
+&gt;&gt;&gt; record = Prosite.read(handle)
+</PRE><P>Finally, to retrieve a Prodoc record and parse it into a <CODE>Bio.Prosite.Prodoc.Record</CODE> object, use</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import ExPASy
+&gt;&gt;&gt; from Bio.Prosite import Prodoc
+&gt;&gt;&gt; handle = ExPASy.get_prosite_raw('PDOC00001')
+&gt;&gt;&gt; record = Prodoc.read(handle)
+</PRE><P>For non-existing accession numbers, <CODE>ExPASy.get_prosite_raw</CODE> returns a handle to an emptry string. When faced with an empty string, <CODE>Prosite.read</CODE> and <CODE>Prodoc.read</CODE> will raise a ValueError. You can catch these exceptions to detect invalid accession numbers.</P><P>The functions <CODE>get_prosite_entry()</CODE> and <CODE>get_prodoc_entry()</CODE> are used to download Prosite and Prodoc records in HTML format. To create a web page showing one Prosite record, you can use</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import ExPASy
+&gt;&gt;&gt; handle = ExPASy.get_prosite_entry('PS00001')
+&gt;&gt;&gt; html = handle.read()
+&gt;&gt;&gt; output = open("myprositerecord.html", "w")
+&gt;&gt;&gt; output.write(html)
+&gt;&gt;&gt; output.close()
+</PRE><P>and similarly for a Prodoc record:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import ExPASy
+&gt;&gt;&gt; handle = ExPASy.get_prodoc_entry('PDOC00001')
+&gt;&gt;&gt; html = handle.read()
+&gt;&gt;&gt; output = open("myprodocrecord.html", "w")
+&gt;&gt;&gt; output.write(html)
+&gt;&gt;&gt; output.close()
+</PRE><P>For these functions, an invalid accession number returns an error message in HTML format.</P><HR>
+<A HREF="Tutorial008.html"><IMG SRC="previous_motif.gif" ALT="Previous"></A>
+<A HREF="index.html"><IMG SRC="contents_motif.gif" ALT="Up"></A>
+<A HREF="Tutorial010.html"><IMG SRC="next_motif.gif" ALT="Next"></A>
+</BODY>
+</HTML>

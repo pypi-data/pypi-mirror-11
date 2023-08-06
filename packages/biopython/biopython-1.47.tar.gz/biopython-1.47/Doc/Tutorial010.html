@@ -1,0 +1,969 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+            "http://www.w3.org/TR/REC-html40/loose.dtd">
+<HTML>
+<HEAD>
+
+<META http-equiv="Content-Type" content="text/html; charset=US-ASCII">
+<META name="GENERATOR" content="hevea 1.10">
+<LINK rel="stylesheet" type="text/css" href="Tutorial.css">
+<TITLE>Cookbook &#X2013; Cool things to do with it</TITLE>
+</HEAD>
+<BODY >
+<A HREF="Tutorial009.html"><IMG SRC="previous_motif.gif" ALT="Previous"></A>
+<A HREF="index.html"><IMG SRC="contents_motif.gif" ALT="Up"></A>
+<A HREF="Tutorial011.html"><IMG SRC="next_motif.gif" ALT="Next"></A>
+<HR>
+<H1 CLASS="chapter"><A NAME="htoc83">Chapter&#XA0;9</A>&#XA0;&#XA0;Cookbook &#X2013; Cool things to do with it</H1><P>
+<A NAME="chapter:cookbook"></A></P><H2 CLASS="section"><A NAME="toc46"></A><A NAME="htoc84">9.1</A>&#XA0;&#XA0;PubMed</H2><P>
+<A NAME="sec:pub_med"></A></P><P>The <CODE>Bio.PubMed</CODE> module uses <CODE>Bio.Entrez</CODE> internally to access the NCBI.
+<EM>Please</EM> remember to read and observe the NCBI&#X2019;s guidelines on using their Entrez online facilities responsibly. If you are found to be abusing their servers, they can and will block your access! See Section&#XA0;<A HREF="Tutorial008.html#sec:entrez-guidelines">7.1</A>.</P><H3 CLASS="subsection"><A NAME="htoc85">9.1.1</A>&#XA0;&#XA0;Sending a query to PubMed</H3><P>If you are in the Medical field or interested in human issues (and many times even if you are not!), PubMed (<A HREF="http://www.ncbi.nlm.nih.gov/PubMed/"><TT>http://www.ncbi.nlm.nih.gov/PubMed/</TT></A>) is an excellent source of all kinds of goodies. So like other things, we&#X2019;d like to be able to grab information from it and use it in python scripts.</P><P>Querying PubMed using Biopython is extremely painless. To get all of the article ids for articles having to do with orchids (see section&#XA0;<A HREF="Tutorial003.html#sec:orchids">2.3</A> for our motivation), we only need the following three lines of code:</P><PRE CLASS="verbatim">from Bio import PubMed
+
+search_term = 'orchid'
+orchid_ids = PubMed.search_for(search_term)
+</PRE><P>This returns a python list containing all of the orchid ids</P><PRE CLASS="verbatim">['11070358', '11064040', '11028023', '10947239', '10938351', '10936520',
+'10905611', '10899814', '10856762', '10854740', '10758893', '10716342',
+...
+</PRE><P>With this list of ids we are ready to start retrieving the records, so follow on ahead to the next section.</P><H3 CLASS="subsection"><A NAME="htoc86">9.1.2</A>&#XA0;&#XA0;Retrieving a PubMed record</H3><P>The previous section described how to get a bunch of article ids. Now that we&#X2019;ve got them, we obviously want to get the corresponding Medline records and extract the information from them.</P><P>The interface for retrieving records from PubMed should be very intuitive to python programmers &#X2013; it models a python dictionary. To set up this interface, we need to set up a parser that will parse the results that we retrieve. The following lines of code get everything set up:</P><PRE CLASS="verbatim">from Bio import PubMed
+from Bio import Medline
+
+rec_parser = Medline.RecordParser()
+medline_dict = PubMed.Dictionary(parser = rec_parser)
+</PRE><P>What we&#X2019;ve done is create a dictionary like object <CODE>medline_dict</CODE>. To get an article we access it like <CODE>medline_dict[id_to_get]</CODE>. What this does is connect with PubMed, get the article you ask for, parse it into a record object, and return it. Very cool!</P><P>Now let&#X2019;s look at how to use this nice dictionary to print out some information about some ids. We just need to loop through our ids (<CODE>orchid_ids</CODE> from the previous section) and print out the information we are interested in:</P><PRE CLASS="verbatim">for oid in orchid_ids[0:5]:
+    cur_record = medline_dict[oid]
+    print 'title:', cur_record.title.rstrip()
+    print 'authors:', cur_record.authors
+    print 'source:', cur_record.source.strip()
+    print
+</PRE><P>The output for this looks like:</P><PRE CLASS="verbatim">title: Sex pheromone mimicry in the early spider orchid (ophrys sphegodes):
+patterns of hydrocarbons as the key mechanism for pollination by sexual
+deception [In Process Citation]
+authors: ['Schiestl FP', 'Ayasse M', 'Paulus HF', 'Lofstedt C', 'Hansson BS',
+'Ibarra F', 'Francke W']
+source: J Comp Physiol [A] 2000 Jun;186(6):567-74
+</PRE><P>Especially interesting to note is the list of authors, which is returned as a standard python list. This makes it easy to manipulate and search using standard python tools. For instance, we could loop through a whole bunch of entries searching for a particular author with code like the following:</P><PRE CLASS="verbatim">search_author = 'Waits T'
+
+for our_id in our_id_list:
+    cur_record = medline_dict[our_id]
+   
+    if search_author in cur_record.authors:
+        print "Author %s found: %s" % (search_author,
+                                       cur_record.source.strip())
+</PRE><P>The PubMed and Medline interfaces are very mature and nice to work with &#X2013; hopefully this section gave you an idea of the power of the interfaces and how they can be used.</P><H2 CLASS="section"><A NAME="toc47"></A><A NAME="htoc87">9.2</A>&#XA0;&#XA0;GenBank</H2><P>The GenBank record format is a very popular method of holding information about sequences, sequence features, and other associated sequence information. The format is a good way to get information from the NCBI databases at <A HREF="http://www.ncbi.nlm.nih.gov/"><TT>http://www.ncbi.nlm.nih.gov/</TT></A>.</P><P>The <CODE>Bio.GenBank</CODE> module uses the NCBI&#X2019;s Entrez interface to run searches and fetch data.
+<EM>Please</EM> remember to read and observe the NCBI&#X2019;s guidelines on using their Entrez online facilities responsibly. If you are found to be abusing their servers, they can and will block your access! See Section&#XA0;<A HREF="Tutorial008.html#sec:entrez-guidelines">7.1</A>.</P><H3 CLASS="subsection"><A NAME="htoc88">9.2.1</A>&#XA0;&#XA0;Retrieving GenBank entries from NCBI</H3><P>
+<A NAME="genbank-retrieval"></A></P><P>One very nice feature of the GenBank libraries is the ability to automate retrieval of entries from GenBank. This is very convenient for creating scripts that automate a lot of your daily work. In this example we&#X2019;ll show how to query the NCBI databases, and to retrieve the records from the query - something touched on in Section&#XA0;<A HREF="Tutorial005.html#sec:SeqIO_GenBank_Online">4.2.1</A>.</P><P>First, we want to make a query and find out the ids of the records to retrieve. Here we&#X2019;ll do a quick search for our favorite organism, <EM>Opuntia</EM>. We can do quick search and get back the GIs (GenBank identifiers) for all of the corresponding records:</P><PRE CLASS="verbatim">from Bio import GenBank
+
+gi_list = GenBank.search_for("Opuntia AND rpl16")
+</PRE><P><CODE>gi_list</CODE> will be a list of all of the GenBank identifiers that match our query:</P><PRE CLASS="verbatim">["6273291", "6273290", "6273289", "6273287", "6273286", "6273285", "6273284"]
+</PRE><P>Now that we&#X2019;ve got the GIs, we can use these to access the NCBI database through a dictionary interface. For instance, to retrieve the information for the first GI, we&#X2019;ll first have to create a dictionary that accesses NCBI:</P><PRE CLASS="verbatim">ncbi_dict = GenBank.NCBIDictionary("nucleotide", "genbank")
+</PRE><P>Now that we&#X2019;ve got this, we do the retrieval:</P><PRE CLASS="verbatim">gb_record = ncbi_dict[gi_list[0]]
+</PRE><P>In this case, <CODE>gb_record</CODE> will be GenBank formatted record:</P><PRE CLASS="verbatim">LOCUS       AF191665      902 bp    DNA             PLN       07-NOV-1999
+DEFINITION  Opuntia marenae rpl16 gene; chloroplast gene for chloroplast
+            product, partial intron sequence.
+ACCESSION   AF191665
+VERSION     AF191665.1  GI:6273291
+...
+</PRE><P>In this case, we are just getting the raw records. We can also pass these records directly into a parser and return the parsed record. For instance, if we wanted to get back SeqRecord objects with the GenBank file parsed into SeqFeature objects we would need to create the dictionary with the GenBank FeatureParser:</P><PRE CLASS="verbatim">record_parser = GenBank.FeatureParser()
+ncbi_dict = GenBank.NCBIDictionary("nucleotide", "genbank",
+                                   parser = record_parser)
+</PRE><P>Now retrieving a record will give you a SeqRecord object instead of the raw record:</P><PRE CLASS="verbatim">&gt;&gt;&gt; gb_seqrecord = ncbi_dict[gi_list[0]]
+&gt;&gt;&gt; print gb_seqrecord
+&lt;Bio.SeqRecord.SeqRecord instance at 0x102f9404&gt;
+</PRE><P>Using these automated query retrieval functionality is a big plus over doing things by hand. Although the module should obey the NCBI&#X2019;s three-second rule, the NCBI have other recommendations like avoiding peak hours. See Section&#XA0;<A HREF="Tutorial008.html#sec:entrez-guidelines">7.1</A>.</P><P>For more information of formats you can parse GenBank records into, please see section&#XA0;<A HREF="#sec:gb-parsing">9.2.2</A>.</P><H3 CLASS="subsection"><A NAME="htoc89">9.2.2</A>&#XA0;&#XA0;Parsing GenBank records</H3><P>
+<A NAME="sec:gb-parsing"></A></P><P>While GenBank files are nice and have lots of information, at the same time you probably only want to extract a small amount of that information at a time. The key to doing this is parsing out the information. Biopython provides GenBank parsers which help you accomplish this task. Right now the GenBank module provides the following parsers:</P><OL CLASS="enumerate" type=1><LI CLASS="li-enumerate">
+RecordParser &#X2013; This parses the raw record into a GenBank specific Record object. This object models the information in a raw record very closely, so this is good to use if you are just interested in GenBank records themselves.</LI><LI CLASS="li-enumerate">FeatureParser &#X2013; This parses the raw record in a SeqRecord object with all of the feature table information represented in SeqFeatures (see section&#XA0;<A HREF="Tutorial011.html#sec:advanced-seq">10.1</A> for more info on these objects). This is best to use if you are interested in getting things in a more standard format. If you use <CODE>Bio.SeqIO</CODE> (Chapter&#XA0;<A HREF="Tutorial005.html#chapter:Bio.SeqIO">4</A>) to read a GenBank file, it will call this FeatureParser for you.
+</LI></OL><P>Depending on the type of GenBank files you are interested in, they will either contain a single record, or multiple records. Each record will start with a <TT>LOCUS</TT> line, various other header lines, a list of features, and finally the sequence data, ending with a <TT>//</TT> line.</P><P>Dealing with a GenBank file containing a single record is very easy. For example, let&#X2019;s use a small bacterial genome, <EM>Nanoarchaeum equitans Kin4-M</EM> (RefSeq NC_005213, GenBank AE017199) which can be downloaded from the NCBI here <A HREF="ftp://ftp.ncbi.nlm.nih.gov/genbank/genomes/Bacteria/Nanoarchaeum_equitans/AE017199.gbk">(</A>only 1.15 MB):</P><PRE CLASS="verbatim">from Bio import GenBank
+feature_parser = GenBank.FeatureParser()
+gb_record = feature_parser.parse(open("AE017199.gbk"))
+# now do something with the record
+print "Name %s, %i features" % (gb_record.name, len(gb_record.features))
+print repr(gb_record.seq)
+</PRE><P>Or, using <CODE>Bio.SeqIO</CODE> instead (see Chapter&#XA0;<A HREF="Tutorial005.html#chapter:Bio.SeqIO">4</A>):</P><PRE CLASS="verbatim">from Bio import SeqIO
+gb_record = SeqIO.read(open("AE017199.gbk"), "genbank")
+print "Name %s, %i features" % (gb_record.name, len(gb_record.features))
+print repr(gb_record.seq)
+</PRE><P>Either should give the following output:</P><PRE CLASS="verbatim">Name AE017199, 1107 features
+Seq('TCTCGCAGAGTTCTTTTTTGTATTAACAAACCCAAAACCCATAGAATTTAATGA...TTA', IUPACAmbiguousDNA())
+</PRE><H3 CLASS="subsection"><A NAME="htoc90">9.2.3</A>&#XA0;&#XA0;Iterating over GenBank records</H3><P>
+<A NAME="sec:gb-parsing-iterator"></A></P><P>For multi-record GenBank files, the most common usage will be creating an iterator, and parsing through the file record by record. Doing this is very similar to how things are done in other formats, as the following code demonstrates, using an example file <A HREF="http://biopython.org/SRC/biopython/Tests/GenBank/cor6_6.gb">cor6_6.gb</A> which is included in the BioPython source code under the Tests/GenBank/ directory:</P><PRE CLASS="verbatim">from Bio import GenBank
+feature_parser = GenBank.FeatureParser()
+gb_iterator = GenBank.Iterator(open("cor6_6.gb"), feature_parser)
+for cur_record in gb_iterator :
+   print "Name %s, %i features" % (cur_record.name, len(cur_record.features))
+   print repr(cur_record.seq)
+</PRE><P>Or, using <CODE>Bio.SeqIO</CODE> instead (see Chapter&#XA0;<A HREF="Tutorial005.html#chapter:Bio.SeqIO">4</A>):</P><PRE CLASS="verbatim">from Bio import SeqIO
+for cur_record in SeqIO.parse(open("cor6_6.gb"), "genbank") :
+   print "Name %s, %i features" % (cur_record.name, len(cur_record.features))
+   print repr(cur_record.seq)
+</PRE><P>This just iterates over a GenBank file, parsing it into SeqRecord and SeqFeature objects, and prints out the Seq objects representing the sequences in the record.</P><P>As with other formats, you have lots of tools for dealing with GenBank records. This should make it possible to do whatever you need to with GenBank.</P><H2 CLASS="section"><A NAME="toc48"></A><A NAME="htoc91">9.3</A>&#XA0;&#XA0;Dealing with alignments</H2><P>It is often very useful to be able to align particular sequences. I do this quite often to get a quick and dirty idea of relationships between sequences. Consequently, it is very nice to be able to quickly write up a python script that does an alignment and gives you back objects that are easy to work with. The alignment related code in Biopython is meant to allow python-level access to alignment programs so that you can run alignments quickly from within scripts.</P><H3 CLASS="subsection"><A NAME="htoc92">9.3.1</A>&#XA0;&#XA0;Clustalw</H3><P>
+<A NAME="sec:align_clustal"></A></P><P>Clustalx (<A HREF="http://www-igbmc.u-strasbg.fr/BioInfo/ClustalX/Top.html"><TT>http://www-igbmc.u-strasbg.fr/BioInfo/ClustalX/Top.html</TT></A>) is a very nice program for doing multiple alignments. Biopython offers access to alignments in clustal format (these normally have a <CODE>*.aln</CODE> extension) that are produced by Clustalx. It also offers access to clustalw, which the is command line version of clustalx.</P><P>We&#X2019;ll need some sequences to align, such as <A HREF="examples/opuntia.fasta">opuntia.fasta</A> (also available online <A HREF="http://biopython.org/DIST/docs/tutorial/examples/opuntia.fasta">here</A>) which is a small FASTA file containing seven orchid gene DNA sequences, which you can also from <CODE>Doc/examples/</CODE> in the Biopython source distribution.</P><P>The first step in interacting with clustalw is to set up a command line you want to pass to the program. Clustalw has a ton of command line options, and if you set a lot of parameters, you can end up typing in a huge ol&#X2019; command line quite a bit. This command line class models the command line by making all of the options be attributes of the class that can be set. A few convenience functions also exist to set certain parameters, so that some error checking on the parameters can be done.</P><P>To create a command line object to do a clustalw multiple alignment we do the following:</P><PRE CLASS="verbatim">import os
+from Bio.Clustalw import MultipleAlignCL
+
+cline = MultipleAlignCL(os.path.join(os.curdir, "opuntia.fasta"))
+cline.set_output("test.aln")
+</PRE><P>First we import the <CODE>MultipleAlignCL</CODE> object, which models running a multiple alignment from clustalw. We then initialize the command line, with a single argument of the fasta file that we are going to be using for the alignment. The initialization function also takes an optional second argument which specifies the location of the <CODE>clustalw</CODE> executable. By default, the commandline will just be invoked with &#X2019;clustalw,&#X2019; assuming that you&#X2019;ve got it somewhere on your <CODE>PATH</CODE>.</P><P>The second argument sets the output to go to the file <CODE>test.aln</CODE>. The <CODE>MultipleAlignCL</CODE> object also has numerous other parameters to specify things like output format, gap costs, etc.</P><P>We can look at the command line we have generated by invoking the <CODE>__str__</CODE> member attribute of the <CODE>MultipleAlignCL</CODE> class. This is done by calling <CODE>str(cline)</CODE> or simple by printing out the command line with <CODE>print cline</CODE>. In this case, doing this would give the following output:</P><PRE CLASS="verbatim">clustalw ./opuntia.fasta -OUTFILE=test.aln
+</PRE><P>Now that we&#X2019;ve set up a simple command line, we now want to run the commandline and collect the results so we can deal with them. This can be done using the <CODE>do_alignment</CODE> function of <CODE>Clustalw</CODE> as follows:</P><PRE CLASS="verbatim">from Bio import Clustalw
+
+alignment = Clustalw.do_alignment(cline)
+</PRE><P>What happens when you run this if that Biopython executes your command line and runs clustalw with the given parameters. It then grabs the output, and if it is in a format that Biopython can parse (currently only clustal format), then it will parse the results and return them as an alignment object of the appropriate type. So in this case since we are getting results in the default clustal format, the returned <CODE>alignment</CODE> object will be a <CODE>ClustalAlignment</CODE> type.</P><P>Once we&#X2019;ve got this alignment, we can do some interesting things with it such as get <CODE>seq_record</CODE> objects for all of the sequences involved in the alignment:</P><PRE CLASS="verbatim">all_records = alignment.get_all_seqs()
+
+print "description:", all_records[0].description
+print "sequence:", all_records[0].seq
+</PRE><P>This prints out the description and sequence object for the first sequence in the alignment:</P><PRE CLASS="verbatim">description: gi|6273285|gb|AF191659.1|AF191
+sequence: Seq('TATACATTAAAGAAGGGGGATGCGGATAAATGGAAAGGCGAAAGAAAGAAAAAAATGAAT
+...', IUPACAmbiguousDNA())
+</PRE><P>You can also calculate the maximum length of the alignment with:</P><PRE CLASS="verbatim">length = alignment.get_alignment_length()
+</PRE><P>Finally, to write out the alignment object in the original format, we just need to access the <CODE>__str__</CODE> function. So doing a <CODE>print alignment</CODE> gives:</P><PRE CLASS="verbatim">CLUSTAL X (1.81) multiple sequence alignment
+
+
+gi|6273285|gb|AF191659.1|AF191      TATACATTAAAGAAGGGGGATGCGGATAAATGGAAAGGCGAAAGAAAGAA
+gi|6273284|gb|AF191658.1|AF191      TATACATTAAAGAAGGGGGATGCGGATAAATGGAAAGGCGAAAGAAAGAA
+...
+</PRE><P>This makes it easy to write your alignment back into a file with all of the original info intact.</P><P>If you want to do more interesting things with an alignment, the best thing to do is to pass the alignment to an alignment information generating object, such as the SummaryInfo object, described in section&#XA0;<A HREF="#sec:summary_info">9.3.2</A>.</P><H3 CLASS="subsection"><A NAME="htoc93">9.3.2</A>&#XA0;&#XA0;Calculating summary information</H3><P>
+<A NAME="sec:summary_info"></A></P><P>Once you have an alignment, you are very likely going to want to find out information about it. Instead of trying to have all of the functions that can generate information about an alignment in the alignment object itself, we&#X2019;ve tried to separate out the functionality into separate classes, which act on the alignment.</P><P>Getting ready to calculate summary information about an object is quick to do. Let&#X2019;s say we&#X2019;ve got an alignment object called <CODE>alignment</CODE>. All we need to do to get an object that will calculate summary information is:</P><PRE CLASS="verbatim">from Bio.Align import AlignInfo
+summary_align = AlignInfo.SummaryInfo(alignment)
+</PRE><P>The <CODE>summary_align</CODE> object is very useful, and will do the following neat things for you:</P><OL CLASS="enumerate" type=1><LI CLASS="li-enumerate">
+Calculate a quick consensus sequence &#X2013; see section&#XA0;<A HREF="#sec:consensus">9.3.3</A>
+</LI><LI CLASS="li-enumerate">Get a position specific score matrix for the alignment &#X2013; see section&#XA0;<A HREF="#sec:pssm">9.3.4</A>
+</LI><LI CLASS="li-enumerate">Calculate the information content for the alignment &#X2013; see section&#XA0;<A HREF="#sec:getting_info_content">9.3.5</A>
+</LI><LI CLASS="li-enumerate">Generate information on substitutions in the alignment &#X2013; section&#XA0;<A HREF="#sec:sub_matrix">9.4</A> details using this to generate a substitution matrix.
+</LI></OL><H3 CLASS="subsection"><A NAME="htoc94">9.3.3</A>&#XA0;&#XA0;Calculating a quick consensus sequence</H3><P>
+<A NAME="sec:consensus"></A></P><P>The <CODE>SummaryInfo</CODE> object, described in section&#XA0;<A HREF="#sec:summary_info">9.3.2</A>, provides functionality to calculate a quick consensus of an alignment. Assuming we&#X2019;ve got a <CODE>SummaryInfo</CODE> object called <CODE>summary_align</CODE> we can calculate a consensus by doing:</P><PRE CLASS="verbatim">consensus = summary_align.dumb_consensus()
+</PRE><P>As the name suggests, this is a really simple consensus calculator, and will just add up all of the residues at each point in the consensus, and if the most common value is higher than some threshold value (the default is .3) will add the common residue to the consensus. If it doesn&#X2019;t reach the threshold, it adds an ambiguity character to the consensus. The returned consensus object is Seq object whose alphabet is inferred from the alphabets of the sequences making up the consensus. So doing a <CODE>print consensus</CODE> would give:</P><PRE CLASS="verbatim">consensus Seq('TATACATNAAAGNAGGGGGATGCGGATAAATGGAAAGGCGAAAGAAAGAAAAAAATGAAT
+...', IUPACAmbiguousDNA())
+</PRE><P>You can adjust how <CODE>dumb_consensus</CODE> works by passing optional parameters:</P><DL CLASS="description"><DT CLASS="dt-description">
+<B>the threshold</B></DT><DD CLASS="dd-description"> This is the threshold specifying how common a particular residue has to be at a position before it is added. The default is .7.</DD><DT CLASS="dt-description"><B>the ambiguous character</B></DT><DD CLASS="dd-description"> This is the ambiguity character to use. The default is &#X2019;N&#X2019;.</DD><DT CLASS="dt-description"><B>the consensus alphabet</B></DT><DD CLASS="dd-description"> This is the alphabet to use for the consensus sequence. If an alphabet is not specified than we will try to guess the alphabet based on the alphabets of the sequences in the alignment.
+</DD></DL><H3 CLASS="subsection"><A NAME="htoc95">9.3.4</A>&#XA0;&#XA0;Position Specific Score Matrices</H3><P>
+<A NAME="sec:pssm"></A></P><P>Position specific score matrices (PSSMs) summarize the alignment information in a different way than a consensus, and may be useful for different tasks. Basically, a PSSM is a count matrix. For each column in the alignment, the number of each alphabet letters is counted and totaled. The totals are displayed relative to some representative sequence along the left axis. This sequence may be the consesus sequence, but can also be any sequence in the alignment. For instance for the alignment,</P><PRE CLASS="verbatim">GTATC
+AT--C
+CTGTC
+</PRE><P>the PSSM is:</P><PRE CLASS="verbatim">      G A T C
+    G 1 1 0 1
+    T 0 0 3 0
+    A 1 1 0 0
+    T 0 0 2 0
+    C 0 0 0 3
+</PRE><P>Let&#X2019;s assume we&#X2019;ve got an alignment object called <CODE>c_align</CODE>. To get a PSSM with the consensus sequence along the side we first get a summary object and calculate the consensus sequence:</P><PRE CLASS="verbatim">summary_align = AlignInfo.SummaryInfo(c_align)
+consensus = summary_align.dumb_consensus()
+</PRE><P>Now, we want to make the PSSM, but ignore any <CODE>N</CODE> ambiguity residues when calculating this:</P><PRE CLASS="verbatim">my_pssm = summary_align.pos_specific_score_matrix(consensus,
+                                                  chars_to_ignore = ['N'])
+</PRE><P>Two notes should be made about this:</P><OL CLASS="enumerate" type=1><LI CLASS="li-enumerate">
+To maintain strictness with the alphabets, you can only include characters along the top of the PSSM that are in the alphabet of the alignment object. Gaps are not included along the top axis of the PSSM.</LI><LI CLASS="li-enumerate">The sequence passed to be displayed along the left side of the axis does not need to be the consensus. For instance, if you wanted to display the second sequence in the alignment along this axis, you would need to do:<PRE CLASS="verbatim">second_seq = alignment.get_seq_by_num(1)
+my_pssm = summary_align.pos_specific_score_matrix(second_seq
+                                                  chars_to_ignore = ['N'])
+</PRE></LI></OL><P>The command above returns a <CODE>PSSM</CODE> object. To print out the PSSM as we showed above, we simply need to do a <CODE>print my_pssm</CODE>, which gives:</P><PRE CLASS="verbatim">    A   C   G   T
+T  0.0 0.0 0.0 7.0
+A  7.0 0.0 0.0 0.0
+T  0.0 0.0 0.0 7.0
+A  7.0 0.0 0.0 0.0
+C  0.0 7.0 0.0 0.0
+A  7.0 0.0 0.0 0.0
+T  0.0 0.0 0.0 7.0
+T  1.0 0.0 0.0 6.0
+...
+</PRE><P>You can access any element of the PSSM by subscripting like <CODE>your_pssm[sequence_number][residue_count_name]</CODE>. For instance, to get the counts for the &#X2019;A&#X2019; residue in the second element of the above PSSM you would do:</P><PRE CLASS="verbatim">&gt;&gt;&gt; print my_pssm[1]["A"]
+7.0
+</PRE><P>The structure of the PSSM class hopefully makes it easy both to access elements and to pretty print the matrix.</P><H3 CLASS="subsection"><A NAME="htoc96">9.3.5</A>&#XA0;&#XA0;Information Content</H3><P>
+<A NAME="sec:getting_info_content"></A></P><P>A potentially useful measure of evolutionary conservation is the information content of a sequence.</P><P>A useful introduction to information theory targetted towards molecular biologists can be found at <A HREF="http://www.lecb.ncifcrf.gov/~toms/paper/primer/"><TT>http://www.lecb.ncifcrf.gov/~toms/paper/primer/</TT></A>. For our purposes, we will be looking at the information content of a consesus sequence, or a portion of a consensus sequence. We calculate information content at a particular column in a multiple sequence alignment using the following formula:</P><TABLE CLASS="display dcenter"><TR VALIGN="middle"><TD CLASS="dcell"><I>IC</I><SUB><I>j</I></SUB>&#XA0;=&#XA0;</TD><TD CLASS="dcell"><TABLE CLASS="display"><TR><TD CLASS="dcell" ALIGN="center"><I>N</I><SUB><I>a</I></SUB></TD></TR>
+<TR><TD CLASS="dcell" ALIGN="center"><FONT SIZE=6>&#X2211;</FONT></TD></TR>
+<TR><TD CLASS="dcell" ALIGN="center"><I>i</I>=1</TD></TR>
+</TABLE></TD><TD CLASS="dcell">&#XA0;<I>P</I><SUB><I>ij</I></SUB>&#XA0;<I>log</I></TD><TD CLASS="dcell">&#X239B;<BR>
+&#X239C;<BR>
+&#X239C;<BR>
+&#X239D;</TD><TD CLASS="dcell"><TABLE CLASS="display"><TR><TD CLASS="dcell" ALIGN="center"><I>P</I><SUB><I>ij</I></SUB></TD></TR>
+<TR><TD CLASS="hbar"></TD></TR>
+<TR><TD CLASS="dcell" ALIGN="center"><I>Q</I><SUB><I>i</I></SUB></TD></TR>
+</TABLE></TD><TD CLASS="dcell">&#X239E;<BR>
+&#X239F;<BR>
+&#X239F;<BR>
+&#X23A0;</TD></TR>
+</TABLE><P>where:</P><UL CLASS="itemize"><LI CLASS="li-itemize">
+<I>IC</I><SUB><I>j</I></SUB> &#X2013; The information content for the <I>j</I>-th column in an alignment.
+</LI><LI CLASS="li-itemize"><I>N</I><SUB><I>a</I></SUB> &#X2013; The number of letters in the alphabet.
+</LI><LI CLASS="li-itemize"><I>P</I><SUB><I>ij</I></SUB> &#X2013; The frequency of a particular letter <I>i</I> in the <I>j</I>-th column (i.&#XA0;e.&#XA0;if G occured 3 out of 6 times in an aligment column, this would be 0.5)
+</LI><LI CLASS="li-itemize"><I>Q</I><SUB><I>i</I></SUB> &#X2013; The expected frequency of a letter <I>i</I>. This is an
+optional argument, usage of which is left at the user&#X2019;s
+discretion. By default, it is automatically assigned to 0.05 = 1/20 for a
+protein alphabet, and 0.25 = 1/4 for a nucleic acid alphabet. This is for
+geting the information content without any assumption of prior
+distribtions. When assuming priors, or when using a non-standard
+alphabet, you should supply the values for <I>Q</I><SUB><I>i</I></SUB>.
+</LI></UL><P>Well, now that we have an idea what information content is being calculated in Biopython, let&#X2019;s look at how to get it for a particular region of the alignment.</P><P>First, we need to use our alignment to get a alignment summary object, which we&#X2019;ll assume is called <CODE>summary_align</CODE> (see section&#XA0;<A HREF="#sec:summary_info">9.3.2</A>) for instructions on how to get this. Once we&#X2019;ve got this object, calculating the information content for a region is as easy as:</P><PRE CLASS="verbatim">info_content = summary_align.information_content(5, 30,
+                                                 chars_to_ignore = ['N'])
+</PRE><P>Wow, that was much easier then the formula above made it look! The variable <CODE>info_content</CODE> now contains a float value specifying the information content over the specified region (from 5 to 30 of the alignment). We specifically ignore the ambiguity residue &#X2019;N&#X2019; when calculating the information content, since this value is not included in our alphabet (so we shouldn&#X2019;t be interested in looking at it!).</P><P>As mentioned above, we can also calculate relative information content by supplying the expected frequencies:</P><PRE CLASS="verbatim">expect_freq = {
+    'A' : .3,
+    'G' : .2,
+    'T' : .3,
+    'C' : .2}
+</PRE><P>The expected should not be passed as a raw dictionary, but instead by passed as a <CODE>SubsMat.FreqTable</CODE> object (see section&#XA0;<A HREF="Tutorial011.html#sec:freq_table">10.4.2</A> for more information about FreqTables). The FreqTable object provides a standard for associating the dictionary with an Alphabet, similar to how the Biopython Seq class works.</P><P>To create a FreqTable object, from the frequency dictionary you just need to do:</P><PRE CLASS="verbatim">from Bio.Alphabet import IUPAC
+from Bio.SubsMat import FreqTable
+
+e_freq_table = FreqTable.FreqTable(expect_freq, FreqTable.FREQ,
+                                   IUPAC.unambiguous_dna)
+</PRE><P>Now that we&#X2019;ve got that, calculating the relative information content for our region of the alignment is as simple as:</P><PRE CLASS="verbatim">info_content = summary_align.information_content(5, 30,
+                                                 e_freq_table = e_freq_table,
+                                                 chars_to_ignore = ['N'])
+</PRE><P>Now, <CODE>info_content</CODE> will contain the relative information content over the region in relation to the expected frequencies.</P><P>The value return is calculated using base 2 as the logarithm base in the formula above. You can modify this by passing the parameter <CODE>log_base</CODE> as the base you want:</P><PRE CLASS="verbatim">info_content = summary_align.information_content(5, 30, log_base = 10
+                                                 chars_to_ignore = ['N'])
+</PRE><P>Well, now you are ready to calculate information content. If you want to try applying this to some real life problems, it would probably be best to dig into the literature on information content to get an idea of how it is used. Hopefully your digging won&#X2019;t reveal any mistakes made in coding this function!</P><H3 CLASS="subsection"><A NAME="htoc97">9.3.6</A>&#XA0;&#XA0;Translating between Alignment formats</H3><P>One thing that you always end up having to do is convert between different formats.
+You can do this using the <CODE>Bio.AlignIO</CODE> module, see Section&#XA0;<A HREF="Tutorial006.html#sec:converting-alignments">5.2.1</A>.</P><H2 CLASS="section"><A NAME="toc49"></A><A NAME="htoc98">9.4</A>&#XA0;&#XA0;Substitution Matrices</H2><P>
+<A NAME="sec:sub_matrix"></A></P><P>Substitution matrices are an extremely important part of everyday bioinformatics work. They provide the scoring terms for classifying how likely two different residues are to substitute for each other. This is essential in doing sequence comparisons. The book &#X201C;Biological Sequence Analysis&#X201D; by Durbin et al. provides a really nice introduction to Substitution Matrices and their uses. Some famous substitution matrices are the PAM and BLOSUM series of matrices.</P><P>Biopython provides a ton of common substitution matrices, and also provides functionality for creating your own substitution matrices.</P><H3 CLASS="subsection"><A NAME="htoc99">9.4.1</A>&#XA0;&#XA0;Using common substitution matrices</H3><H3 CLASS="subsection"><A NAME="htoc100">9.4.2</A>&#XA0;&#XA0;Creating your own substitution matrix from an alignment</H3><P>
+<A NAME="sec:subs_mat_ex"></A></P><P>A very cool thing that you can do easily with the substitution matrix
+classes is to create your own substitution matrix from an
+alignment. In practice, this is normally done with protein
+alignments. In this example, we&#X2019;ll first get a biopython alignment
+object and then get a summary object to calculate info about the
+alignment. The file containing <A HREF="examples/protein.aln">protein.aln</A>
+(also available online
+<A HREF="http://biopython.org/DIST/docs/tutorial/examples/protein.aln">here</A>)
+contains the Clustalw alignment output.</P><PRE CLASS="verbatim">from Bio import Clustalw
+from Bio.Alphabet import IUPAC
+from Bio.Align import AlignInfo
+
+# get an alignment object from a Clustalw alignment output
+c_align = Clustalw.parse_file("protein.aln", IUPAC.protein)
+summary_align = AlignInfo.SummaryInfo(c_align)
+</PRE><P>Sections&#XA0;<A HREF="#sec:align_clustal">9.3.1</A> and&#XA0;<A HREF="#sec:summary_info">9.3.2</A> contain
+more information on doing this.</P><P>Now that we&#X2019;ve got our <CODE>summary_align</CODE> object, we want to use it
+to find out the number of times different residues substitute for each
+other. To make the example more readable, we&#X2019;ll focus on only amino
+acids with polar charged side chains. Luckily, this can be done easily
+when generating a replacement dictionary, by passing in all of the
+characters that should be ignored. Thus we&#X2019;ll create a dictionary of
+replacements for only charged polar amino acids using:</P><PRE CLASS="verbatim">replace_info = summary_align.replacement_dictionary(["G", "A", "V", "L", "I",
+                                                     "M", "P", "F", "W", "S",
+                                                     "T", "N", "Q", "Y", "C"])
+</PRE><P>This information about amino acid replacements is represented as a
+python dictionary which will look something like:</P><PRE CLASS="verbatim">{('R', 'R'): 2079.0, ('R', 'H'): 17.0, ('R', 'K'): 103.0, ('R', 'E'): 2.0,
+('R', 'D'): 2.0, ('H', 'R'): 0, ('D', 'H'): 15.0, ('K', 'K'): 3218.0,
+('K', 'H'): 24.0, ('H', 'K'): 8.0, ('E', 'H'): 15.0, ('H', 'H'): 1235.0,
+('H', 'E'): 18.0, ('H', 'D'): 0, ('K', 'D'): 0, ('K', 'E'): 9.0,
+('D', 'R'): 48.0, ('E', 'R'): 2.0, ('D', 'K'): 1.0, ('E', 'K'): 45.0,
+('K', 'R'): 130.0, ('E', 'D'): 241.0, ('E', 'E'): 3305.0,
+('D', 'E'): 270.0, ('D', 'D'): 2360.0}
+</PRE><P>This information gives us our accepted number of replacements, or how
+often we expect different things to substitute for each other. It
+turns out, amazingly enough, that this is all of the information we
+need to go ahead and create a substitution matrix. First, we use the
+replacement dictionary information to create an Accepted Replacement
+Matrix (ARM):</P><PRE CLASS="verbatim">from Bio import SubsMat
+my_arm = SubsMat.SeqMat(replace_info)
+</PRE><P>With this accepted replacement matrix, we can go right ahead and
+create our log odds matrix (i.&#XA0;e.&#XA0;a standard type Substitution Matrix):</P><PRE CLASS="verbatim">my_lom = SubsMat.make_log_odds_matrix(my_arm)
+</PRE><P>The log odds matrix you create is customizable with the following
+optional arguments:</P><UL CLASS="itemize"><LI CLASS="li-itemize">
+<CODE>exp_freq_table</CODE> &#X2013; You can pass a table of expected
+frequencies for each alphabet. If supplied, this will be used
+instead of the passed accepted replacement matrix when calculate
+expected replacments.</LI><LI CLASS="li-itemize"><CODE>logbase</CODE> - The base of the logarithm taken to create the
+log odd matrix. Defaults to base 10.</LI><LI CLASS="li-itemize"><CODE>factor</CODE> - The factor to multiply each matrix entry
+by. This defaults to 10, which normally makes the matrix numbers
+easy to work with.</LI><LI CLASS="li-itemize"><CODE>round_digit</CODE> - The digit to round to in the matrix. This
+defaults to 0 (i.&#XA0;e.&#XA0;no digits).</LI></UL><P>Once you&#X2019;ve got your log odds matrix, you can display it prettily
+using the function <CODE>print_mat</CODE>. Doing this on our created matrix
+gives:</P><PRE CLASS="verbatim">&gt;&gt;&gt; my_lom.print_mat()
+D   6
+E  -5   5
+H -15 -13  10
+K -31 -15 -13   6
+R -13 -25 -14  -7   7
+   D   E   H   K   R
+</PRE><P>Very nice. Now we&#X2019;ve got our very own substitution matrix to play with!</P><H2 CLASS="section"><A NAME="toc50"></A><A NAME="htoc101">9.5</A>&#XA0;&#XA0;BioSQL &#X2013; storing sequences in a relational database</H2><P>
+<A NAME="sec:BioSQL"></A>
+<A HREF="http://www.biosql.org/">BioSQL</A> is a joint effort between the
+<A HREF="http://open-bio.org/">OBF</A> projects (BioPerl, BioJava etc) to support a
+shared database schema for storing sequence data. In theory, you could load a
+GenBank file into the database with BioPerl, then using Biopython extract this
+from the database as a record object with featues - and get more or less the same
+thing as if you had loaded the GenBank file directly as a SeqRecord using
+<CODE>Bio.SeqIO</CODE> (Chapter&#XA0;<A HREF="Tutorial005.html#chapter:Bio.SeqIO">4</A>).</P><P>Biopython&#X2019;s BioSQL module is currently documented at
+<A HREF="http://biopython.org/wiki/BioSQL"><TT>http://biopython.org/wiki/BioSQL</TT></A> which is part of our wiki pages.</P><H2 CLASS="section"><A NAME="toc51"></A><A NAME="htoc102">9.6</A>&#XA0;&#XA0;BioCorba</H2><P>Biocorba does some cool stuff with CORBA. Basically, it allows you to easily interact with code written in other languages, including Perl and Java. This is all done through an interface which is very similar to the standard biopython interface. Much work has been done to make it easy to use knowing only very little about CORBA. You should check out the biocorba specific documentation, which describes in detail how to use it.</P><H2 CLASS="section"><A NAME="toc52"></A><A NAME="htoc103">9.7</A>&#XA0;&#XA0;Going 3D: The PDB module</H2><P>Biopython also allows you to explore the extensive realm of macromolecular structure.
+Biopython comes with a PDBParser class that produces a Structure object. The Structure object
+can be used to access the atomic data in the file in a convenient manner.</P><H3 CLASS="subsection"><A NAME="htoc104">9.7.1</A>&#XA0;&#XA0;Structure representation</H3><P>A macromolecular structure is represented using a structure, model chain,
+residue, atom (or SMCRA) hierarchy. Fig. <A HREF="#fig:smcra">9.7.1</A> shows a UML
+class diagram of the SMCRA data structure. Such a data structure is not
+necessarily best suited for the representation of the macromolecular content of
+a structure, but it is absolutely necessary for a good interpretation of the
+data present in a file that describes the structure (typically a PDB or MMCIF
+file). If this hierarchy cannot represent the contents of a structure file, it
+is fairly certain that the file contains an error or at least does not describe
+the structure unambiguously. If a SMCRA data structure cannot be generated,
+there is reason to suspect a problem. Parsing a PDB file can thus be used to
+detect likely problems. We will give several examples of this in section
+<A HREF="#problem structures">9.7.5.1</A>.</P><P>
+<A NAME="fig:smcra"></A>
+<IMG SRC="images/smcra.png" width=650, height=750>
+</P><P>Structure, Model, Chain and Residue are all subclasses of the Entity base class.
+The Atom class only (partly) implements the Entity interface (because an Atom
+does not have children).</P><P>For each Entity subclass, you can extract a child by using a unique id for that
+child as a key (e.g. you can extract an Atom object from a Residue object by
+using an atom name string as a key, you can extract a Chain object from a Model
+object by using its chain identifier as a key).</P><P>Disordered atoms and residues are represented by DisorderedAtom and DisorderedResidue
+classes, which are both subclasses of the DisorderedEntityWrapper base class.
+They hide the complexity associated with disorder and behave exactly as Atom
+and Residue objects.</P><P>In general, a child Entity object (i.e. Atom, Residue, Chain, Model) can be
+extracted from its parent (i.e. Residue, Chain, Model, Structure, respectively)
+by using an id as a key.</P><PRE CLASS="verbatim">child_entity=parent_entity[child_id]
+</PRE><P>You can also get a list of all child Entities of a parent Entity object. Note
+that this list is sorted in a specific way (e.g. according to chain identifier
+for Chain objects in a Model object).</P><PRE CLASS="verbatim">child_list=parent_entity.get_list()
+</PRE><P>You can also get the parent from a child.</P><PRE CLASS="verbatim">parent_entity=child_entity.get_parent()
+</PRE><P>At all levels of the SMCRA hierarchy, you can also extract a <EM>full id</EM>.
+The full id is a tuple containing all id&#X2019;s starting from the top object (Structure)
+down to the current object. A full id for a Residue object e.g. is something
+like:</P><PRE CLASS="verbatim">full_id=residue.get_full_id()
+
+print full_id
+
+("1abc", 0, "A", ("", 10, "A"))
+</PRE><P>This corresponds to:</P><UL CLASS="itemize"><LI CLASS="li-itemize">
+The Structure with id "1abc"
+</LI><LI CLASS="li-itemize">The Model with id 0
+</LI><LI CLASS="li-itemize">The Chain with id "A"
+</LI><LI CLASS="li-itemize">The Residue with id (" ", 10, "A").
+</LI></UL><P>
+The Residue id indicates that the residue is not a hetero-residue (nor a water)
+because it has a blanc hetero field, that its sequence identifier is 10 and
+that its insertion code is "A".</P><P>Some other useful methods:</P><PRE CLASS="verbatim"># get the entity's id
+
+entity.get_id()
+
+# check if there is a child with a given id
+
+entity.has_id(entity_id)
+
+# get number of children
+
+nr_children=len(entity)
+</PRE><P>It is possible to delete, rename, add, etc. child entities from a parent entity,
+but this does not include any sanity checks (e.g. it is possible to add two
+residues with the same id to one chain). This really should be done via a nice
+Decorator class that includes integrity checking, but you can take a look at
+the code (Entity.py) if you want to use the raw interface.</P><H4 CLASS="subsubsection">9.7.1.1&#XA0;&#XA0;Structure</H4><P>The Structure object is at the top of the hierarchy. Its id is a user given
+string. The Structure contains a number of Model children. Most crystal structures
+(but not all) contain a single model, while NMR structures typically consist
+of several models. Disorder in crystal structures of large parts of molecules
+can also result in several models.</P><H5 CLASS="paragraph">9.7.1.1.1&#XA0;&#XA0;Constructing a Structure object</H5><P>A Structure object is produced by a PDBParser object:</P><PRE CLASS="verbatim">from Bio.PDB.PDBParser import PDBParser
+
+p=PDBParser(PERMISSIVE=1)
+
+structure_id="1fat"
+
+filename="pdb1fat.ent"
+
+s=p.get_structure(structure_id, filename)
+</PRE><P>The <TT>PERMISSIVE</TT> flag indicates that a number of common problems (see <A HREF="#problem structures">9.7.5.1</A>)
+associated with PDB files will be ignored (but note that some atoms and/or residues
+will be missing). If the flag is not present a <TT>PDBConstructionException</TT>
+will be generated during the parse operation.</P><H5 CLASS="paragraph">9.7.1.1.2&#XA0;&#XA0;Header and trailer</H5><P>You can extract the header and trailer (simple lists of strings) of the PDB
+file from the PDBParser object with the <TT>get_header</TT> and <TT>get_trailer</TT>
+methods.</P><H4 CLASS="subsubsection">9.7.1.2&#XA0;&#XA0;Model</H4><P>The id of the Model object is an integer, which is derived from the position
+of the model in the parsed file (they are automatically numbered starting from
+0). The Model object stores a list of Chain children.</P><H5 CLASS="paragraph">9.7.1.2.1&#XA0;&#XA0;Example</H5><P>Get the first model from a Structure object.</P><PRE CLASS="verbatim">first_model=structure[0]
+</PRE><H4 CLASS="subsubsection">9.7.1.3&#XA0;&#XA0;Chain</H4><P>The id of a Chain object is derived from the chain identifier in the structure
+file, and can be any string. Each Chain in a Model object has a unique id. The
+Chain object stores a list of Residue children.</P><H5 CLASS="paragraph">9.7.1.3.1&#XA0;&#XA0;Example</H5><P>Get the Chain object with identifier &#X201C;A&#X201D; from a Model object.</P><PRE CLASS="verbatim">chain_A=model["A"]
+</PRE><H4 CLASS="subsubsection">9.7.1.4&#XA0;&#XA0;Residue</H4><P>Unsurprisingly, a Residue object stores a set of Atom children. In addition,
+it also contains a string that specifies the residue name (e.g. &#X201C;ASN&#X201D;)
+and the segment identifier of the residue (well known to X-PLOR users, but not
+used in the construction of the SMCRA data structure).</P><P>The id of a Residue object is composed of three parts: the hetero field (hetfield),
+the sequence identifier (resseq) and the insertion code (icode).</P><P>The hetero field is a string : it is &#X201C;W&#X201D; for waters, &#X201C;H_&#X201D; followed
+by the residue name (e.g. &#X201C;H_FUC&#X201D;) for other hetero residues and blank
+for standard amino and nucleic acids. This scheme is adopted for reasons described
+in section <A HREF="#hetero probems">9.7.3.1</A>.</P><P>The second field in the Residue id is the sequence identifier, an integer describing
+the position of the residue in the chain.</P><P>The third field is a string, consisting of the insertion code. The insertion
+code is sometimes used to preserve a certain desirable residue numbering scheme.
+A Ser 80 insertion mutant (inserted e.g. between a Thr 80 and an Asn 81 residue)
+could e.g. have sequence identifiers and insertion codes as followed: Thr 80
+A, Ser 80 B, Asn 81. In this way the residue numbering scheme stays in tune
+with that of the wild type structure.</P><P>Let&#X2019;s give some examples. Asn 10 with a blank insertion code would have residue
+id <TT>(&#X2019;&#X2019; &#X2019;&#X2019;, 10, &#X2019;&#X2019; &#X2019;&#X2019;)</TT>. Water 10 would have residue id <TT>(&#X2018;&#X2018;W&#X2018;&#X2018;, 10, &#X2018;&#X2018; &#X2018;&#X2018;)</TT>.
+A glucose molecule (a hetero residue with residue name GLC) with sequence identifier
+10 would have residue id <TT>(&#X2019;&#X2019;H_GLC&#X2019;&#X2019;, 10, &#X2019;&#X2019; &#X2019;&#X2019;)</TT>. In this way, the three
+residues (with the same insertion code and sequence identifier) can be part
+of the same chain because their residue id&#X2019;s are distinct.</P><P>In most cases, the hetflag and insertion code fields will be blank, e.g. <TT>(&#X2019;&#X2019; &#X2019;&#X2019;, 10, &#X2019;&#X2019; &#X2019;&#X2019;)</TT>.
+In these cases, the sequence identifier can be used as a shortcut for the full
+id:</P><PRE CLASS="verbatim"># use full id
+
+res10=chain[("", 10, "")]
+
+# use shortcut
+
+res10=chain[10]
+</PRE><P>Each Residue object in a Chain object should have a unique id. However, disordered
+residues are dealt with in a special way, as described in section <A HREF="#point mutations">9.7.2.3.2</A>.</P><P>A Residue object has a number of additional methods:</P><PRE CLASS="verbatim">r.get_resname()  # return residue name, e.g. "ASN"
+r.get_segid()  # return the SEGID, e.g. "CHN1"
+</PRE><H4 CLASS="subsubsection">9.7.1.5&#XA0;&#XA0;Atom</H4><P>The Atom object stores the data associated with an atom, and has no children.
+The id of an atom is its atom name (e.g. &#X201C;OG&#X201D; for the side chain oxygen
+of a Ser residue). An Atom id needs to be unique in a Residue. Again, an exception
+is made for disordered atoms, as described in section <A HREF="#disordered atoms">9.7.2.2</A>.</P><P>In a PDB file, an atom name consists of 4 chars, typically with leading and
+trailing spaces. Often these spaces can be removed for ease of use (e.g. an
+amino acid C &#X3B1;  atom is labeled &#X201C;.CA.&#X201D; in a PDB file, where
+the dots represent spaces). To generate an atom name (and thus an atom id) the
+spaces are removed, unless this would result in a name collision in a Residue
+(i.e. two Atom objects with the same atom name and id). In the latter case,
+the atom name including spaces is tried. This situation can e.g. happen when
+one residue contains atoms with names &#X201C;.CA.&#X201D; and &#X201C;CA..&#X201D;, although
+this is not very likely.</P><P>The atomic data stored includes the atom name, the atomic coordinates (including
+standard deviation if present), the B factor (including anisotropic B factors
+and standard deviation if present), the altloc specifier and the full atom name
+including spaces. Less used items like the atom element number or the atomic
+charge sometimes specified in a PDB file are not stored.</P><P>An Atom object has the following additional methods:</P><PRE CLASS="verbatim">a.get_name()       # atom name (spaces stripped, e.g. "CA")
+a.get_id()         # id (equals atom name)
+a.get_coord()      # atomic coordinates
+a.get_bfactor()    # B factor
+a.get_occupancy()  # occupancy
+a.get_altloc()     # alternative location specifie
+a.get_sigatm()     # std. dev. of atomic parameters
+a.get_siguij()     # std. dev. of anisotropic B factor
+a.get_anisou()     # anisotropic B factor
+a.get_fullname()   # atom name (with spaces, e.g. ".CA.")
+</PRE><P>To represent the atom coordinates, siguij, anisotropic B factor and sigatm Numpy
+arrays are used.</P><H3 CLASS="subsection"><A NAME="htoc105">9.7.2</A>&#XA0;&#XA0;Disorder</H3><H4 CLASS="subsubsection">9.7.2.1&#XA0;&#XA0;General approach<A NAME="disorder problems"></A></H4><P>Disorder should be dealt with from two points of view: the atom and the residue
+points of view. In general, we have tried to encapsulate all the complexity that
+arises from disorder. If you just want to loop over all C &#X3B1;  atoms,
+you do not care that some residues have a disordered side chain. On the other
+hand it should also be possible to represent disorder completely in the data
+structure. Therefore, disordered atoms or residues are stored in special objects
+that behave as if there is no disorder. This is done by only representing a
+subset of the disordered atoms or residues. Which subset is picked (e.g. which
+of the two disordered OG side chain atom positions of a Ser residue is used)
+can be specified by the user.</P><H4 CLASS="subsubsection">9.7.2.2&#XA0;&#XA0;Disordered atoms<A NAME="disordered atoms"></A></H4><P>Disordered atoms are represented by ordinary Atom objects, but all Atom objects
+that represent the same physical atom are stored in a DisorderedAtom object.
+Each Atom object in a DisorderedAtom object can be uniquely indexed using its
+altloc specifier. The DisorderedAtom object forwards all uncaught method calls
+to the selected Atom object, by default the one that represents the atom with
+with the highest occupancy. The user can of course change the selected Atom
+object, making use of its altloc specifier. In this way atom disorder is represented
+correctly without much additional complexity. In other words, if you are not
+interested in atom disorder, you will not be bothered by it.</P><P>Each disordered atom has a characteristic altloc identifier. You can specify
+that a DisorderedAtom object should behave like the Atom object associated with
+a specific altloc identifier:</P><PRE CLASS="verbatim">atom.disordered\_select("A")  # select altloc A atom
+
+print atom.get_altloc()
+"A"
+
+atom.disordered_select("B")     # select altloc B atom
+print atom.get_altloc()
+"B"
+</PRE><H4 CLASS="subsubsection">9.7.2.3&#XA0;&#XA0;Disordered residues</H4><H5 CLASS="paragraph">9.7.2.3.1&#XA0;&#XA0;Common case</H5><P>The most common case is a residue that contains one or more disordered atoms.
+This is evidently solved by using DisorderedAtom objects to represent the disordered
+atoms, and storing the DisorderedAtom object in a Residue object just like ordinary
+Atom objects. The DisorderedAtom will behave exactly like an ordinary atom (in
+fact the atom with the highest occupancy) by forwarding all uncaught method
+calls to one of the Atom objects (the selected Atom object) it contains.</P><H5 CLASS="paragraph">9.7.2.3.2&#XA0;&#XA0;Point mutations<A NAME="point mutations"></A></H5><P>A special case arises when disorder is due to a point mutation, i.e. when two
+or more point mutants of a polypeptide are present in the crystal. An example
+of this can be found in PDB structure 1EN2.</P><P>Since these residues belong to a different residue type (e.g. let&#X2019;s say Ser
+60 and Cys 60) they should not be stored in a single Residue object as in the
+common case. In this case, each residue is represented by one Residue object,
+and both Residue objects are stored in a DisorderedResidue object.</P><P>The DisorderedResidue object forwards all uncaught methods to the selected Residue
+object (by default the last Residue object added), and thus behaves like an
+ordinary residue. Each Residue object in a DisorderedResidue object can be uniquely
+identified by its residue name. In the above example, residue Ser 60 would have
+id &#X201C;SER&#X201D; in the DisorderedResidue object, while residue Cys 60 would
+have id &#X201C;CYS&#X201D;. The user can select the active Residue object in a DisorderedResidue
+object via this id.</P><H3 CLASS="subsection"><A NAME="htoc106">9.7.3</A>&#XA0;&#XA0;Hetero residues</H3><H4 CLASS="subsubsection">9.7.3.1&#XA0;&#XA0;Associated problems<A NAME="hetero probems"></A></H4><P>A common problem with hetero residues is that several hetero and non-hetero
+residues present in the same chain share the same sequence identifier (and insertion
+code). Therefore, to generate a unique id for each hetero residue, waters and
+other hetero residues are treated in a different way.</P><P>Remember that Residue object have the tuple (hetfield, resseq, icode) as id.
+The hetfield is blank (&#X201C; &#X201C;) for amino and nucleic acids, and a string
+for waters and other hetero residues. The content of the hetfield is explained
+below.</P><H4 CLASS="subsubsection">9.7.3.2&#XA0;&#XA0;Water residues</H4><P>The hetfield string of a water residue consists of the letter &#X201C;W&#X201D;. So
+a typical residue id for a water is (&#X201C;W&#X201D;, 1, &#X201C; &#X201C;).</P><H4 CLASS="subsubsection">9.7.3.3&#XA0;&#XA0;Other hetero residues</H4><P>The hetfield string for other hetero residues starts with &#X201C;H_&#X201D; followed
+by the residue name. A glucose molecule e.g. with residue name &#X201C;GLC&#X201D;
+would have hetfield &#X201C;H_GLC&#X201D;. It&#X2019;s residue id could e.g. be (&#X201C;H_GLC&#X201D;,
+1, &#X201C; &#X201C;).</P><H3 CLASS="subsection"><A NAME="htoc107">9.7.4</A>&#XA0;&#XA0;Some random usage examples</H3><P>Parse a PDB file, and extract some Model, Chain, Residue and Atom objects.</P><PRE CLASS="verbatim">from PDBParser import PDBParser
+
+parser=PDBParser()
+
+structure=parser.get_structure("test", "1fat.pdb")
+model=structure[0]
+chain=model["A"]
+residue=chain[1]
+atom=residue["CA"]
+</PRE><P>Extract a hetero residue from a chain (e.g. a glucose (GLC) moiety with resseq
+10).</P><PRE CLASS="verbatim">residue_id=("H_GLC", 10, " ")
+residue=chain[residue_id]
+</PRE><P>Print all hetero residues in chain.</P><PRE CLASS="verbatim">for residue in chain.get_list():
+ residue_id=residue.get_id()
+ hetfield=residue_id[0]
+ if hetfield[0]=="H":
+  print residue_id
+</PRE><P>Print out the coordinates of all CA atoms in a structure with B factor greater
+than 50.</P><PRE CLASS="verbatim">for model in structure.get_list():
+  for chain in model.get_list():
+    for residue in chain.get_list():
+      if residue.has_id("CA"):
+        ca=residue["CA"]
+        if ca.get_bfactor()&gt;50.0:
+          print ca.get_coord()
+</PRE><P>Print out all the residues that contain disordered atoms.</P><PRE CLASS="verbatim">for model in structure.get_list()
+  for chain in model.get_list():
+    for residue in chain.get_list():
+      if residue.is_disordered():
+        resseq=residue.get_id()[1]
+        resname=residue.get_resname()
+        model_id=model.get_id()
+        chain_id=chain.get_id()
+        print model_id, chain_id, resname, resseq
+</PRE><P>Loop over all disordered atoms, and select all atoms with altloc A (if present).
+This will make sure that the SMCRA data structure will behave as if only the
+atoms with altloc A are present.</P><PRE CLASS="verbatim">for model in structure.get_list()
+  for chain in model.get_list():
+    for residue in chain.get_list():
+      if residue.is_disordered():
+        for atom in residue.get_list():
+          if atom.is_disordered():
+            if atom.disordered_has_id("A"):
+              atom.disordered_select("A")
+</PRE><P>Suppose that a chain has a point mutation at position 10, consisting of a Ser
+and a Cys residue. Make sure that residue 10 of this chain behaves as the Cys
+residue.</P><PRE CLASS="verbatim">residue=chain[10]
+residue.disordered_select("CYS")
+</PRE><H3 CLASS="subsection"><A NAME="htoc108">9.7.5</A>&#XA0;&#XA0;Common problems in PDB files</H3><H4 CLASS="subsubsection">9.7.5.1&#XA0;&#XA0;Examples<A NAME="problem structures"></A></H4><P>The PDBParser/Structure class was tested on about 800 structures (each belonging
+to a unique SCOP superfamily). This takes about 20 minutes, or on average 1.5
+seconds per structure. Parsing the structure of the large ribosomal subunit
+(1FKK), which contains about 64000 atoms, takes 10 seconds on a 1000 MHz PC.</P><P>Three exceptions were generated in cases where an unambiguous data structure
+could not be built. In all three cases, the likely cause is an error in the
+PDB file that should be corrected. Generating an exception in these cases
+is much better than running the chance of incorrectly describing
+the structure in a data structure.</P><H5 CLASS="paragraph">9.7.5.1.1&#XA0;&#XA0;Duplicate residues</H5><P>One structure contains two amino acid residues in one chain with the same sequence
+identifier (resseq 3) and icode. Upon inspection it was found that this chain
+contains the residues Thr A3, &#X2026;, Gly A202, Leu A3, Glu A204. Clearly,
+Leu A3 should be Leu A203. A couple of similar situations exist for structure
+1FFK (which e.g. contains Gly B64, Met B65, Glu B65, Thr B67, i.e. residue Glu
+B65 should be Glu B66).</P><H5 CLASS="paragraph">9.7.5.1.2&#XA0;&#XA0;Duplicate atoms</H5><P>Structure 1EJG contains a Ser/Pro point mutation in chain A at position 22.
+In turn, Ser 22 contains some disordered atoms. As expected, all atoms belonging
+to Ser 22 have a non-blank altloc specifier (B or C). All atoms of Pro 22 have
+altloc A, except the N atom which has a blank altloc. This generates an exception,
+because all atoms belonging to two residues at a point mutation should have
+non-blank altloc. It turns out that this atom is probably shared by Ser and
+Pro 22, as Ser 22 misses the N atom. Again, this points to a problem in the
+file: the N atom should be present in both the Ser and the Pro residue, in both
+cases associated with a suitable altloc identifier.</P><H4 CLASS="subsubsection">9.7.5.2&#XA0;&#XA0;Automatic correction</H4><P>Some errors are quite common and can be easily corrected without much risk of
+making a wrong interpretation. These cases are listed below.</P><H5 CLASS="paragraph">9.7.5.2.1&#XA0;&#XA0;A blank altloc for a disordered atom</H5><P>Normally each disordered atom should have a non-blanc altloc identifier. However,
+there are many structures that do not follow this convention, and have a blank
+and a non-blank identifier for two disordered positions of the same atom. This
+is automatically interpreted in the right way.</P><H5 CLASS="paragraph">9.7.5.2.2&#XA0;&#XA0;Broken chains</H5><P>Sometimes a structure contains a list of residues belonging to chain A, followed
+by residues belonging to chain B, and again followed by residues belonging to
+chain A, i.e. the chains are &#X201C;broken&#X201D;. This is correctly interpreted.</P><H4 CLASS="subsubsection">9.7.5.3&#XA0;&#XA0;Fatal errors</H4><P>Sometimes a PDB file cannot be unambiguously interpreted. Rather than guessing
+and risking a mistake, an exception is generated, and the user is expected to
+correct the PDB file. These cases are listed below.</P><H5 CLASS="paragraph">9.7.5.3.1&#XA0;&#XA0;Duplicate residues</H5><P>All residues in a chain should have a unique id. This id is generated based
+on:</P><UL CLASS="itemize"><LI CLASS="li-itemize">
+The sequence identifier (resseq).
+</LI><LI CLASS="li-itemize">The insertion code (icode).
+</LI><LI CLASS="li-itemize">The hetfield string (&#X201C;W&#X201D; for waters and &#X201C;H_&#X201D; followed by the
+residue name for other hetero residues)
+</LI><LI CLASS="li-itemize">The residue names of the residues in the case of point mutations (to store the
+Residue objects in a DisorderedResidue object).
+</LI></UL><P>
+If this does not lead to a unique id something is quite likely wrong, and an
+exception is generated.</P><H5 CLASS="paragraph">9.7.5.3.2&#XA0;&#XA0;Duplicate atoms</H5><P>All atoms in a residue should have a unique id. This id is generated based on:</P><UL CLASS="itemize"><LI CLASS="li-itemize">
+The atom name (without spaces, or with spaces if a problem arises).
+</LI><LI CLASS="li-itemize">The altloc specifier.
+</LI></UL><P>
+If this does not lead to a unique id something is quite likely wrong, and an
+exception is generated.</P><H3 CLASS="subsection"><A NAME="htoc109">9.7.6</A>&#XA0;&#XA0;Other features</H3><P>There are also some tools to analyze a crystal structure. Tools
+exist to superimpose two coordinate sets (SVDSuperimposer), to extract
+polypeptides from a structure (Polypeptide), to perform neighbor lookup
+(NeighborSearch) and to write out PDB files (PDBIO). The neighbor lookup
+is done using a KD tree module written in C++. It is very fast and also
+includes a fast method to find all point pairs within a certain distance
+of each other.</P><P>A Polypeptide object is simply a UserList of Residue objects. You can
+construct a list of Polypeptide objects from a Structure object as follows:</P><PRE CLASS="verbatim">model_nr=1
+polypeptide_list=build_peptides(structure, model_nr)
+
+for polypeptide in polypeptide_list:
+    print polypeptide
+</PRE><P>The Polypeptide objects are always created from a single
+Model (in this case model 1).</P><H2 CLASS="section"><A NAME="toc53"></A><A NAME="htoc110">9.8</A>&#XA0;&#XA0;Bio.PopGen: Population genetics</H2><P>Bio.PopGen is a new Biopython module supporting population genetics,
+available in Biopython 1.44 onwards.</P><P>The medium term objective for the module is to support widely used data
+formats, applications and databases. This module is currently under intense
+development and support for new features should appear at a rather fast pace.
+Unfortunately this might also entail some instability on the API, especially
+if you are using a CVS version. APIs that are made available on public
+versions should be much stabler.</P><H3 CLASS="subsection"><A NAME="htoc111">9.8.1</A>&#XA0;&#XA0;GenePop</H3><P>GenePop (<A HREF="http://genepop.curtin.edu.au/"><TT>http://genepop.curtin.edu.au/</TT></A>) is a popular population
+genetics software package supporting Hardy-Weinberg tests, linkage
+desiquilibrium, population diferentiation, basic statistics, <I>F</I><SUB><I>st</I></SUB> and
+migration estimates, among others. GenePop does not supply sequence
+based statistics as it doesn&#X2019;t handle sequence data.
+The GenePop file format is supported by a wide range of other population
+genetic software applications, thus making it a relevant format in the
+population genetics field.</P><P>Bio.PopGen provides a parser and generator of GenePop file format.
+Utilities to manipulate the content of a record are also provided.
+Here is an example on how to read a GenePop file (you can find
+example GenePop data files in the Test/PopGen directory of Biopython):</P><PRE CLASS="verbatim">from Bio.PopGen import GenePop
+
+handle = open("example.gen")
+rec = GenePop.parse(handle)
+handle.close()
+</PRE><P>This will read a file called example.gen and parse it. If you
+do print rec, the record will be output again, in GenePop format.</P><P>The most important information in rec will be the loci names and
+population information (but there is more &#X2013; use help(GenePop.Record)
+to check the API documentation). Loci names can be found on rec.loci_list.
+Population information can be found on rec.populations.
+Populations is a list with one element per population. Each element is itself
+a list of individuals, each individual is a pair composed by individual
+name and a list of alleles (2 per marker), here is an example for
+rec.populations:</P><PRE CLASS="verbatim">[
+    [
+        ('Ind1', [(1, 2),    (3, 3), (200, 201)],
+        ('Ind2', [(2, None), (3, 3), (None, None)],
+    ],
+    [
+        ('Other1', [(1, 1),  (4, 3), (200, 200)],
+    ]
+]
+</PRE><P>So we have two populations, the first with two individuals, the
+second with only one. The first individual of the first
+population is called Ind1, allelic information for each of
+the 3 loci follows. Please note that for any locus, information
+might be missing (see as an example, Ind2 above).</P><P>A few utility functions to manipulate GenePop records are made
+available, here is an example:</P><PRE CLASS="verbatim">from Bio.PopGen import GenePop
+
+#Imagine that you have loaded rec, as per the code snippet above...
+
+rec.remove_population(pos)
+#Removes a population from a record, pos is the population position in
+#  rec.populations, remember that it starts on position 0.
+#  rec is altered.
+
+rec.remove_locus_by_position(pos)
+#Removes a locus by its position, pos is the locus position in
+#  rec.loci_list, remember that it starts on position 0.
+#  rec is altered.
+
+rec.remove_locus_by_name(name)
+#Removes a locus by its name, name is the locus name as in
+#  rec.loci_list. If the name doesn't exist the function fails
+#  silently.
+#  rec is altered.
+
+rec_loci = rec.split_in_loci()
+#Splits a record in loci, that is, for each loci, it creates a new
+#  record, with a single loci and all populations.
+#  The result is returned in a dictionary, being each key the locus name.
+#  The value is the GenePop record.
+#  rec is not altered.
+
+rec_pops =  rec.split_in_pops(pop_names)
+#Splits a record in populations, that is, for each population, it creates
+#  a new record, with a single population and all loci.
+#  The result is returned in a dictionary, being each key
+#  the population name. As population names are not available in GenePop,
+#  they are passed in array (pop_names).
+#  The value of each dictionary entry is the GenePop record.
+#  rec is not altered.
+</PRE><P>GenePop does not support population names, a limitation which can be
+cumbersome at times. Functionality to enable population names is currently
+being planned for Biopython. These extensions won&#X2019;t break compatibility in
+any way with the standard format. In the medium term, we would also like to
+support the GenePop web service.</P><H3 CLASS="subsection"><A NAME="htoc112">9.8.2</A>&#XA0;&#XA0;Coalescent simulation</H3><P>A coalescent simulation is a backward model of population genetics with relation to
+time. A simulation of ancestry is done until the Most Recent Common Ancestor (MRCA) is found.
+This ancestry relationship starting on the MRCA and ending on the current generation
+sample is sometimes called a genealogy. Simple cases assume a population of constant
+size in time, haploidy, no population structure, and simulate the alleles of a single
+locus under no selection pressure.</P><P>Coalescent theory is used in many fields like selection detection, estimation of
+demographic parameters of real populations or disease gene mapping.</P><P>The strategy followed in the Biopython implementation of the coalescent was not
+to create a new, built-in, simulator from scratch but to use an existing one,
+SIMCOAL2 (<A HREF="http://cmpg.unibe.ch/software/simcoal2/"><TT>http://cmpg.unibe.ch/software/simcoal2/</TT></A>). SIMCOAL2 allows for,
+among others, population structure, multiple demographic events, simulation
+of multiple types of loci (SNPs, sequences, STRs/microsatellites and RFLPs)
+with recombination, diploidy multiple chromosomes or ascertainment bias. Notably
+SIMCOAL2 doesn&#X2019;t support any selection model. We recommend reading SIMCOAL2&#X2019;s
+documentation, available in the link above.</P><P>The input for SIMCOAL2 is a file specifying the desired demography and genome,
+the output is a set of files (typically around 1000) with the simulated genomes
+of a sample of individuals per subpopulation. This set of files can be used
+in many ways, like to compute confidence intervals where which certain
+statistics (e.g., <I>F</I><SUB><I>st</I></SUB> or Tajima D) are expected to lie. Real population
+genetics datasets statistics can then be compared to those confidence intervals.</P><P>Biopython coalescent code allows to create demographic scenarios and genomes and
+to run SIMCOAL2.</P><H4 CLASS="subsubsection">9.8.2.1&#XA0;&#XA0;Creating scenarios</H4><P>Creating a scenario involves both creating a demography and a chromosome structure.
+In many cases (e.g. when doing Approximate Bayesian Computations &#X2013; ABC) it is
+important to test many parameter variations (e.g. vary the effective population size,
+<I>N</I><SUB><I>e</I></SUB>, between 10, 50, 500 and 1000 individuals). The code provided allows for
+the simulation of scenarios with different demographic parameters very easily.</P><P>Below we see how we can create scenarios and then how simulate them.</P><H5 CLASS="paragraph">9.8.2.1.1&#XA0;&#XA0;Demography</H5><P>A few predefined demographies are built-in, all have two shared parameters: sample size
+(called sample_size on the template, see below for its use) per deme and deme size, i.e.
+subpopulation size (pop_size). All demographies are available as templates where all
+parameters can be varied, each template has a system name. The prefedined
+demographies/templates are:</P><DL CLASS="description"><DT CLASS="dt-description">
+<B>Single population, constant size</B></DT><DD CLASS="dd-description"> The standard parameters are enough to specifity
+it. Template name: simple.
+</DD><DT CLASS="dt-description"><B>Single population, bottleneck</B></DT><DD CLASS="dd-description"> As seen on figure <A HREF="#fig:bottle">9.8.2.1.1</A>. The parameters
+are current population size (pop_size on template ne3 on figure), time of expansion,
+given as the generation in the past when it occured (expand_gen), 
+effective population size during bottleneck (ne2), time of contraction
+(contract_gen) and original size in the remote past (ne3). Template name: bottle.
+</DD><DT CLASS="dt-description"><B>Island model</B></DT><DD CLASS="dd-description"> The typical island model. The total number of demes is specified
+by total_demes and the migration rate by mig. Template name island.
+</DD><DT CLASS="dt-description"><B>Stepping stone model - 1 dimension</B></DT><DD CLASS="dd-description"> The stepping stone model in 1 dimension,
+extremes disconnected. The total number of demes is total_demes, migration rate
+is mig. Template name is ssm_1d.
+</DD><DT CLASS="dt-description"><B>Stepping stone model - 2 dimensions</B></DT><DD CLASS="dd-description"> The stepping stone model in 2 dimensions,
+extremes disconnected. The parameters are x for the horizontal dimension and y
+for the vertical (being the total number of demes x times y), migration rate is mig.
+Template name is ssm_2d.
+</DD></DL><P>
+<A NAME="fig:bottle"></A>
+<IMG SRC="images/bottle.png">
+</P><P>In our first example, we will generate a template for a single population, constant size
+model with a sample size of 30 and a deme size of 500. The code for this is:</P><PRE CLASS="verbatim">from Bio.PopGen.SimCoal.Template import generate_simcoal_from_template
+
+generate_simcoal_from_template('simple',
+    [(1, [('SNP', [24, 0.0005, 0.0])])],
+    [('sample_size', [30]),
+    ('pop_size', [100])])
+</PRE><P>Executing this code snippet will generate a file on the current directory called
+simple_100_300.par this file can be given as input to SIMCOAL2 to simulate the
+demography (below we will see how Biopython can take care of calling SIMCOAL2).</P><P>This code consists of a single function call, lets discuss it paramter by parameter.</P><P>The first parameter is the template id (from the list above). We are using the id
+&#X2019;simple&#X2019; which is the template for a single population of constant size along time.</P><P>The second parameter is the chromosome structure. Please ignore it for now, it will be
+explained in the next section.</P><P>The third parameter is a list of all required parameters (recall that the simple model
+only needs sample_size and pop_size) and possible values (in this case each
+parameter only has a possible value).</P><P>Now, lets consider an example where we want to generate several island models, and we
+are interested in varying the number of demes: 10, 50 and 100 with a migration
+rate of 1%. Sample size and deme
+size will be the same as before. Here is the code:</P><PRE CLASS="verbatim">from Bio.PopGen.SimCoal.Template import generate_simcoal_from_template
+
+generate_simcoal_from_template('island',
+    [(1, [('SNP', [24, 0.0005, 0.0])])],
+    [('sample_size', [30]),
+    ('pop_size', [100]),
+    ('mig', [0.01]),
+    ('total_demes', [10, 50, 100])])
+</PRE><P>In this case, 3 files will be generated: island_100_0.01_100_30.par,
+island_10_0.01_100_30.par and island_50_0.01_100_30.par. Notice the
+rule to make file names: template name, followed by parameter values in
+reverse order.</P><P>A few, arguably more esoteric template demographies exist (please check the
+Bio/PopGen/SimCoal/data directory on Biopython source tree). Furthermore it is possible
+for the user to create new templates. That functionality will be discussed in a future
+version of this document.</P><H5 CLASS="paragraph">9.8.2.1.2&#XA0;&#XA0;Chromosome structure</H5><P>We strongly recommend reading SIMCOAL2 documentation to understand the full potential
+available in modeling chromosome structures. In this subsection we only discuss how
+to implement chromosome structures using the Biopython interface, not the underlying
+SIMCOAL2 capabilities.</P><P>We will start by implementing a single chromosome, with 24 SNPs with
+a recombination rate immediately on the right of each locus of 0.0005 and a
+minimum frequency of the minor allele of 0. This will be specified by the
+following list (to be passed as second parameter to the function
+generate_simcoal_from_template):</P><PRE CLASS="verbatim">[(1, [('SNP', [24, 0.0005, 0.0])])]
+</PRE><P>This is actually the chromosome structure used in the above examples.</P><P>The chromosome structure is represented by a list of chromosomes,
+each chromosome (i.e., each element in the list)
+is composed by a tuple (a pair): the first element
+is the number of times the chromosome is to be repeated (as there
+might be interest in repeating the same chromosome many times).
+The second element is a list of the actual components of the chromosome.
+Each element is again a pair, the first member is the locus type and
+the second element the parameters for that locus type. Confused?
+Before showing more examples lets review the example above: We have
+a list with one element (thus one chromosome), the chromosome is
+a single instance (therefore not to be repeated), it is composed
+of 24 SNPs, with a recombination rate of 0.0005 between each
+consecutive SNP, the minimum frequency of the minor allele is
+0.0 (i.e, it can be absent from a certain population).</P><P>Lets see a more complicated example:</P><PRE CLASS="verbatim">[
+  (5, [
+       ('SNP', [24, 0.0005, 0.0])
+      ]
+  ),
+  (2, [
+       ('DNA', [10, 0.0, 0.00005, 0.33]),
+       ('RFLP', [1, 0.0, 0.0001]),
+       ('MICROSAT', [1, 0.0, 0.001, 0.0, 0.0])
+      ]
+  )
+]
+</PRE><P>We start by having 5 chromosomes with the same structure as
+above (i.e., 24 SNPs). We then have 2 chromosomes which
+have a DNA sequence with 10 nucleotides, 0.0 recombination rate,
+0.0005 mutation rate, and a transition rate of 0.33. Then we
+have an RFLP with 0.0 recombination rate to the next locus and
+a 0.0001 mutation rate. Finally we have a microsatellite (or STR),
+with 0.0 recombination rate to the next locus (note, that as this
+is a single microsatellite which has no loci following, this
+recombination rate here is irrelevant), with a mutation rate
+of 0.001, geometric paramater of 0.0 and a range constraint
+of 0.0 (for information about this parameters please consult
+the SIMCOAL2 documentation, you can use them to simulate
+various mutation models, including the typical &#X2013; for microsatellites &#X2013;
+stepwise mutation model among others).</P><H4 CLASS="subsubsection">9.8.2.2&#XA0;&#XA0;Running SIMCOAL2</H4><P>We now discuss how to run SIMCOAL2 from inside Biopython. It is required
+that the binary for SIMCOAL2 is called simcoal2 (or simcoal2.exe on Windows
+based platforms), please note that the typical name when downloading the
+program is in the format simcoal2_x_y. As such renaming of the binary
+after download is needed.</P><P>It is possible to run SIMCOAL2 on files that were not generated using the method
+above (e.g., writing a parameter file by hand), but we will show an
+example by creating a model using the framework presented above.</P><PRE CLASS="verbatim">from Bio.PopGen.SimCoal.Template import generate_simcoal_from_template
+from Bio.PopGen.SimCoal.Controller import SimCoalController
+
+
+generate_simcoal_from_template('simple',
+    [
+      (5, [
+           ('SNP', [24, 0.0005, 0.0])
+          ]
+      ),
+      (2, [
+           ('DNA', [10, 0.0, 0.00005, 0.33]),
+           ('RFLP', [1, 0.0, 0.0001]),
+           ('MICROSAT', [1, 0.0, 0.001, 0.0, 0.0])
+          ]
+      )
+    ],
+    [('sample_size', [30]),
+    ('pop_size', [100])])
+
+ctrl = SimCoalController('.')
+ctrl.run_simcoal('simple_100_30.par', 50)
+</PRE><P>The lines of interest are the last two (plus the new import).
+Firstly a controller for the
+application is created. The directory where the binary is located has
+to be specified.</P><P>The simulator is then run on the last line: we know, from the rules explained
+above, that the input file name is simple_100_30.par for the
+simulation parameter file created. We then specify
+that we want to run 50 independent simulations, by default Biopython
+requests a simulation of diploid data, but a third parameter can
+be added to simulate haploid data (adding as a parameter the
+string &#X2019;0&#X2019;). SIMCOAL2 will now run (please
+note that this can take quite a lot of time) and will create a directory
+with the simulation results. The results can now be analysed (typically
+studying the data with Arlequin3). In the future Biopython might support
+reading the Arlequin3 format and thus allowing for the analysis of SIMCOAL2
+data inside Biopython.</P><H3 CLASS="subsection"><A NAME="htoc113">9.8.3</A>&#XA0;&#XA0;Other applications</H3><P>Here we discuss interfaces and utilities to deal with population genetics&#X2019;
+applications which arguably have a smaller user base.</P><H4 CLASS="subsubsection">9.8.3.1&#XA0;&#XA0;FDist: Detecting selection and molecular adaptation</H4><P>FDist is a selection detection application suite based on computing
+(i.e. simulating) a &#X201C;neutral&#X201D; confidence interval based on <I>F</I><SUB><I>st</I></SUB> and
+heterozygosity. Markers (which can be SNPs, microsatellites, AFLPs
+among others) which lie outside the &#X201C;neutral&#X201D; interval are to be
+considered as possible candidates for being under selection.</P><P>FDist is mainly used when the number of markers is considered enough
+to estimate an average <I>F</I><SUB><I>st</I></SUB>, but not enough to either have outliers
+calculated from the dataset directly or, with even more markers for
+which the relative positions in the genome are known, to use
+approaches based on, e.g., Extended Haplotype Heterozygosity (EHH).</P><P>The typical usage pattern for FDist is as follows:</P><OL CLASS="enumerate" type=1><LI CLASS="li-enumerate">
+Import a dataset from an external format into FDist format.
+</LI><LI CLASS="li-enumerate">Compute average <I>F</I><SUB><I>st</I></SUB>. This is done by datacal inside FDist.
+</LI><LI CLASS="li-enumerate">Simulate &#X201C;neutral&#X201D; markers based on the
+average <I>F</I><SUB><I>st</I></SUB> and expected number of total populations.
+This is the core operation, done by fdist inside FDist.
+</LI><LI CLASS="li-enumerate">Calculate the confidence interval, based on the desired
+confidence boundaries (typically 95% or 99%). This is done by
+cplot and is mainly used to plot the interval.
+</LI><LI CLASS="li-enumerate">Assess each marker status against the simulation &#X201C;neutral&#X201D;
+confidence interval. Done
+by pv. This is used to detect the outlier status of each marker
+against the simulation.
+</LI></OL><P>We will now discuss each step with illustrating example code
+(for this example to work FDist binaries have to be on the
+executable PATH).</P><P>The FDist data format is application specific and is not used at
+all by other applications, as such you will probably have to convert
+your data for use with FDist. Biopython can help you do this.
+Here is an example converting from GenePop format to FDist format
+(along with imports that will be needed on examples further below):</P><PRE CLASS="verbatim">from Bio.PopGen import GenePop
+from Bio.PopGen import FDist
+from Bio.PopGen.FDist import Controller
+from Bio.PopGen.FDist.Utils import convert_genepop_to_fdist
+
+gp_rec = GenePop.parse(open("example.gen"))
+fd_rec = convert_genepop_to_fdist(gp_rec)
+in_file = open("infile", "w")
+in_file.write(str(fd_rec))
+in_file.close()
+</PRE><P>In this code we simply parse a GenePop file and convert it to a FDist
+record.</P><P>Printing an FDist record will generate
+a string that can be directly saved to a file and supplied to FDist. FDist
+requires the input file to be called infile, therefore we save the record on
+a file with that name.</P><P>The most important fields on a FDist record are: num_pops, the number of
+populations; num_loci, the number of loci and loci_data with the marker
+data itself. Most probably the details of the record are of no interest
+to the user, as the record only purpose is to be passed to FDist.</P><P>The next step is to calculate the average <I>F</I><SUB><I>st</I></SUB> of the dataset (along
+with the sample size):</P><PRE CLASS="verbatim">ctrl = Controller.FDistController()
+fst, samp_size = ctrl.run_datacal()
+</PRE><P>On the first line we create an object to control the call of FDist
+suite, this object will be used further on in order to call other
+suite applications.</P><P>On the second line we call the datacal application which computes the
+average <I>F</I><SUB><I>st</I></SUB>
+and the sample size. It is worth noting that the <I>F</I><SUB><I>st</I></SUB> computed by
+datacal is a <EM>variation</EM> of Weir and Cockerham&#X2019;s &#X3B8;.</P><P>We can now call the main fdist application in order to simulate neutral
+markers.</P><PRE CLASS="verbatim">sim_fst = ctrl.run_fdist(npops = 15, nsamples = fd_rec.num_pops, fst = fst,
+    sample_size = samp_size, mut = 0, num_sims = 40000)
+</PRE><DL CLASS="description"><DT CLASS="dt-description">
+<B>npops</B></DT><DD CLASS="dd-description"> Number of populations existing in nature. This is really a
+&#X201C;guestimate&#X201D;. Has to be lower than 100.
+</DD><DT CLASS="dt-description"><B>nsamples</B></DT><DD CLASS="dd-description"> Number of populations sampled, has to be lower than npops.
+</DD><DT CLASS="dt-description"><B>fst</B></DT><DD CLASS="dd-description"> Average <I>F</I><SUB><I>st</I></SUB>.
+</DD><DT CLASS="dt-description"><B>sample_size</B></DT><DD CLASS="dd-description"> Average number of individuals sampled on each population.
+</DD><DT CLASS="dt-description"><B>mut</B></DT><DD CLASS="dd-description"> Mutation model: 0 - Infinite alleles; 1 - Stepwise mutations
+</DD><DT CLASS="dt-description"><B>num_sims</B></DT><DD CLASS="dd-description"> Number of simulations to perform. Typically a number around
+40000 will be OK, but if you get a confidence interval that looks sharp
+(this can be detected when plotting the confidence interval computed
+below) the value can be increased (a suggestion would be steps of 10000
+simulations).
+</DD></DL><P>The confusion in wording between number of samples and sample size
+stems from the original application.</P><P>A file named out.dat will be created with the simulated heterozygosities
+and <I>F</I><SUB><I>st</I></SUB>s, it will have as many lines as the number of simulations
+requested.</P><P>Note that fdist returns the average <I>F</I><SUB><I>st</I></SUB> that it was <EM>capable</EM> of
+simulating, for more details about this issue please read below the paragraph
+on approximating the desired average <I>F</I><SUB><I>st</I></SUB>.</P><P>The next (optional) step is to calculate the confidence interval:</P><PRE CLASS="verbatim">cpl_interval = ctrl.run_cplot(ci=0.99)
+</PRE><P>You can only call cplot after having run fdist.</P><P>This will calculate the confidence intervals (99% in this case)
+for a previous fdist run. A list of quadruples is returned. The
+first element represents the heterozygosity, the second the lower
+bound of <I>F</I><SUB><I>st</I></SUB> confidence interval for that heterozygosity,
+the third the average and the fourth the upper bound. This can
+be used to trace the confidence interval contour. This list
+is also written to a file, out.cpl.</P><P>The main purpose of this step is return a set of points which can
+be easily used to plot a confidence interval. It can be skipped
+if the objective is only to assess the status of each marker against
+the simulation, which is the next step...</P><PRE CLASS="verbatim">pv_data = ctrl.run_pv()
+</PRE><P>You can only call cplot after having run datacal and fdist.</P><P>This will use the simulated markers to assess the status of each
+individual real marker. A list, in the same order than the loci_list
+that is on the FDist record (which is in the same order that the GenePop
+record) is returned. Each element in the list is a quadruple, the
+fundamental member of each quadruple is the last element (regarding the
+other elements, please refer to the pv documentation &#X2013; for the
+sake of simplicity we will not discuss them here) which returns the
+probability of the simulated <I>F</I><SUB><I>st</I></SUB> being lower than the marker <I>F</I><SUB><I>st</I></SUB>.
+Higher values would indicate a stronger candidate for positive selection,
+lower values a candidate for balancing selection, and intermediate values
+a possible neutral marker. What is &#X201C;higher&#X201D;, &#X201C;lower&#X201D; or &#X201C;intermediate&#X201D;
+is really a subjective issue, but taking a &#X201C;confidence interval&#X201D; approach
+and considering a 95% confidence interval, &#X201C;higher&#X201D; would be between 0.95
+and 1.0, &#X201C;lower&#X201D; between 0.0 and 0.05 and &#X201C;intermediate&#X201D; between 0.05 and
+0.95.</P><H5 CLASS="paragraph">9.8.3.1.1&#XA0;&#XA0;Approximating the desired average <I>F</I><SUB><I>st</I></SUB></H5><P>Fdist tries to approximate the desired average <I>F</I><SUB><I>st</I></SUB> by doing a
+coalescent simulation using migration rates based on the formula</P><TABLE CLASS="display dcenter"><TR VALIGN="middle"><TD CLASS="dcell"><I>N</I><SUB><I>m</I></SUB>&#XA0;=&#XA0;</TD><TD CLASS="dcell"><TABLE CLASS="display"><TR><TD CLASS="dcell" ALIGN="center">1&#XA0;&#X2212;&#XA0;<I>F</I><SUB><I>st</I></SUB></TD></TR>
+<TR><TD CLASS="hbar"></TD></TR>
+<TR><TD CLASS="dcell" ALIGN="center">4<I>F</I><SUB><I>st</I></SUB></TD></TR>
+</TABLE></TD><TD CLASS="dcell">&#XA0;</TD></TR>
+</TABLE><P>This formula assumes a few premises like an infinite number of populations.</P><P>In practice, when the number of populations is low, the mutation model
+is stepwise and the sample size increases, fdist will not be able to
+simulate an acceptable approximate average <I>F</I><SUB><I>st</I></SUB>.</P><P>To address that, a function is provided to iteratively approach the desired
+value by running several fdists in sequence. This approach is computationally
+more intensive than running a single fdist run, but yields good results.
+The following code runs fdist approximating the desired <I>F</I><SUB><I>st</I></SUB>:</P><PRE CLASS="verbatim">sim_fst = ctrl.run_fdist_force_fst(npops = 15, nsamples = fd_rec.num_pops,
+    fst = fst, sample_size = samp_size, mut = 0, num_sims = 40000,
+    limit = 0.05)
+</PRE><P>The only new optional parameter, when comparing with run_fdist, is limit
+which is the desired maximum error. run_fdist can (and probably should)
+be safely replaced with run_fdist_force_fst.</P><H5 CLASS="paragraph">9.8.3.1.2&#XA0;&#XA0;Final notes</H5><P>The process to determine the average <I>F</I><SUB><I>st</I></SUB> can be more sophisticated than
+the one presented here. For more information we refer you to the FDist
+README file. Biopython&#X2019;s code can be used to implement more sophisticated
+approaches.</P><H3 CLASS="subsection"><A NAME="htoc114">9.8.4</A>&#XA0;&#XA0;Future Developments</H3><P>The most desired future developments would be the ones you add yourself ;) .</P><P>That being said, already existing fully functional code is currently being
+incorporated in Bio.PopGen, that code covers the applications FDist and
+SimCoal2, the HapMap and UCSC Table Browser databases and some simple statistics
+like <I>F</I><SUB><I>st</I></SUB>, or allele counts.</P><H2 CLASS="section"><A NAME="toc54"></A><A NAME="htoc115">9.9</A>&#XA0;&#XA0;InterPro</H2><P>The <CODE>Bio.InterPro</CODE> module works with files from the
+InterPro database, which can be obtained from the InterPro project:
+<A HREF="http://www.ebi.ac.uk/interpro/"><TT>http://www.ebi.ac.uk/interpro/</TT></A>.</P><P>The <CODE>Bio.InterPro.Record</CODE> contains all the information stored in
+an InterPro record. Its string representation also is a valid InterPro
+record, but it is NOT guaranteed to be equivalent to the record
+from which it was produced.</P><P>The <CODE>Bio.InterPro.Record</CODE> contains:</P><UL CLASS="itemize"><LI CLASS="li-itemize">
+<CODE>Database</CODE>
+</LI><LI CLASS="li-itemize"><CODE>Accession</CODE>
+</LI><LI CLASS="li-itemize"><CODE>Name</CODE>
+</LI><LI CLASS="li-itemize"><CODE>Dates</CODE>
+</LI><LI CLASS="li-itemize"><CODE>Type</CODE>
+</LI><LI CLASS="li-itemize"><CODE>Parent</CODE>
+</LI><LI CLASS="li-itemize"><CODE>Process</CODE>
+</LI><LI CLASS="li-itemize"><CODE>Function</CODE>
+</LI><LI CLASS="li-itemize"><CODE>Component</CODE>
+</LI><LI CLASS="li-itemize"><CODE>Signatures</CODE>
+</LI><LI CLASS="li-itemize"><CODE>Abstract</CODE>
+</LI><LI CLASS="li-itemize"><CODE>Examples</CODE>
+</LI><LI CLASS="li-itemize"><CODE>References</CODE>
+</LI><LI CLASS="li-itemize"><CODE>Database links</CODE>
+</LI></UL><HR>
+<A HREF="Tutorial009.html"><IMG SRC="previous_motif.gif" ALT="Previous"></A>
+<A HREF="index.html"><IMG SRC="contents_motif.gif" ALT="Up"></A>
+<A HREF="Tutorial011.html"><IMG SRC="next_motif.gif" ALT="Next"></A>
+</BODY>
+</HTML>

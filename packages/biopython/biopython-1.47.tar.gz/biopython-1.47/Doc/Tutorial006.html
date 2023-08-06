@@ -1,0 +1,347 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+            "http://www.w3.org/TR/REC-html40/loose.dtd">
+<HTML>
+<HEAD>
+
+<META http-equiv="Content-Type" content="text/html; charset=US-ASCII">
+<META name="GENERATOR" content="hevea 1.10">
+<LINK rel="stylesheet" type="text/css" href="Tutorial.css">
+<TITLE>Sequence Alignment Input/Output</TITLE>
+</HEAD>
+<BODY >
+<A HREF="Tutorial005.html"><IMG SRC="previous_motif.gif" ALT="Previous"></A>
+<A HREF="index.html"><IMG SRC="contents_motif.gif" ALT="Up"></A>
+<A HREF="Tutorial007.html"><IMG SRC="next_motif.gif" ALT="Next"></A>
+<HR>
+<H1 CLASS="chapter"><A NAME="htoc41">Chapter&#XA0;5</A>&#XA0;&#XA0;Sequence Alignment Input/Output</H1><P>
+<A NAME="chapter:Bio.AlignIO"></A></P><P>In this chapter we&#X2019;ll discuss the <CODE>Bio.AlignIO</CODE> module, which is very similar to the <CODE>Bio.SeqIO</CODE> module from the previous chapter, but deals with <CODE>Alignment</CODE> objects rather than <CODE>SeqRecord</CODE> objects. 
+This is new interface in Biopython 1.46, which aims to provide a simple interface for working with assorted sequence alignment file formats in a uniform way.</P><P>Note that both <CODE>Bio.SeqIO</CODE> and <CODE>Bio.AlignIO</CODE> can read and write sequence alignment files. The appropriate choice will depend largely on what you want to do with the data.</P><H2 CLASS="section"><A NAME="toc23"></A><A NAME="htoc42">5.1</A>&#XA0;&#XA0;Parsing or Reading Sequence Alignments</H2><P>We have two functions for reading in sequence alignments, <CODE>Bio.AlignIO.read()</CODE> and <CODE>Bio.AlignIO.parse()</CODE> which following the convention introduced in <CODE>Bio.SeqIO</CODE> are for files containing one or multiple alignments respectively.</P><P>Using <CODE>Bio.AlignIO.parse()</CODE> will return an <I>iterator</I> which gives <CODE>Alignment</CODE> objects. Iterators are typically used in a for loop. Examples of situations where you will have multiple different alignments include resampled alignments from the PHYLIP tool <CODE>seqboot</CODE>, or multiple pairwise alignments from the EMBOSS tools <CODE>water</CODE> or <CODE>needle</CODE>, or Bill Pearson&#X2019;s FASTA tools.</P><P>However, in many situations you will be dealing with files which contain only a single alignment. In this case, you should use the <CODE>Bio.AlignIO.read()</CODE> function which return a single <CODE>Alignment</CODE> object.</P><P>Both functions expect two mandatory arguments:</P><OL CLASS="enumerate" type=1><LI CLASS="li-enumerate">
+The first argument is a <I>handle</I> to read the data from, typically an open file (see Section&#XA0;<A HREF="Tutorial013.html#sec:appendix-handles">12.1</A>).
+</LI><LI CLASS="li-enumerate">The second argument is a lower case string specifying sequence coformat. As in <CODE>Bio.SeqIO</CODE> we don&#X2019;t try and guess the file format for you! See <A HREF="http://biopython.org/wiki/AlignIO"><TT>http://biopython.org/wiki/AlignIO</TT></A> for a full listing of supported formats.
+</LI></OL><P>There is also an optional <CODE>seq_count</CODE> argument which is discussed in Section&#XA0;<A HREF="#sec:AlignIO-count-argument">5.1.3</A> below for dealing with ambigous file formats which may contain more than one alignment.</P><H3 CLASS="subsection"><A NAME="htoc43">5.1.1</A>&#XA0;&#XA0;Single Alignments</H3><P>
+As an example, consider the following annotation rich protein alignment in the PFAM or Stockholm file format:</P><PRE CLASS="verbatim"># STOCKHOLM 1.0
+#=GS COATB_BPIKE/30-81  AC P03620.1
+#=GS COATB_BPIKE/30-81  DR PDB; 1ifl ; 1-52;
+#=GS Q9T0Q8_BPIKE/1-52  AC Q9T0Q8.1
+#=GS COATB_BPI22/32-83  AC P15416.1
+#=GS COATB_BPM13/24-72  AC P69541.1
+#=GS COATB_BPM13/24-72  DR PDB; 2cpb ; 1-49;
+#=GS COATB_BPM13/24-72  DR PDB; 2cps ; 1-49;
+#=GS COATB_BPZJ2/1-49   AC P03618.1
+#=GS Q9T0Q9_BPFD/1-49   AC Q9T0Q9.1
+#=GS Q9T0Q9_BPFD/1-49   DR PDB; 1nh4 A; 1-49;
+#=GS COATB_BPIF1/22-73  AC P03619.2
+#=GS COATB_BPIF1/22-73  DR PDB; 1ifk ; 1-50;
+COATB_BPIKE/30-81             AEPNAATNYATEAMDSLKTQAIDLISQTWPVVTTVVVAGLVIRLFKKFSSKA
+#=GR COATB_BPIKE/30-81  SS    -HHHHHHHHHHHHHH--HHHHHHHH--HHHHHHHHHHHHHHHHHHHHH----
+Q9T0Q8_BPIKE/1-52             AEPNAATNYATEAMDSLKTQAIDLISQTWPVVTTVVVAGLVIKLFKKFVSRA
+COATB_BPI22/32-83             DGTSTATSYATEAMNSLKTQATDLIDQTWPVVTSVAVAGLAIRLFKKFSSKA
+COATB_BPM13/24-72             AEGDDP...AKAAFNSLQASATEYIGYAWAMVVVIVGATIGIKLFKKFTSKA
+#=GR COATB_BPM13/24-72  SS    ---S-T...CHCHHHHCCCCTCCCTTCHHHHHHHHHHHHHHHHHHHHCTT--
+COATB_BPZJ2/1-49              AEGDDP...AKAAFDSLQASATEYIGYAWAMVVVIVGATIGIKLFKKFASKA
+Q9T0Q9_BPFD/1-49              AEGDDP...AKAAFDSLQASATEYIGYAWAMVVVIVGATIGIKLFKKFTSKA
+#=GR Q9T0Q9_BPFD/1-49   SS    ------...-HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH--
+COATB_BPIF1/22-73             FAADDATSQAKAAFDSLTAQATEMSGYAWALVVLVVGATVGIKLFKKFVSRA
+#=GR COATB_BPIF1/22-73  SS    XX-HHHH--HHHHHH--HHHHHHH--HHHHHHHHHHHHHHHHHHHHHHH---
+#=GC SS_cons                  XHHHHHHHHHHHHHHHCHHHHHHHHCHHHHHHHHHHHHHHHHHHHHHHHC--
+#=GC seq_cons                 AEssss...AptAhDSLpspAT-hIu.sWshVsslVsAsluIKLFKKFsSKA
+//
+</PRE><P>This is the seed alignment for the Phage_Coat_Gp8 (PF05371) PFAM entry, downloaded as a compressed archive from <A HREF="http://pfam.sanger.ac.uk/family/alignment/download/gzipped?acc=PF05371&alnType=seed"><TT>http://pfam.sanger.ac.uk/family/alignment/download/gzipped?acc=PF05371&amp;alnType=seed</TT></A>. We can load this file as follows (assuming it has been saved to disk as &#X201C;PF05371_seed.sth&#X201D; in the current working directory):</P><PRE CLASS="verbatim">from Bio import AlignIO
+alignment = AlignIO.read(open("PF05371_seed.sth"), "stockholm")
+print alignment
+</PRE><P>This code will print out a summary of the alignment:</P><PRE CLASS="verbatim">SingleLetterAlphabet() alignment with 7 rows and 52 columns
+AEPNAATNYATEAMDSLKTQAIDLISQTWPVVTTVVVAGLVIRL...SKA COATB_BPIKE/30-81
+AEPNAATNYATEAMDSLKTQAIDLISQTWPVVTTVVVAGLVIKL...SRA Q9T0Q8_BPIKE/1-52
+DGTSTATSYATEAMNSLKTQATDLIDQTWPVVTSVAVAGLAIRL...SKA COATB_BPI22/32-83
+AEGDDP---AKAAFNSLQASATEYIGYAWAMVVVIVGATIGIKL...SKA COATB_BPM13/24-72
+AEGDDP---AKAAFDSLQASATEYIGYAWAMVVVIVGATIGIKL...SKA COATB_BPZJ2/1-49
+AEGDDP---AKAAFDSLQASATEYIGYAWAMVVVIVGATIGIKL...SKA Q9T0Q9_BPFD/1-49
+FAADDATSQAKAAFDSLTAQATEMSGYAWALVVLVVGATVGIKL...SRA COATB_BPIF1/22-73
+</PRE><P>You&#X2019;ll notice in the above output the sequences have been truncated. We could instead write our own code to format this as we please by iterating over the rows as <CODE>SeqRecord</CODE> objects:</P><PRE CLASS="verbatim">from Bio import AlignIO
+alignment = AlignIO.read(open("PF05371_seed.sth"), "stockholm")
+print "Alignment length %i" % alignment.get_alignment_length()
+for record in alignment :
+    print "%s - %s" % (record.seq, record.id)
+</PRE><P>This will give the following output:</P><PRE CLASS="verbatim">Alignment length 52
+AEPNAATNYATEAMDSLKTQAIDLISQTWPVVTTVVVAGLVIRLFKKFSSKA - COATB_BPIKE/30-81
+AEPNAATNYATEAMDSLKTQAIDLISQTWPVVTTVVVAGLVIKLFKKFVSRA - Q9T0Q8_BPIKE/1-52
+DGTSTATSYATEAMNSLKTQATDLIDQTWPVVTSVAVAGLAIRLFKKFSSKA - COATB_BPI22/32-83
+AEGDDP---AKAAFNSLQASATEYIGYAWAMVVVIVGATIGIKLFKKFTSKA - COATB_BPM13/24-72
+AEGDDP---AKAAFDSLQASATEYIGYAWAMVVVIVGATIGIKLFKKFASKA - COATB_BPZJ2/1-49
+AEGDDP---AKAAFDSLQASATEYIGYAWAMVVVIVGATIGIKLFKKFTSKA - Q9T0Q9_BPFD/1-49
+FAADDATSQAKAAFDSLTAQATEMSGYAWALVVLVVGATVGIKLFKKFVSRA - COATB_BPIF1/22-73
+</PRE><P>Did you notice in the raw file above that several of the sequences include database cross-references to the PDB and the associated known secondary strucutre? Try this:</P><PRE CLASS="verbatim">for record in alignment :
+    if record.dbxrefs :
+        print record.id, record.dbxrefs
+</PRE><P>giving:</P><PRE CLASS="verbatim">COATB_BPIKE/30-81 ['PDB; 1ifl ; 1-52;']
+COATB_BPM13/24-72 ['PDB; 2cpb ; 1-49;', 'PDB; 2cps ; 1-49;']
+Q9T0Q9_BPFD/1-49 ['PDB; 1nh4 A; 1-49;']
+COATB_BPIF1/22-73 ['PDB; 1ifk ; 1-50;']
+</PRE><P>To have a look at all the sequence annotation, try this:</P><PRE CLASS="verbatim">for record in alignment :
+    print record
+</PRE><P>Sanger provide a nice web interface at <A HREF="http://pfam.sanger.ac.uk/family?acc=PF05371"><TT>http://pfam.sanger.ac.uk/family?acc=PF05371</TT></A> which will actually let you download this alignment in several other formats. This is what the file looks like in the FASTA file format:</P><PRE CLASS="verbatim">&gt;COATB_BPIKE/30-81
+AEPNAATNYATEAMDSLKTQAIDLISQTWPVVTTVVVAGLVIRLFKKFSSKA
+&gt;Q9T0Q8_BPIKE/1-52
+AEPNAATNYATEAMDSLKTQAIDLISQTWPVVTTVVVAGLVIKLFKKFVSRA
+&gt;COATB_BPI22/32-83
+DGTSTATSYATEAMNSLKTQATDLIDQTWPVVTSVAVAGLAIRLFKKFSSKA
+&gt;COATB_BPM13/24-72
+AEGDDP...AKAAFNSLQASATEYIGYAWAMVVVIVGATIGIKLFKKFTSKA
+&gt;COATB_BPZJ2/1-49
+AEGDDP...AKAAFDSLQASATEYIGYAWAMVVVIVGATIGIKLFKKFASKA
+&gt;Q9T0Q9_BPFD/1-49
+AEGDDP...AKAAFDSLQASATEYIGYAWAMVVVIVGATIGIKLFKKFTSKA
+&gt;COATB_BPIF1/22-73
+FAADDATSQAKAAFDSLTAQATEMSGYAWALVVLVVGATVGIKLFKKFVSRA
+</PRE><P>Assuming you download and save this as file &#X201C;PF05371_seed.faa&#X201D; then you can load it with almost exactly the same code:</P><PRE CLASS="verbatim">from Bio import AlignIO
+alignment = AlignIO.read(open("PF05371_seed.faa"), "fasta")
+print alignment
+</PRE><P>All that has changed in this code is the filename and the format string. You&#X2019;ll get the same output as before, the sequences and record identifiers are the same.
+However, as you should expect, if you check each <CODE>SeqRecord</CODE> there is no annotation nor database cross-references because these are not included in the FASTA file format.</P><P>Note that rather than using the Sanger website, you could have used <CODE>Bio.AlignIO</CODE> to convert the original Stockholm format file into a FASTA file yourself (see below).</P><P>With any supported file format, you can load an alignment in exactly the same way just by changing the format string. For example, use &#X201C;phylip&#X201D; for PHYLIP files, &#X201C;nexus&#X201D; for NEXUS files or &#X201C;emboss&#X201D; for the alignments output by the EMBOSS tools. There is a full listing on the wiki page (<A HREF="http://biopython.org/wiki/AlignIO"><TT>http://biopython.org/wiki/AlignIO</TT></A>).</P><H3 CLASS="subsection"><A NAME="htoc44">5.1.2</A>&#XA0;&#XA0;Multiple Alignments</H3><P>The previous section focused on reading files containing a single alignment. In general however, files can contain more than one alignment, and to read these files we must use the <CODE>Bio.AlignIO.parse()</CODE> function.</P><P>Suppose you have a small alignment in PHYLIP format:</P><PRE CLASS="verbatim">    5    6
+Alpha     AACAAC
+Beta      AACCCC
+Gamma     ACCAAC
+Delta     CCACCA
+Epsilon   CCAAAC
+</PRE><P>If you wanted to bootstrap a phylogenetic tree using the PHYLIP tools, one of the steps would be to create a set of many resampled alignments using the tool <CODE>bootseq</CODE>. This would give output something like this, which has been abbreviated for conciseness:</P><PRE CLASS="verbatim">    5     6
+Alpha     AAACCA
+Beta      AAACCC
+Gamma     ACCCCA
+Delta     CCCAAC
+Epsilon   CCCAAA
+    5     6
+Alpha     AAACAA
+Beta      AAACCC
+Gamma     ACCCAA
+Delta     CCCACC
+Epsilon   CCCAAA
+    5     6
+Alpha     AAAAAC
+Beta      AAACCC
+Gamma     AACAAC
+Delta     CCCCCA
+Epsilon   CCCAAC
+...
+    5     6
+Alpha     AAAACC
+Beta      ACCCCC
+Gamma     AAAACC
+Delta     CCCCAA
+Epsilon   CAAACC
+</PRE><P>If you wanted to read this in using <CODE>Bio.AlignIO</CODE> you could use:</P><PRE CLASS="verbatim">from Bio import AlignIO
+alignments = AlignIO.parse(open("resampled.phy"), "phylip")
+for alignment in alignments :
+    print alignment
+    print
+</PRE><P>This would give the following output, again abbreviated for display:</P><PRE CLASS="verbatim">SingleLetterAlphabet() alignment with 5 rows and 6 columns
+AAACCA Alpha
+AAACCC Beta
+ACCCCA Gamma
+CCCAAC Delta
+CCCAAA Epsilon
+
+SingleLetterAlphabet() alignment with 5 rows and 6 columns
+AAACAA Alpha
+AAACCC Beta
+ACCCAA Gamma
+CCCACC Delta
+CCCAAA Epsilon
+
+SingleLetterAlphabet() alignment with 5 rows and 6 columns
+AAAAAC Alpha
+AAACCC Beta
+AACAAC Gamma
+CCCCCA Delta
+CCCAAC Epsilon
+
+...
+
+SingleLetterAlphabet() alignment with 5 rows and 6 columns
+AAAACC Alpha
+ACCCCC Beta
+AAAACC Gamma
+CCCCAA Delta
+CAAACC Epsilon
+</PRE><P>As with the function <CODE>Bio.SeqIO.parse()</CODE>, using <CODE>Bio.AlignIO.parse()</CODE> returns an iterator.
+If you want to keep all the alignments in memory at once, which will allow you to access them in any order, then turn the iterator into a list:</P><PRE CLASS="verbatim">from Bio import AlignIO
+alignments = list(AlignIO.parse(open("resampled.phy"), "phylip"))
+last_align = alignments[-1]
+first_align = alignments[0]
+</PRE><H3 CLASS="subsection"><A NAME="htoc45">5.1.3</A>&#XA0;&#XA0;Ambiguous Alignments</H3><P>
+<A NAME="sec:AlignIO-count-argument"></A>
+Many alignment file formats can explicitly store more than one alignment, and the division between each alignment is clear. However, when a general sequence file format has been used there is no such block structure. The most common such situation is when alignments have been saved in the FASTA file format. For example consider the following:</P><PRE CLASS="verbatim">&gt;Alpha
+ACTACGACTAGCTCAG--G
+&gt;Beta
+ACTACCGCTAGCTCAGAAG
+&gt;Gamma
+ACTACGGCTAGCACAGAAG
+&gt;Alpha
+ACTACGACTAGCTCAGG--
+&gt;Beta
+ACTACCGCTAGCTCAGAAG
+&gt;Gamma
+ACTACGGCTAGCACAGAAG
+</PRE><P>This could be a single alignment containing six sequences (with repeated identifiers). Or, judging from the identifiers, this is probably two different alignments each with three sequences, which happen to all have the same length.</P><P>What about this next example?</P><PRE CLASS="verbatim">&gt;Alpha
+ACTACGACTAGCTCAG--G
+&gt;Beta
+ACTACCGCTAGCTCAGAAG
+&gt;Alpha
+ACTACGACTAGCTCAGG--
+&gt;Gamma
+ACTACGGCTAGCACAGAAG
+&gt;Alpha
+ACTACGACTAGCTCAGG--
+&gt;Delta
+ACTACGGCTAGCACAGAAG
+</PRE><P>Again, this could be a single alignment with six sequences. However this time based on the identifiers we might guess this is three pairwise alignments which by chance have all got the same lengths.</P><P>This final example is similar:</P><PRE CLASS="verbatim">&gt;Alpha
+ACTACGACTAGCTCAG--G
+&gt;XXX
+ACTACCGCTAGCTCAGAAG
+&gt;Alpha
+ACTACGACTAGCTCAGG
+&gt;YYY
+ACTACGGCAAGCACAGG
+&gt;Alpha
+--ACTACGAC--TAGCTCAGG
+&gt;ZZZ
+GGACTACGACAATAGCTCAGG
+</PRE><P>In this third example, because of the differing lengths, this cannot be treated as a single alignment containing all six records. However, it could be three pairwise alignments.</P><P>Clearly trying to store more than one alignment in a FASTA file is not ideal. However, if you are forced to deal with these as input files <CODE>Bio.AlignIO</CODE> can cope with the most common situation where all the alignments have the same number of records.
+One example of this is a collection of pairwise alignments, which can be produced by the EMBOSS tools <CODE>needle</CODE> and <CODE>water</CODE> &#X2013; although in this situation, <CODE>Bio.AlignIO</CODE> should be able to understand their native output using &#X201C;emboss&#X201D; as the format string.</P><P>To interpret these FASTA examples as several separate alignments, we can use <CODE>Bio.AlignIO.parse()</CODE> with the optional <CODE>seq_count</CODE> argument which specifies how many sequences are expected in each alignment (in these examples, 3, 2 and 2 respectively).
+For example, using the third example as the input data:</P><PRE CLASS="verbatim">for alignment in AlignIO.parse(handle, "fasta", seq_count=2) :
+    print "Alignment length %i" % alignment.get_alignment_length()
+    for record in alignment :
+        print "%s - %s" % (record.seq, record.id)
+    print
+</PRE><P>giving:</P><PRE CLASS="verbatim">Alignment length 19
+ACTACGACTAGCTCAG--G - Alpha
+ACTACCGCTAGCTCAGAAG - XXX
+
+Alignment length 17
+ACTACGACTAGCTCAGG - Alpha
+ACTACGGCAAGCACAGG - YYY
+
+Alignment length 21
+--ACTACGAC--TAGCTCAGG - Alpha
+GGACTACGACAATAGCTCAGG - ZZZ
+</PRE><P>Using <CODE>Bio.AlignIO.read()</CODE> or <CODE>Bio.AlignIO.parse()</CODE> without the <CODE>seq_count</CODE> argument would give a single alignment containing all six records for the first two examples. For the third example, an exception would be raised because the lengths differ preventing them being turned into a single alignment.</P><P>If the file format itself has a block structure allowing <CODE>Bio.AlignIO</CODE> to determine the number of sequences in each alignment directly, then the <CODE>seq_count</CODE> argument is not needed. If it is supplied, and doesn&#X2019;t agree with the file contents, an error is raised.</P><P>Note that this optional <CODE>seq_count</CODE> argument assumes each alignment in the file has the same number of sequences. Hypothetically you may come across stranger situations, for example a FASTA file containing several alignments each with a different number of sequences &#X2013; although I would love to hear of a real world example of this. Assuming you cannot get the data in a nicer file format, there is no straight forward way to deal with this using <CODE>Bio.AlignIO</CODE>. In this case, you could consider reading in the sequences themselves using <CODE>Bio.SeqIO</CODE> and batching them together to create the alignments as appropriate.</P><H2 CLASS="section"><A NAME="toc24"></A><A NAME="htoc46">5.2</A>&#XA0;&#XA0;Writing Alignments</H2><P>We&#X2019;ve talked about using <CODE>Bio.AlignIO.read()</CODE> and <CODE>Bio.AlignIO.parse()</CODE> for alignment input (reading files), and now we&#X2019;ll look at <CODE>Bio.AlignIO.write()</CODE> which is for alignment output (writing files). This is a function taking three arguments: some <CODE>Alignment</CODE> objects, a handle to write to, and a sequence format.</P><P>Here is an example, where we start by creating a few <CODE>Alignment</CODE> objects the hard way (by hand, rather than by loading them from a file):</P><PRE CLASS="verbatim">from Bio.Align.Generic import Alignment
+from Bio.Alphabet import IUPAC, Gapped
+alphabet = Gapped(IUPAC.unambiguous_dna)
+
+align1 = Alignment(alphabet)
+align1.add_sequence("Alpha", "ACTGCTAGCTAG")
+align1.add_sequence("Beta",  "ACT-CTAGCTAG")
+align1.add_sequence("Gamma", "ACTGCTAGDTAG")
+
+align2 = Alignment(alphabet)
+align2.add_sequence("Delta",  "GTCAGC-AG")
+align2.add_sequence("Epislon","GACAGCTAG")
+align2.add_sequence("Zeta",   "GTCAGCTAG")
+
+align3 = Alignment(alphabet)
+align3.add_sequence("Eta",   "ACTAGTACAGCTG")
+align3.add_sequence("Theta", "ACTAGTACAGCT-")
+align3.add_sequence("Iota",  "-CTACTACAGGTG")
+
+my_alignments = [align1, align2, align3]
+</PRE><P>Now we have a list of <CODE>Alignment</CODE> objects, we&#X2019;ll write them to a PHYLIP format file:</P><PRE CLASS="verbatim">from Bio import AlignIO
+handle = open("my_example.phy", "w")
+SeqIO.write(my_alignments, handle, "phylip")
+handle.close()
+</PRE><P>And if you open this file in your favourite text editor it should look like this:</P><PRE CLASS="verbatim"> 3 12
+Alpha      ACTGCTAGCT AG
+Beta       ACT-CTAGCT AG
+Gamma      ACTGCTAGDT AG
+ 3 9
+Delta      GTCAGC-AG
+Epislon    GACAGCTAG
+Zeta       GTCAGCTAG
+ 3 13
+Eta        ACTAGTACAG CTG
+Theta      ACTAGTACAG CT-
+Iota       -CTACTACAG GTG
+</PRE><P>Its more common to want to load an existing alignment, and save that, perhaps after some simple manipulation like removing certain rows or columns.</P><H3 CLASS="subsection"><A NAME="htoc47">5.2.1</A>&#XA0;&#XA0;Converting between sequence alignment file formats</H3><P>
+<A NAME="sec:converting-alignments"></A></P><P>Converting between sequence alignment file formats with <CODE>Bio.AlignIO</CODE> works in the same way as converting between sequence file formats with <CODE>Bio.SeqIO</CODE> &#X2013; we load generally the alignment(s) using <CODE>Bio.AlignIO.parse()</CODE> and then save them using the <CODE>Bio.AlignIO.write()</CODE>.</P><P>For this example, we&#X2019;ll load the PFAM/Stockholm format file used earlier and save it as a Clustal W format file:</P><PRE CLASS="verbatim">from Bio import AlignIO
+alignments = AlignIO.parse(open("PF05371_seed.sth"), "stockholm")
+handle = open("PF05371_seed.aln","w")
+AlignIO.write(alignments, handle, "clustal")
+handle.close()
+</PRE><P>The <CODE>Bio.AlignIO.write()</CODE> function expects to be given multiple alignment objects. In the example above we gave it the alignment iterator returned by <CODE>Bio.AlignIO.parse()</CODE>.</P><P>In this case, we know there is only one alignment in the file so we could instead have used <CODE>Bio.AlignIO.read()</CODE> but notice we have to pass this alignment to <CODE>Bio.AlignIO.write()</CODE> as a single element list:</P><PRE CLASS="verbatim">from Bio import AlignIO
+alignment = AlignIO.read(open("PF05371_seed.sth"), "stockholm")
+handle = open("PF05371_seed.aln","w")
+AlignIO.write([alignment], handle, "clustal")
+handle.close()
+</PRE><P>Either way, you should end up with the same new Clustal W format file &#X201C;PF05371_seed.aln"&#X201D; with the following content:</P><PRE CLASS="verbatim">CLUSTAL X (1.81) multiple sequence alignment
+
+
+COATB_BPIKE/30-81                   AEPNAATNYATEAMDSLKTQAIDLISQTWPVVTTVVVAGLVIRLFKKFSS
+Q9T0Q8_BPIKE/1-52                   AEPNAATNYATEAMDSLKTQAIDLISQTWPVVTTVVVAGLVIKLFKKFVS
+COATB_BPI22/32-83                   DGTSTATSYATEAMNSLKTQATDLIDQTWPVVTSVAVAGLAIRLFKKFSS
+COATB_BPM13/24-72                   AEGDDP---AKAAFNSLQASATEYIGYAWAMVVVIVGATIGIKLFKKFTS
+COATB_BPZJ2/1-49                    AEGDDP---AKAAFDSLQASATEYIGYAWAMVVVIVGATIGIKLFKKFAS
+Q9T0Q9_BPFD/1-49                    AEGDDP---AKAAFDSLQASATEYIGYAWAMVVVIVGATIGIKLFKKFTS
+COATB_BPIF1/22-73                   FAADDATSQAKAAFDSLTAQATEMSGYAWALVVLVVGATVGIKLFKKFVS
+
+COATB_BPIKE/30-81                   KA
+Q9T0Q8_BPIKE/1-52                   RA
+COATB_BPI22/32-83                   KA
+COATB_BPM13/24-72                   KA
+COATB_BPZJ2/1-49                    KA
+Q9T0Q9_BPFD/1-49                    KA
+COATB_BPIF1/22-73                   RA
+</PRE><P>Alternatively, you could make a PHYLIP format file which we&#X2019;ll name &#X201C;PF05371_seed.phy&#X201D;:</P><PRE CLASS="verbatim">from Bio import AlignIO
+alignment = AlignIO.read(open("PF05371_seed.sth"), "stockholm")
+handle = open("PF05371_seed.phy","w")
+AlignIO.write([alignment], handle, "phylip")
+handle.close()
+</PRE><P>This time the output looks like this:</P><PRE CLASS="verbatim"> 7 52
+COATB_BPIK AEPNAATNYA TEAMDSLKTQ AIDLISQTWP VVTTVVVAGL VIRLFKKFSS
+Q9T0Q8_BPI AEPNAATNYA TEAMDSLKTQ AIDLISQTWP VVTTVVVAGL VIKLFKKFVS
+COATB_BPI2 DGTSTATSYA TEAMNSLKTQ ATDLIDQTWP VVTSVAVAGL AIRLFKKFSS
+COATB_BPM1 AEGDDP---A KAAFNSLQAS ATEYIGYAWA MVVVIVGATI GIKLFKKFTS
+COATB_BPZJ AEGDDP---A KAAFDSLQAS ATEYIGYAWA MVVVIVGATI GIKLFKKFAS
+Q9T0Q9_BPF AEGDDP---A KAAFDSLQAS ATEYIGYAWA MVVVIVGATI GIKLFKKFTS
+COATB_BPIF FAADDATSQA KAAFDSLTAQ ATEMSGYAWA LVVLVVGATV GIKLFKKFVS
+
+           KA
+           RA
+           KA
+           KA
+           KA
+           KA
+           RA
+</PRE><P>One of the big handicaps of the PHYLIP alignment file format is that the sequence identifiers are strictly truncated at ten characters. In this example, as you can see the resulting names are still unique - but they are not very readable. In this particular case, there is no clear way to compress the identifers, but for the sake of argument you may want to assign your own names or numbering system. This following bit of code manipulates the record identifiers before saving the output:</P><PRE CLASS="verbatim">from Bio import AlignIO
+alignment = AlignIO.read(open("PF05371_seed.sth"), "stockholm")
+name_mapping = {}
+for i, record in enumerate(alignment) :
+    name_mapping[i] = record.id
+    record.id = "seq%i" % i
+print name_mapping
+
+handle = open("PF05371_seed.phy","w")
+AlignIO.write([alignment], handle, "phylip")
+handle.close()
+</PRE><P>This code using a python dictionary to record a simple mapping from the new sequence system to the original identifier:
+</P><PRE CLASS="verbatim">{0: 'COATB_BPIKE/30-81', 1: 'Q9T0Q8_BPIKE/1-52', 2: 'COATB_BPI22/32-83', ...}
+</PRE><P>Here is the new PHYLIP format output:
+</P><PRE CLASS="verbatim"> 7 52
+seq0       AEPNAATNYA TEAMDSLKTQ AIDLISQTWP VVTTVVVAGL VIRLFKKFSS
+seq1       AEPNAATNYA TEAMDSLKTQ AIDLISQTWP VVTTVVVAGL VIKLFKKFVS
+seq2       DGTSTATSYA TEAMNSLKTQ ATDLIDQTWP VVTSVAVAGL AIRLFKKFSS
+seq3       AEGDDP---A KAAFNSLQAS ATEYIGYAWA MVVVIVGATI GIKLFKKFTS
+seq4       AEGDDP---A KAAFDSLQAS ATEYIGYAWA MVVVIVGATI GIKLFKKFAS
+seq5       AEGDDP---A KAAFDSLQAS ATEYIGYAWA MVVVIVGATI GIKLFKKFTS
+seq6       FAADDATSQA KAAFDSLTAQ ATEMSGYAWA LVVLVVGATV GIKLFKKFVS
+
+           KA
+           RA
+           KA
+           KA
+           KA
+           KA
+           RA
+</PRE><P>In general, because of the identifier limitation, working with PHYLIP file formats shouldn&#X2019;t be your first choice. Using the PFAM/Stockholm format on the other hand allows you to record a lot of additional annotation too.</P><HR>
+<A HREF="Tutorial005.html"><IMG SRC="previous_motif.gif" ALT="Previous"></A>
+<A HREF="index.html"><IMG SRC="contents_motif.gif" ALT="Up"></A>
+<A HREF="Tutorial007.html"><IMG SRC="next_motif.gif" ALT="Next"></A>
+</BODY>
+</HTML>

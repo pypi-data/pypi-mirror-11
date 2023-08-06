@@ -1,0 +1,218 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+            "http://www.w3.org/TR/REC-html40/loose.dtd">
+<HTML>
+<HEAD>
+
+<META http-equiv="Content-Type" content="text/html; charset=US-ASCII">
+<META name="GENERATOR" content="hevea 1.10">
+<LINK rel="stylesheet" type="text/css" href="Tutorial.css">
+<TITLE>Advanced</TITLE>
+</HEAD>
+<BODY >
+<A HREF="Tutorial010.html"><IMG SRC="previous_motif.gif" ALT="Previous"></A>
+<A HREF="index.html"><IMG SRC="contents_motif.gif" ALT="Up"></A>
+<A HREF="Tutorial012.html"><IMG SRC="next_motif.gif" ALT="Next"></A>
+<HR>
+<H1 CLASS="chapter"><A NAME="htoc116">Chapter&#XA0;10</A>&#XA0;&#XA0;Advanced</H1><P>
+<A NAME="chapter:advanced"></A></P><H2 CLASS="section"><A NAME="toc55"></A><A NAME="htoc117">10.1</A>&#XA0;&#XA0;The SeqRecord and SeqFeature classes</H2><P>
+<A NAME="sec:advanced-seq"></A></P><P>You read all about the basic Biopython sequence class in Chapter&#XA0;<A HREF="Tutorial004.html#chapter:Bio.Seq">3</A>, which described how to do many useful things with just the sequence. However, many times sequences have important additional properties associated with them &#X2013; as you will have seen with the <CODE>SeqRecord</CODE> object in Chapter&#XA0;<A HREF="Tutorial005.html#chapter:Bio.SeqIO">4</A>.
+This section described how Biopython handles these higher level descriptions of a sequence.</P><H3 CLASS="subsection"><A NAME="htoc118">10.1.1</A>&#XA0;&#XA0;Sequence ids and Descriptions &#X2013; dealing with SeqRecords</H3><P>Immediately above the Sequence class is the Sequence Record class, defined in the <CODE>Bio.SeqRecord</CODE> module. This class allows higher level features such as ids and features to be associated with the sequence, and is used thoughout the sequence input/output interface <CODE>Bio.SeqIO</CODE>, described in Chapter&#XA0;<A HREF="Tutorial005.html#chapter:Bio.SeqIO">4</A>. The <CODE>SeqRecord</CODE>class itself is very simple, and offers the following information as attributes:</P><DL CLASS="description"><DT CLASS="dt-description">
+<B>seq</B></DT><DD CLASS="dd-description"> &#X2013; The sequence itself &#X2013; A <CODE>Seq</CODE> object</DD><DT CLASS="dt-description"><B>id</B></DT><DD CLASS="dd-description"> &#X2013; The primary id used to identify the sequence. In most cases this is something like an accession number.</DD><DT CLASS="dt-description"><B>name</B></DT><DD CLASS="dd-description"> &#X2013; A &#X201C;common&#X201D; name/id for the sequence. In some cases this will be the same as the accession number, but it could also be a clone name. I think of this as being analagous to the LOCUS id in a GenBank record.</DD><DT CLASS="dt-description"><B>description</B></DT><DD CLASS="dd-description"> &#X2013; A human readible description or expressive name for the sequence. This is similar to what follows the id information in a FASTA formatted entry.</DD><DT CLASS="dt-description"><B>annotations</B></DT><DD CLASS="dd-description"> &#X2013; A dictionary of additional information about the sequence. The keys are the name of the information, and the information is contained in the value. This allows the addition of more &#X201C;unstructed&#X201D; information to the sequence.</DD><DT CLASS="dt-description"><B>features</B></DT><DD CLASS="dd-description"> &#X2013; A list of <CODE>SeqFeature</CODE> objects with more structured information about the features on a sequence. The structure of sequence features is described below in Section&#XA0;<A HREF="#sec:seq_features">10.1.2</A>.
+</DD></DL><P>Using a <CODE>SeqRecord</CODE> class is not very complicated, since all of the information is stored as attributes of the class. Initializing the class just involves passing a <CODE>Seq</CODE> object to the <CODE>SeqRecord</CODE>:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio.Seq import Seq
+&gt;&gt;&gt; simple_seq = Seq("GATC")
+&gt;&gt;&gt; from Bio.SeqRecord import SeqRecord
+&gt;&gt;&gt; simple_seq_r = SeqRecord(simple_seq)
+</PRE><P>Additionally, you can also pass the id, name and description to the initialization function, but if not they will be set as strings indicating they are unknown, and can be modified subsequently:</P><PRE CLASS="verbatim">&gt;&gt;&gt; simple_seq_r.id
+'&lt;unknown id&gt;'
+&gt;&gt;&gt; simple_seq_r.id = 'AC12345'
+&gt;&gt;&gt; simple_seq_r.description = 'My little made up sequence I wish I could
+write a paper about and submit to GenBank'
+&gt;&gt;&gt; print simple_seq_r.description
+My little made up sequence I wish I could write a paper about and submit
+to GenBank
+&gt;&gt;&gt; simple_seq_r.seq
+Seq('GATC', Alphabet())
+</PRE><P>Adding annotations is almost as easy, and just involves dealing directly with the annotation dictionary:</P><PRE CLASS="verbatim">&gt;&gt;&gt; simple_seq_r.annotations['evidence'] = 'None. I just made it up.'
+&gt;&gt;&gt; print simple_seq_r.annotations
+{'evidence': 'None. I just made it up.'}
+</PRE><P>That&#X2019;s just about all there is to it! Next, you may want to learn about SeqFeatures, which offer an additional structured way to represent information about a sequence.</P><H3 CLASS="subsection"><A NAME="htoc119">10.1.2</A>&#XA0;&#XA0;Features and Annotations &#X2013; SeqFeatures</H3><P>
+<A NAME="sec:seq_features"></A></P><P>Sequence features are an essential part of describing a sequence. Once you get beyond the sequence itself, you need some way to organize and easily get at the more &#X201C;abstract&#X201D; information that is known about the sequence. While it is probably impossible to develop a general sequence feature class that will cover everything, the Biopython <CODE>SeqFeature</CODE> class attempts to encapsulate as much of the information about the sequence as possible. The design is heavily based on the GenBank/EMBL feature tables, so if you understand how they look, you&#X2019;ll probably have an easier time grasping the structure of the Biopython classes.</P><H4 CLASS="subsubsection">10.1.2.1&#XA0;&#XA0;SeqFeatures themselves</H4><P>The first level of dealing with Sequence features is the <CODE>SeqFeature</CODE> class itself. This class has a number of attributes, so first we&#X2019;ll list them and there general features, and then work through an example to show how this applies to a real life example, a GenBank feature table. The attributes of a SeqFeature are:</P><DL CLASS="description"><DT CLASS="dt-description">
+<B>location</B></DT><DD CLASS="dd-description"> &#X2013; The location of the <CODE>SeqFeature</CODE> on the sequence that you are dealing with. The locations end-points may be fuzzy &#X2013; section&#XA0;<A HREF="#sec:locations">10.1.2.2</A> has a lot more description on how to deal with descriptions.</DD><DT CLASS="dt-description"><B>type</B></DT><DD CLASS="dd-description"> &#X2013; This is a textual description of the type of feature (for instance, this will be something like &#X2019;CDS&#X2019; or &#X2019;gene&#X2019;).</DD><DT CLASS="dt-description"><B>ref</B></DT><DD CLASS="dd-description"> &#X2013; A reference to a different sequence. Some times features may be &#X201C;on&#X201D; a particular sequence, but may need to refer to a different sequence, and this provides the reference (normally an accession number). A good example of this is a genomic sequence that has most of a coding sequence, but one of the exons is on a different accession. In this case, the feature would need to refer to this different accession for this missing exon.</DD><DT CLASS="dt-description"><B>ref_db</B></DT><DD CLASS="dd-description"> &#X2013; This works along with <CODE>ref</CODE> to provide a cross sequence reference. If there is a reference, <CODE>ref_db</CODE> will be set as None if the reference is in the same database, and will be set to the name of the database otherwise.</DD><DT CLASS="dt-description"><B>strand</B></DT><DD CLASS="dd-description"> &#X2013; The strand on the sequence that the feature is located on. This may either be &#X2019;1&#X2019; for the top strand, &#X2019;-1&#X2019; for the bottom strand, or &#X2019;0&#X2019; for both strands (or if it doesn&#X2019;t matter). Keep in mind that this only really makes sense for double stranded DNA, and not for proteins or RNA.</DD><DT CLASS="dt-description"><B>qualifiers</B></DT><DD CLASS="dd-description"> &#X2013; This is a python dictionary of additional information about the feature. The key is some kind of terse one-word description of what the information contained in the value is about, and the value is the actual information. For example, a common key for a qualifier might be &#X201C;evidence&#X201D; and the value might be &#X201C;computational (non-experimental).&#X201D; This is just a way to let the person who is looking at the feature know that it has not be experimentally (i.&#XA0;e.&#XA0;in a wet lab) confirmed.</DD><DT CLASS="dt-description"><B>sub_features</B></DT><DD CLASS="dd-description"> &#X2013; A very important feature of a feature is that it can have additional <CODE>sub_features</CODE> underneath it. This allows nesting of features, and helps us to deal with things such as the GenBank/EMBL feature lines in a (we hope) intuitive way.
+</DD></DL><P>To show an example of SeqFeatures in action, let&#X2019;s take a look at the following feature from a GenBank feature table:</P><PRE CLASS="verbatim">     mRNA            complement(join(&lt;49223..49300,49780..&gt;50208))
+                     /gene="F28B23.12"
+</PRE><P>To look at the easiest attributes of the SeqFeature first, if you got a SeqFeature object for this it would have it <CODE>type</CODE> of &#X2019;mRNA&#X2019;, a <CODE>strand</CODE> of -1 (due to the &#X2019;complement&#X2019;), and would have None for the <CODE>ref</CODE> and <CODE>ref_db</CODE> since there are no references to external databases. The <CODE>qualifiers</CODE> for this SeqFeature would be a python dictionarary that looked like <CODE>{'gene' : 'F28B23.12'}</CODE>.</P><P>Now let&#X2019;s look at the more tricky part, how the &#X2019;join&#X2019; in the location
+line is handled. First, the location for the top level SeqFeature (the
+one we are dealing with right now) is set as going from
+<CODE>'&lt;49223' to '&gt;50208'</CODE> (see section&#XA0;<A HREF="#sec:locations">10.1.2.2</A> for
+the nitty gritty on how fuzzy locations like this are handled).
+So the location of the top level object is the entire span of the
+feature. So, how do you get at the information in the &#X2019;join?&#X2019;
+Well, that&#X2019;s where the <CODE>sub_features</CODE> go in.</P><P>The <CODE>sub_features</CODE> attribute will have a list with two SeqFeature
+objects in it, and these contain the information in the join. Let&#X2019;s
+look at <CODE>top_level_feature.sub_features[0]</CODE>; the first
+<CODE>sub_feature</CODE>). This object is a SeqFeature object with a
+<CODE>type</CODE> of &#X2019;<CODE>mRNA_join</CODE>,&#X2019; a <CODE>strand</CODE> of -1 (inherited
+from the parent SeqFeature) and a location going from
+<CODE>'&lt;49223' to '49300'</CODE>.</P><P>So, the <CODE>sub_features</CODE> allow you to get at the internal information if you want it (i.&#XA0;e.&#XA0;if you were trying to get only the exons out of a genomic sequence), or just to deal with the broad picture (i.&#XA0;e.&#XA0;you just want to know that the coding sequence for a gene lies in a region). Hopefully this structuring makes it easy and intuitive to get at the sometimes complex information that can be contained in a SeqFeature.</P><H4 CLASS="subsubsection">10.1.2.2&#XA0;&#XA0;Locations</H4><P>
+<A NAME="sec:locations"></A></P><P>In the section on SeqFeatures above, we skipped over one of the more difficult parts of Features, dealing with the locations. The reason this can be difficult is because of fuzziness of the positions in locations. Before we get into all of this, let&#X2019;s just define the vocabulary we&#X2019;ll use to talk about this. Basically there are two terms we&#X2019;ll use:</P><DL CLASS="description"><DT CLASS="dt-description">
+<B>position</B></DT><DD CLASS="dd-description"> &#X2013; This refers to a single position on a sequence,
+which may be fuzzy or not. For instance, 5, 20, <CODE>&lt;100</CODE> and
+<CODE>3^5</CODE> are all positions.</DD><DT CLASS="dt-description"><B>location</B></DT><DD CLASS="dd-description"> &#X2013; A location is two positions that defines a region of a sequence. For instance 5..20 (i.&#XA0;e.&#XA0;5 to 20) is a location.
+</DD></DL><P>I just mention this because sometimes I get confused between the two.</P><P>The complication in dealing with locations comes in the positions themselves. In biology many times things aren&#X2019;t entirely certain (as much as us wet lab biologists try to make them certain!). For instance, you might do a dinucleotide priming experiment and discover that the start of mRNA transcript starts at one of two sites. This is very useful information, but the complication comes in how to represent this as a position. To help us deal with this, we have the concept of fuzzy positions. Basically there are five types of fuzzy positions, so we have five classes do deal with them:</P><DL CLASS="description"><DT CLASS="dt-description">
+<B>ExactPosition</B></DT><DD CLASS="dd-description"> &#X2013; As its name suggests, this class represents a position which is specified as exact along the sequence. This is represented as just a a number, and you can get the position by looking at the <CODE>position</CODE> attribute of the object.</DD><DT CLASS="dt-description"><B>BeforePosition</B></DT><DD CLASS="dd-description"> &#X2013; This class represents a fuzzy position
+that occurs prior to some specified site. In GenBank/EMBL notation,
+this is represented as something like <CODE>'&lt;13'</CODE>, signifying that
+the real position is located somewhere less then 13. To get
+the specified upper boundary, look at the <CODE>position</CODE>
+attribute of the object.</DD><DT CLASS="dt-description"><B>AfterPosition</B></DT><DD CLASS="dd-description"> &#X2013; Contrary to <CODE>BeforePosition</CODE>, this
+class represents a position that occurs after some specified site.
+This is represented in GenBank as <CODE>'&gt;13'</CODE>, and like
+<CODE>BeforePosition</CODE>, you get the boundary number by looking
+at the <CODE>position</CODE> attribute of the object.</DD><DT CLASS="dt-description"><B>WithinPosition</B></DT><DD CLASS="dd-description"> &#X2013; This class models a position which occurs somewhere between two specified nucleotides. In GenBank/EMBL notation, this would be represented as &#X2019;(1.5)&#X2019;, to represent that the position is somewhere within the range 1 to 5. To get the information in this class you have to look at two attributes. The <CODE>position</CODE> attribute specifies the lower boundary of the range we are looking at, so in our example case this would be one. The <CODE>extension</CODE> attribute specifies the range to the higher boundary, so in this case it would be 4. So <CODE>object.position</CODE> is the lower boundary and <CODE>object.position + object.extension</CODE> is the upper boundary.</DD><DT CLASS="dt-description"><B>BetweenPosition</B></DT><DD CLASS="dd-description"> &#X2013; This class deals with a position that
+occurs between two coordinates. For instance, you might have a
+protein binding site that occurs between two nucleotides on a
+sequence. This is represented as <CODE>'2^3'</CODE>, which indicates that
+the real position happens between position 2 and 3. Getting
+this information from the object is very similar to
+<CODE>WithinPosition</CODE>, the <CODE>position</CODE> attribute specifies
+the lower boundary (2, in this case) and the <CODE>extension</CODE>
+indicates the range to the higher boundary (1 in this case).
+</DD></DL><P>Now that we&#X2019;ve got all of the types of fuzzy positions we can have taken care of, we are ready to actually specify a location on a sequence. This is handled by the <CODE>FeatureLocation</CODE> class. An object of this type basically just holds the potentially fuzzy start and end positions of a feature. You can create a <CODE>FeatureLocation</CODE> object by creating the positions and passing them in:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import SeqFeature
+&gt;&gt;&gt; start_pos = SeqFeature.AfterPosition(5)
+&gt;&gt;&gt; end_pos = SeqFeature.BetweenPosition(8, 1)
+&gt;&gt;&gt; my_location = SeqFeature.FeatureLocation(start_pos, end_pos)
+</PRE><P>If you print out a <CODE>FeatureLocation</CODE> object, you can get a nice representation of the information:</P><PRE CLASS="verbatim">&gt;&gt;&gt; print my_location
+[&gt;5:(8^9)]
+</PRE><P>We can access the fuzzy start and end positions using the start and end attributes of the location:</P><PRE CLASS="verbatim">&gt;&gt;&gt; my_location.start
+&lt;Bio.SeqFeature.AfterPosition instance at 0x101d7164&gt;
+&gt;&gt;&gt; print my_location.start
+&gt;5
+&gt;&gt;&gt; print my_location.end
+(8^9)
+</PRE><P>If you don&#X2019;t want to deal with fuzzy positions and just want numbers, you just need to ask for the <CODE>nofuzzy_start</CODE> and <CODE>nofuzzy_end</CODE> attributes of the location:</P><PRE CLASS="verbatim">&gt;&gt;&gt; my_location.nofuzzy_start
+5
+&gt;&gt;&gt; my_location.nofuzzy_end
+8
+</PRE><P>Notice that this just gives you back the position attributes of the fuzzy locations.</P><P>Similary, to make it easy to create a position without worrying about fuzzy positions, you can just pass in numbers to the <CODE>FeaturePosition</CODE> constructors, and you&#X2019;ll get back out <CODE>ExactPosition</CODE> objects:</P><PRE CLASS="verbatim">&gt;&gt;&gt; exact_location = SeqFeature.FeatureLocation(5, 8)
+&gt;&gt;&gt; print exact_location
+[5:8]
+&gt;&gt;&gt; exact_location.start
+&lt;Bio.SeqFeature.ExactPosition instance at 0x101dcab4&gt;
+</PRE><P>That is all of the nitty gritty about dealing with fuzzy positions in Biopython. It has been designed so that dealing with fuzziness is not that much more complicated than dealing with exact positions, and hopefully you find that true!</P><H4 CLASS="subsubsection">10.1.2.3&#XA0;&#XA0;References</H4><P>Another common annotation related to a sequence is a reference to a journal or other published work dealing with the sequence. We have a fairly simple way of representing a Reference in Biopython &#X2013; we have a <CODE>Bio.SeqFeature.Reference</CODE> class that stores the relevant information about a reference as attributes of an object.</P><P>The attributes include things that you would expect to see in a reference like <CODE>journal</CODE>, <CODE>title</CODE> and <CODE>authors</CODE>. Additionally, it also can hold the <CODE>medline_id</CODE> and <CODE>pubmed_id</CODE> and a <CODE>comment</CODE> about the reference. These are all accessed simply as attributes of the object.</P><P>A reference also has a <CODE>location</CODE> object so that it can specify a particular location on the sequence that the reference refers to. For instance, you might have a journal that is dealing with a particular gene located on a BAC, and want to specify that it only refers to this position exactly. The <CODE>location</CODE> is a potentially fuzzy location, as described in section&#XA0;<A HREF="#sec:locations">10.1.2.2</A>.</P><P>That&#X2019;s all there is too it. References are meant to be easy to deal with, and hopefully general enough to cover lots of usage cases.</P><H2 CLASS="section"><A NAME="toc56"></A><A NAME="htoc120">10.2</A>&#XA0;&#XA0;Regression Testing Framework</H2><P>
+<A NAME="sec:regr_test"></A></P><P>Biopython has a regression testing framework originally written by Andrew Dalke and ported to PyUnit by Brad Chapman which helps us make sure the code is as bug-free as possible before going out.</P><H3 CLASS="subsection"><A NAME="htoc121">10.2.1</A>&#XA0;&#XA0;Writing a Regression Test</H3><P>Every module that goes into Biopython should have a test (and should also have documentation!). Let&#X2019;s say you&#X2019;ve written a new module called Biospam &#X2013; here is what you should do to make a regression test:</P><OL CLASS="enumerate" type=1><LI CLASS="li-enumerate">
+Write a script called <CODE>test_Biospam.py</CODE><UL CLASS="itemize"><LI CLASS="li-itemize">This script should live in the Tests directory</LI><LI CLASS="li-itemize">The script should test all of the important functionality of the module (the more you test the better your test is, of course!).</LI><LI CLASS="li-itemize">Try to avoid anything which might be platform specific, such as printing floating point numbers without using an explicit formatting string.
+</LI></UL></LI><LI CLASS="li-enumerate">If the script requires files to do the testing, these should go in
+the directory Tests/Biospam.</LI><LI CLASS="li-enumerate">Write out the test output and verify the output to be correct.
+There are two ways to do this:<OL CLASS="enumerate" type=a><LI CLASS="li-enumerate">
+The long way:<UL CLASS="itemize"><LI CLASS="li-itemize">Run the script and write its output to a file. On UNIX machines,
+you would do something like: <CODE>python test_Biospam.py &gt; test_Biospam</CODE> which would write the output to the file <CODE>test_Biospam</CODE>.</LI><LI CLASS="li-itemize">Manually look at the file <CODE>test_Biospam</CODE> to make sure the output is correct. When you are sure it is all right and there are no bugs, you need to quickly edit the <CODE>test_Biospam</CODE> file so that the first line is: &#X2018;<CODE>test_Biospam</CODE>&#X2019; (no quotes).</LI><LI CLASS="li-itemize">copy the <CODE>test_Biospam</CODE> file to the directory Tests/output</LI></UL></LI><LI CLASS="li-enumerate">The quick way:<UL CLASS="itemize"><LI CLASS="li-itemize">
+Run <CODE>python run_tests.py -g test_Biospam.py</CODE>. The
+regression testing framework is nifty enough that it&#X2019;ll put
+the output in the right place in just the way it likes it. </LI><LI CLASS="li-itemize">Go to the output (which should be in <CODE>Tests/output/test_Biospam</CODE>) and double check the output to make sure it is all correct.</LI></UL></LI></OL></LI><LI CLASS="li-enumerate">Now change to the Tests directory and run the regression tests
+with <CODE>python run_tests.py</CODE>. This will run all of the tests, and
+you should see your test run (and pass!).</LI><LI CLASS="li-enumerate">That&#X2019;s it! Now you&#X2019;ve got a nice test for your module ready to check into CVS.
+Congratulations!
+</LI></OL><H2 CLASS="section"><A NAME="toc57"></A><A NAME="htoc122">10.3</A>&#XA0;&#XA0;Parser Design</H2><P>Many of the older Biopython parsers were built around an event-oriented
+design that includes Scanner and Consumer objects.</P><P>Scanners take input from a data source and analyze it line by line,
+sending off an event whenever it recognizes some information in the
+data. For example, if the data includes information about an organism
+name, the scanner may generate an <CODE>organism_name</CODE> event whenever it
+encounters a line containing the name.</P><P>Consumers are objects that receive the events generated by Scanners.
+Following the previous example, the consumer receives the
+<CODE>organism_name</CODE> event, and the processes it in whatever manner
+necessary in the current application.</P><P>This is a very flexible framework, which is advantageous if you want to
+be able to parse a file format into more than one representation. For
+example, both the <CODE>Bio.GenBank</CODE> and <CODE>Bio.SwissProt</CODE> modules
+use this to read their file formats as both generic <CODE>SeqRecord</CODE> objects
+and file-format-specific record objects.</P><P>More recently, many of the parsers added for <CODE>Bio.SeqIO</CODE> and
+<CODE>Bio.AlignIO</CODE> take a much simpler approach, but only generate a
+single object representation (<CODE>SeqRecord</CODE> and <CODE>Alignment</CODE> objects
+respectively).</P><H2 CLASS="section"><A NAME="toc58"></A><A NAME="htoc123">10.4</A>&#XA0;&#XA0;Substitution Matrices</H2><H3 CLASS="subsection"><A NAME="htoc124">10.4.1</A>&#XA0;&#XA0;SubsMat</H3><P>This module provides a class and a few routines for generating substitution matrices, similar to BLOSUM or PAM matrices, but based on user-provided data.</P><P>Additionally, you may select a matrix from MatrixInfo.py, a collection of established substitution matrices.</P><PRE CLASS="verbatim">class SeqMat(UserDict.UserDict)
+</PRE><OL CLASS="enumerate" type=1><LI CLASS="li-enumerate">
+Attributes<OL CLASS="enumerate" type=a><LI CLASS="li-enumerate">
+<CODE>self.data</CODE>: a dictionary in the form of <CODE>{(i1,j1):n1, (i1,j2):n2,...,(ik,jk):nk}</CODE> where i, j are alphabet letters, and n is a value.</LI><LI CLASS="li-enumerate"><CODE>self.alphabet</CODE>: a class as defined in Bio.Alphabet</LI><LI CLASS="li-enumerate"><CODE>self.ab_list</CODE>: a list of the alphabet&#X2019;s letters, sorted. Needed mainly for internal purposes</LI><LI CLASS="li-enumerate"><CODE>self.sum_letters</CODE>: a dictionary. <CODE>{i1: s1, i2: s2,...,in:sn}</CODE> where:
+<OL CLASS="enumerate" type=i><LI CLASS="li-enumerate">
+i: an alphabet letter;
+</LI><LI CLASS="li-enumerate">s: sum of all values in a half-matrix for that letter;
+</LI><LI CLASS="li-enumerate">n: number of letters in alphabet.
+</LI></OL>
+</LI></OL></LI><LI CLASS="li-enumerate">Methods<OL CLASS="enumerate" type=a><LI CLASS="li-enumerate"><PRE CLASS="verbatim">__init__(self,data=None,alphabet=None,
+         mat_type=NOTYPE,mat_name='',build_later=0):
+</PRE><OL CLASS="enumerate" type=i><LI CLASS="li-enumerate"><CODE>data</CODE>: can be either a dictionary, or another SeqMat instance.
+</LI><LI CLASS="li-enumerate"><CODE>alphabet</CODE>: a Bio.Alphabet instance. If not provided, construct an alphabet from data.</LI><LI CLASS="li-enumerate"><CODE>mat_type</CODE>: type of matrix generated. One of the following:<DL CLASS="description"><DT CLASS="dt-description">
+<B>NOTYPE</B></DT><DD CLASS="dd-description"> No type defined
+</DD><DT CLASS="dt-description"><B>ACCREP</B></DT><DD CLASS="dd-description"> Accepted Replacements Matrix
+</DD><DT CLASS="dt-description"><B>OBSFREQ</B></DT><DD CLASS="dd-description"> Observed Frequency Matrix
+</DD><DT CLASS="dt-description"><B>EXPFREQ</B></DT><DD CLASS="dd-description"> Expsected Frequency Matrix
+</DD><DT CLASS="dt-description"><B>SUBS</B></DT><DD CLASS="dd-description"> Substitution Matrix 
+</DD><DT CLASS="dt-description"><B>LO</B></DT><DD CLASS="dd-description"> Log Odds Matrix
+</DD></DL><P><CODE>mat_type</CODE> is provided automatically by some of SubsMat&#X2019;s functions.</P></LI><LI CLASS="li-enumerate"><CODE>mat_name</CODE>: matrix name, such as "BLOSUM62" or "PAM250"</LI><LI CLASS="li-enumerate"><CODE>build_later</CODE>: default false. If true, user may supply only alphabet and empty dictionary, if intending to build the matrix later. this skips the sanity check of alphabet size vs. matrix size.</LI></OL></LI><LI CLASS="li-enumerate"><PRE CLASS="verbatim">entropy(self,obs_freq_mat)
+</PRE><OL CLASS="enumerate" type=i><LI CLASS="li-enumerate">
+<CODE>obs_freq_mat</CODE>: an observed frequency matrix. Returns the matrix&#X2019;s entropy, based on the frequency in <CODE>obs_freq_mat</CODE>. The matrix instance should be LO or SUBS.
+</LI></OL></LI><LI CLASS="li-enumerate"><PRE CLASS="verbatim">letter_sum(self,letter)
+</PRE><P>Returns the sum of all values in the matrix, for the provided <CODE>letter</CODE></P></LI><LI CLASS="li-enumerate"><PRE CLASS="verbatim">all_letters_sum(self)
+</PRE><P>Fills the dictionary attribute <CODE>self.sum_letters</CODE> with the sum of values for each letter in the matrix&#X2019;s alphabet.</P></LI><LI CLASS="li-enumerate"><PRE CLASS="verbatim">print_mat(self,f,format="%4d",bottomformat="%4s",alphabet=None)
+</PRE><P>prints the matrix to file handle f. <CODE>format</CODE> is the format field for the matrix values; <CODE>bottomformat</CODE> is the format field for the bottom row, containing matrix letters. Example output for a 3-letter alphabet matrix:</P><PRE CLASS="verbatim">A 23
+B 12 34
+C 7  22  27
+  A   B   C
+</PRE><P>The <CODE>alphabet</CODE> optional argument is a string of all characters in the alphabet. If supplied, the order of letters along the axes is taken from the string, rather than by alphabetical order.</P></LI></OL></LI><LI CLASS="li-enumerate">Usage<P>The following section is layed out in the order by which most people wish to generate a log-odds matrix. Of course, interim matrices can be generated and
+investigated. Most people just want a log-odds matrix, that&#X2019;s all.</P><OL CLASS="enumerate" type=a><LI CLASS="li-enumerate">Generating an Accepted Replacement Matrix<P>Initially, you should generate an accepted replacement matrix (ARM) from your data. The values in ARM are the counted number of replacements according to your data. The data could be a set of pairs or multiple alignments. So for instance if Alanine was replaced by Cysteine 10 times, and Cysteine by Alanine 12 times, the corresponding ARM entries would be:</P><PRE CLASS="verbatim">('A','C'): 10, ('C','A'): 12
+</PRE><P>as order doesn&#X2019;t matter, user can already provide only one entry:</P><PRE CLASS="verbatim">('A','C'): 22
+</PRE><P>A SeqMat instance may be initialized with either a full (first method of counting: 10, 12) or half (the latter method, 22) matrices. A full protein
+alphabet matrix would be of the size 20x20 = 400. A half matrix of that alphabet would be 20x20/2 + 20/2 = 210. That is because same-letter entries don&#X2019;t
+change. (The matrix diagonal). Given an alphabet size of N:</P><OL CLASS="enumerate" type=i><LI CLASS="li-enumerate">
+Full matrix size:N*N</LI><LI CLASS="li-enumerate">Half matrix size: N(N+1)/2
+</LI></OL><P>The SeqMat constructor automatically generates a half-matrix, if a full matrix is passed. If a half matrix is passed, letters in the key should be provided in alphabetical order: (&#X2019;A&#X2019;,&#X2019;C&#X2019;) and not (&#X2019;C&#X2019;,A&#X2019;).</P><P>At this point, if all you wish to do is generate a log-odds matrix, please go to the section titled Example of Use. The following text describes the nitty-gritty of internal functions, to be used by people who wish to investigate their nucleotide/amino-acid frequency data more thoroughly.</P></LI><LI CLASS="li-enumerate">Generating the observed frequency matrix (OFM)<P>Use:
+</P><PRE CLASS="verbatim">OFM = SubsMat._build_obs_freq_mat(ARM)
+</PRE><P>The OFM is generated from the ARM, only instead of replacement counts, it contains replacement frequencies.</P></LI><LI CLASS="li-enumerate">Generating an expected frequency matrix (EFM)<P>Use:</P><PRE CLASS="verbatim">EFM = SubsMat._build_exp_freq_mat(OFM,exp_freq_table)
+</PRE><OL CLASS="enumerate" type=i><LI CLASS="li-enumerate">
+<CODE>exp_freq_table</CODE>: should be a FreqTable instance. See section&#XA0;<A HREF="#sec:freq_table">10.4.2</A> for detailed information on FreqTable. Briefly, the expected frequency table has the frequencies of appearance for each member of the alphabet. It is
+implemented as a dictionary with the alphabet letters as keys, and each letter&#X2019;s frequency as a value. Values sum to 1.
+</LI></OL><P>The expected frequency table can (and generally should) be generated from the observed frequency matrix. So in most cases you will generate <CODE>exp_freq_table</CODE> using:</P><PRE CLASS="verbatim">&gt;&gt;&gt; exp_freq_table = SubsMat._exp_freq_table_from_obs_freq(OFM)
+&gt;&gt;&gt; EFM = SubsMat._build_exp_freq_mat(OFM,exp_freq_table)
+</PRE><P>But you can supply your own <CODE>exp_freq_table</CODE>, if you wish</P></LI><LI CLASS="li-enumerate">Generating a substitution frequency matrix (SFM)<P>Use:</P><PRE CLASS="verbatim">SFM = SubsMat._build_subs_mat(OFM,EFM)
+</PRE><P>Accepts an OFM, EFM. Provides the division product of the corresponding values.</P></LI><LI CLASS="li-enumerate">Generating a log-odds matrix (LOM)<P>Use:
+</P><PRE CLASS="verbatim">LOM=SubsMat._build_log_odds_mat(SFM[,logbase=10,factor=10.0,round_digit=1])
+</PRE><OL CLASS="enumerate" type=i><LI CLASS="li-enumerate">
+Accepts an SFM.</LI><LI CLASS="li-enumerate"><CODE>logbase</CODE>: base of the logarithm used to generate the log-odds values.</LI><LI CLASS="li-enumerate"><CODE>factor</CODE>: factor used to multiply the log-odds values. Each entry is generated by log(LOM[key])*factor And rounded to the <CODE>round_digit</CODE> place after the decimal point, if required.</LI></OL></LI></OL></LI><LI CLASS="li-enumerate">Example of use<P>As most people would want to generate a log-odds matrix, with minimum hassle, SubsMat provides one function which does it all:</P><PRE CLASS="verbatim">make_log_odds_matrix(acc_rep_mat,exp_freq_table=None,logbase=10,
+                      factor=10.0,round_digit=0):
+</PRE><OL CLASS="enumerate" type=a><LI CLASS="li-enumerate">
+<CODE>acc_rep_mat</CODE>: user provided accepted replacements matrix
+</LI><LI CLASS="li-enumerate"><CODE>exp_freq_table</CODE>: expected frequencies table. Used if provided, if not, generated from the <CODE>acc_rep_mat</CODE>.
+</LI><LI CLASS="li-enumerate"><CODE>logbase</CODE>: base of logarithm for the log-odds matrix. Default base 10.
+</LI><LI CLASS="li-enumerate"><CODE>round_digit</CODE>: number after decimal digit to which result should be rounded. Default zero.
+</LI></OL></LI></OL><H3 CLASS="subsection"><A NAME="htoc125">10.4.2</A>&#XA0;&#XA0;FreqTable</H3><P>
+<A NAME="sec:freq_table"></A></P><PRE CLASS="verbatim">FreqTable.FreqTable(UserDict.UserDict)
+</PRE><OL CLASS="enumerate" type=1><LI CLASS="li-enumerate">Attributes:<OL CLASS="enumerate" type=a><LI CLASS="li-enumerate">
+<CODE>alphabet</CODE>: A Bio.Alphabet instance.
+</LI><LI CLASS="li-enumerate"><CODE>data</CODE>: frequency dictionary
+</LI><LI CLASS="li-enumerate"><CODE>count</CODE>: count dictionary (in case counts are provided).
+</LI></OL></LI><LI CLASS="li-enumerate">Functions:
+<OL CLASS="enumerate" type=a><LI CLASS="li-enumerate">
+<CODE>read_count(f)</CODE>: read a count file from stream f. Then convert to frequencies
+</LI><LI CLASS="li-enumerate"><CODE>read_freq(f)</CODE>: read a frequency data file from stream f. Of course, we then don&#X2019;t have the counts, but it is usually the letter frquencies which are interesting.
+</LI></OL></LI><LI CLASS="li-enumerate">Example of use:
+The expected count of the residues in the database is sitting in a file, whitespace delimited, in the following format (example given for a 3-letter alphabet):<PRE CLASS="verbatim">A   35
+B   65
+C   100
+</PRE><P>And will be read using the <CODE>FreqTable.read_count(file_handle)</CODE> function.</P><P>An equivalent frequency file:</P><PRE CLASS="verbatim">A  0.175
+B  0.325
+C  0.5
+</PRE><P>Conversely, the residue frequencies or counts can be passed as a dictionary.
+Example of a count dictionary (3-letter alphabet):</P><PRE CLASS="verbatim">{'A': 35, 'B': 65, 'C': 100}
+</PRE><P>Which means that an expected data count would give a 0.5 frequency
+for &#X2019;C&#X2019;, a 0.325 probability of &#X2019;B&#X2019; and a 0.175 probability of &#X2019;A&#X2019;
+out of 200 total, sum of A, B and C)</P><P>A frequency dictionary for the same data would be:</P><PRE CLASS="verbatim">{'A': 0.175, 'B': 0.325, 'C': 0.5}
+</PRE><P>Summing up to 1.</P><P>When passing a dictionary as an argument, you should indicate whether it is a count or a frequency dictionary. Therefore the FreqTable class constructor requires two arguments: the dictionary itself, and FreqTable.COUNT or FreqTable.FREQ indicating counts or frequencies, respectively.</P><P>Read expected counts. readCount will already generate the frequencies
+Any one of the following may be done to geerate the frequency table (ftab):</P><PRE CLASS="verbatim">&gt;&gt;&gt; from SubsMat import *
+&gt;&gt;&gt; ftab = FreqTable.FreqTable(my_frequency_dictionary,FreqTable.FREQ)
+&gt;&gt;&gt; ftab = FreqTable.FreqTable(my_count_dictionary,FreqTable.COUNT)
+&gt;&gt;&gt; ftab = FreqTable.read_count(open('myCountFile'))
+&gt;&gt;&gt; ftab = FreqTable.read_frequency(open('myFrequencyFile'))
+</PRE></LI></OL><HR>
+<A HREF="Tutorial010.html"><IMG SRC="previous_motif.gif" ALT="Previous"></A>
+<A HREF="index.html"><IMG SRC="contents_motif.gif" ALT="Up"></A>
+<A HREF="Tutorial012.html"><IMG SRC="next_motif.gif" ALT="Next"></A>
+</BODY>
+</HTML>

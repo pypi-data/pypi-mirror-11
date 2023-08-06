@@ -1,0 +1,189 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+            "http://www.w3.org/TR/REC-html40/loose.dtd">
+<HTML>
+<HEAD>
+<TITLE>Writing Tests for Biopython modules
+</TITLE>
+
+<META http-equiv="Content-Type" content="text/html; charset=US-ASCII">
+<META name="GENERATOR" content="hevea 1.10">
+<STYLE type="text/css">
+.li-itemize{margin:1ex 0ex;}
+.li-enumerate{margin:1ex 0ex;}
+.dd-description{margin:0ex 0ex 1ex 4ex;}
+.dt-description{margin:0ex;}
+.toc{list-style:none;}
+.thefootnotes{text-align:left;margin:0ex;}
+.dt-thefootnotes{margin:0em;}
+.dd-thefootnotes{margin:0em 0em 0em 2em;}
+.footnoterule{margin:1em auto 1em 0px;width:50%;}
+.caption{padding-left:2ex; padding-right:2ex; margin-left:auto; margin-right:auto}
+.title{margin:2ex auto;text-align:center}
+.center{text-align:center;margin-left:auto;margin-right:auto;}
+.flushleft{text-align:left;margin-left:0ex;margin-right:auto;}
+.flushright{text-align:right;margin-left:auto;margin-right:0ex;}
+DIV TABLE{margin-left:inherit;margin-right:inherit;}
+PRE{text-align:left;margin-left:0ex;margin-right:auto;}
+BLOCKQUOTE{margin-left:4ex;margin-right:4ex;text-align:left;}
+TD P{margin:0px;}
+.boxed{border:1px solid black}
+.textboxed{border:1px solid black}
+.vbar{border:none;width:2px;background-color:black;}
+.hbar{border:none;height:2px;width:100%;background-color:black;}
+.hfill{border:none;height:1px;width:200%;background-color:black;}
+.vdisplay{border-collapse:separate;border-spacing:2px;width:auto; empty-cells:show; border:2px solid red;}
+.vdcell{white-space:nowrap;padding:0px;width:auto; border:2px solid green;}
+.display{border-collapse:separate;border-spacing:2px;width:auto; border:none;}
+.dcell{white-space:nowrap;padding:0px;width:auto; border:none;}
+.dcenter{margin:0ex auto;}
+.vdcenter{border:solid #FF8000 2px; margin:0ex auto;}
+.minipage{text-align:left; margin-left:0em; margin-right:auto;}
+.marginpar{border:solid thin black; width:20%; text-align:left;}
+.marginparleft{float:left; margin-left:0ex; margin-right:1ex;}
+.marginparright{float:right; margin-left:1ex; margin-right:0ex;}
+.theorem{text-align:left;margin:1ex auto 1ex 0ex;}
+.part{margin:2ex auto;text-align:center}
+</STYLE>
+</HEAD>
+<BODY >
+<!--HEVEA command line is: c:\cygwin\usr\local\hevea-1.10\hevea -exec xxdate.exe -fix biopython_test.tex -->
+<!--CUT DEF section 1 --><TABLE CLASS="title"><TR><TD><H1 CLASS="titlemain">Writing Tests for Biopython modules</H1><H3 CLASS="titlerest">Brad Chapman (chapmanb@uga.edu)</H3></TD></TR>
+</TABLE><!--TOC section Contents-->
+<H2 CLASS="section"><!--SEC ANCHOR -->Contents</H2><!--SEC END --><UL CLASS="toc"><LI CLASS="li-toc">
+<A HREF="#htoc1">1&#XA0;&#XA0;Purpose and Justifications</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc2">2&#XA0;&#XA0;Understanding the Biopython test system</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc3">3&#XA0;&#XA0;Writing the Tests</A>
+</LI><LI CLASS="li-toc"><A HREF="#htoc4">4&#XA0;&#XA0;Getting the test integrated in the testing framework</A>
+</LI></UL><!--TOC section Purpose and Justifications-->
+<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc1">1</A>&#XA0;&#XA0;Purpose and Justifications</H2><!--SEC END --><P>So you want to write a Test for a Biopython module? Great! Providing
+comprehensive tests for modules is one of the most important parts of
+keeping code up to date and working the way you expect it to. It also 
+tends to be one of the most undervalued aspects of contributing, so this
+document is designed to make writing good test code as easy as possible.</P><P>We start off with the simple assumption that there is a module you wrote
+(or which doesn&#X2019;t already have tests), and you want to test it out.
+We&#X2019;ll call it <CODE>MyModule</CODE>, for lack of a better name, from now on.</P><!--TOC section Understanding the Biopython test system-->
+<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc2">2</A>&#XA0;&#XA0;Understanding the Biopython test system</H2><!--SEC END --><P>Biopython tests are found in <CODE>biopython/Tests</CODE> and each test will
+have two important files and directories involved with it:</P><OL CLASS="enumerate" type=1><LI CLASS="li-enumerate">
+<CODE>test_MyModule.py</CODE> &#X2013; The actual test code for your module.
+</LI><LI CLASS="li-enumerate"><CODE>MyModule</CODE> &#X2013; A directory where any necessary input files
+will be located. Any output files that will be generated should also
+be written here (and preferrably cleaned up after the tests are
+done) to prevent clogging up the main Tests directory.
+</LI></OL><P>The main engine that runs all the tests is <CODE>run_tests.py</CODE>. If you
+name your file with a <CODE>test_</CODE> prefix and put it in the <CODE>Tests</CODE>
+directory, <CODE>run_tests.py</CODE> will find it and run it.</P><!--TOC section Writing the Tests-->
+<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc3">3</A>&#XA0;&#XA0;Writing the Tests</H2><!--SEC END --><P>Okay, now that we&#X2019;re oriented with the important parts of the test
+framework, we&#X2019;ll get down to writing tests. We will use the unittest
+framework, included with Python since version 2.1, and documented in the
+python Library Reference (which I know you are keeping under your
+pillow, as recommended).</P><P>To get started, here&#X2019;s a framework to copy and paste:</P><PRE CLASS="verbatim">import os
+import sys
+import unittest
+
+def run_tests(argv):
+    test_suite = testing_suite()
+    runner = unittest.TextTestRunner(sys.stdout, verbosity = 2)
+    runner.run(test_suite)
+
+def testing_suite():
+    """Generate the suite of tests.
+    """
+    test_suite = unittest.TestSuite()
+
+    test_loader = unittest.TestLoader()
+    test_loader.testMethodPrefix = 't_'
+    tests = [MyModuleTestOne]
+    
+    for test in tests:
+        cur_suite = test_loader.loadTestsFromTestCase(test)
+        test_suite.addTest(cur_suite)
+
+    return test_suite
+
+class MyModuleTestOne(unittest.TestCase):
+    def setUp(self):
+        pass
+
+    def tearDown(self):
+        pass
+
+if __name__ == "__main__":
+    sys.exit(run_tests(sys.argv))
+</PRE><P>The two functions <CODE>run_tests</CODE> and <CODE>testing_suite</CODE> just do all
+of the unittest setup &#X2013; so you don&#X2019;t really need to understand
+everything about the framework to write the tests. All you&#X2019;ll need to do
+is write classes, like MyModuleTestOne, and add them to the lists of
+test classes in the <CODE>testing_suite</CODE> function and you&#X2019;ll be set.</P><P>Here&#X2019;s an example of a Test class, which will lead into a description of
+the different parts which go into making one:</P><PRE CLASS="verbatim">class MyModuleTestOne(unittest.TestCase):
+    def setUp(self):
+        self.handle = open("MyModule/input_file.txt")
+        self.output_file = "MyModule/output.txt"
+
+    def tearDown(self):
+        self.handle.close()
+        if os.path.exists(self.output_file):
+            os.remove(self.output_file)
+
+    def t_simple_parsing(self):
+        """Test to be sure that MyModule can parse input files.
+        """
+        parser = MyModule.RecordParser()
+        rec = parser.parse(self.handle)
+        assert rec.id = "TheExpectedID"
+
+    def t_output(self):
+        """Ensure that we can write proper output files.
+        """
+        parser = MyModule.RecordParser()
+        rec = parser.parse(self.handle)
+        output_handle = open(self.output_file, "w")
+        rec.write_to_file(output_handle)
+        output_handle.close()
+</PRE><P>We&#X2019;ll cover the important parts of this class one at a time:</P><UL CLASS="itemize"><LI CLASS="li-itemize">
+It should derive from <CODE>unittest.TestCase</CODE> and should cover
+one basic aspect of your code (parsing into Record objects, parsing
+into Sequence objects&#X2026;)</LI><LI CLASS="li-itemize"><CODE>setUp</CODE> &#X2013; code that you want to run before running each
+test in the class. This might set up expected files or open files &#X2013;
+it just prevents having to rewrite the same code over and over in
+each test.</LI><LI CLASS="li-itemize"><CODE>tearDown</CODE> &#X2013; code to clean up after your test is done.
+This will close up handles you were using and clean up produced
+files that you don&#X2019;t need any longer.</LI><LI CLASS="li-itemize">The tests are prefixed with <CODE>t_</CODE> and each test should cover
+one specific part of what you are trying to test. You can have as
+many tests as you want in a class.</LI><LI CLASS="li-itemize">The documentation strings of the tests are used when running
+them &#X2013; so write something useful that will provide help if a test
+is failing.</LI><LI CLASS="li-itemize">You should test expected parts of your output using standard
+python assertions. This makes explicit the things you think are
+important enough to remain the same over multiple runs of the tests
+and revisions of the code base.
+</LI></UL><P>When you are done, the tests should run happily by doing 
+<CODE>python test_MyModule.py</CODE> and you should expect output like:</P><PRE CLASS="verbatim">Test to be sure that MyModule can parse input files. ... ok
+Ensure that we can write proper output files. ... ok
+
+-------------------------------------------------------------------
+Ran 2 tests in 0.225s
+</PRE><P>You should continue like this until you feel you&#X2019;ve suitable tested the
+parts of the code so that someone running this test later on can tell if
+they&#X2019;ve broken anything essential. You have to draw a line between
+testing everything in the world, and getting tests written in a
+reasonable amount of time. Tests are important, but you&#X2019;d much rather be
+writing code, right? So get them done and you&#X2019;ll be happy.</P><!--TOC section Getting the test integrated in the testing framework-->
+<H2 CLASS="section"><!--SEC ANCHOR --><A NAME="htoc4">4</A>&#XA0;&#XA0;Getting the test integrated in the testing framework</H2><!--SEC END --><P>Well, you&#X2019;ve written all your tests and they all pass and your are
+feeling very happy. There is just one last step to get things 
+integrated with Biopython. Every time someone runs 
+<CODE>python run_tests.py</CODE> each test is executed, and then checked
+against the expected output (all &#X2019;ok&#X2019;s) to make sure nothing has broken.
+Well, you need to make sure the tests knows what the expected output
+is.</P><P>To do this takes just a second:</P><PRE CLASS="verbatim">python run_tests.py -g test_MyModule.py
+</PRE><P>This will run your test, and write the output to
+<CODE>output/test_MyModule</CODE>. You should go in and check this file to
+make sure everything is as expected. Then, you&#X2019;re all set.</P><P>So, now you should be able to run all of the Biopython tests, see your
+test show up, and get a happy ok from the testing framework.</P><P>Good job &#X2013; now you either need to check your tests in if you have CVS
+access, or just send your <CODE>test_MyModule.py</CODE> and contents of
+<CODE>MyModule</CODE> to someone with CVS priviledges.</P><P>Thanks for the tests.
+</P><!--CUT END -->
+<!--HTMLFOOT-->
+<!--ENDHTML-->
+<!--FOOTER-->
+<HR SIZE=2><BLOCKQUOTE CLASS="quote"><EM>This document was translated from L<sup>A</sup>T<sub>E</sub>X by
+</EM><A HREF="http://hevea.inria.fr/index.html"><EM>H</EM><EM><FONT SIZE=2><sup>E</sup></FONT></EM><EM>V</EM><EM><FONT SIZE=2><sup>E</sup></FONT></EM><EM>A</EM></A><EM>.</EM></BLOCKQUOTE></BODY>
+</HTML>

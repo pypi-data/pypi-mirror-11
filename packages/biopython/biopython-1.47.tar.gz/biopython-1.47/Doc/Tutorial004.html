@@ -1,0 +1,159 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+            "http://www.w3.org/TR/REC-html40/loose.dtd">
+<HTML>
+<HEAD>
+
+<META http-equiv="Content-Type" content="text/html; charset=US-ASCII">
+<META name="GENERATOR" content="hevea 1.10">
+<LINK rel="stylesheet" type="text/css" href="Tutorial.css">
+<TITLE>Sequence objects</TITLE>
+</HEAD>
+<BODY >
+<A HREF="Tutorial003.html"><IMG SRC="previous_motif.gif" ALT="Previous"></A>
+<A HREF="index.html"><IMG SRC="contents_motif.gif" ALT="Up"></A>
+<A HREF="Tutorial005.html"><IMG SRC="next_motif.gif" ALT="Next"></A>
+<HR>
+<H1 CLASS="chapter"><A NAME="htoc16">Chapter&#XA0;3</A>&#XA0;&#XA0;Sequence objects</H1><P>
+<A NAME="chapter:Bio.Seq"></A></P><P>Biological sequences are arguably the central object in Bioinformatics, and in this chapter we&#X2019;ll introduce the Biopython mechanism for dealing with sequences, the <CODE>Seq</CODE> object.
+In Chapter&#XA0;<A HREF="Tutorial005.html#chapter:Bio.SeqIO">4</A> on Sequence Input/Output (and Section&#XA0;<A HREF="Tutorial011.html#sec:advanced-seq">10.1</A>), we&#X2019;ll see that the <CODE>Seq</CODE> object is also used in the <CODE>SeqRecord</CODE> object, which combines the sequence information with any annotation.</P><P>Sequences are essentially strings of letters like <CODE>AGTACACTGGT</CODE>, which seems very natural since this is the most common way that sequences are seen in biological file formats.</P><P>There are two important differences between the <CODE>Seq</CODE> object and standard python strings. First of all the Seq object has a slightly different set of methods to a plain python string (for example, a <CODE>reverse_complement()</CODE> method used for nucleotide sequences).
+Secondly, the <CODE>Seq</CODE> object has an important attribute, <CODE>alphabet</CODE>, which is an object describing what the individual characters making up the sequence string &#X201C;mean&#X201D;, and how they should be interpreted. For example, is <CODE>AGTACACTGGT</CODE> a DNA sequence, or just a protein sequence that happens to be rich in Alanines, Glycines, Cysteines
+and Threonines?</P><H2 CLASS="section"><A NAME="toc10"></A><A NAME="htoc17">3.1</A>&#XA0;&#XA0;Sequences and Alphabets</H2><P>The alphabet object is perhaps the important thing that makes the <CODE>Seq</CODE> object more than just a string. The currently available alphabets for Biopython are defined in the <CODE>Bio.Alphabet</CODE> module. We&#X2019;ll use the IUPAC alphabets (<A HREF="http://www.chem.qmw.ac.uk/iupac/"><TT>http://www.chem.qmw.ac.uk/iupac/</TT></A>) here to deal with some of our favorite objects: DNA, RNA and Proteins.</P><P><CODE>Bio.Alphabet.IUPAC</CODE> provides basic definitions for proteins, DNA and RNA, but additionally provides the ability to extend and customize the basic definitions. For instance, for proteins, there is a basic IUPACProtein class, but there is an additional ExtendedIUPACProtein class providing for the additional elements &#X201C;Asx&#X201D; (asparagine or aspartic acid), &#X201C;Sec&#X201D; (selenocysteine), and &#X201C;Glx&#X201D; (glutamine or glutamic acid). For DNA you&#X2019;ve got choices of IUPACUnambiguousDNA, which provides for just the basic letters, IUPACAmbiguousDNA (which provides for ambiguity letters for every possible situation) and ExtendedIUPACDNA, which allows letters for modified bases. Similarly, RNA can be represented by IUPACAmbiguousRNA or IUPACUnambiguousRNA.</P><P>The advantages of having an alphabet class are two fold. First, this gives an idea of the type of information the Seq object contains. Secondly, this provides a means of constraining the information, as a means of type checking.</P><P>Now that we know what we are dealing with, let&#X2019;s look at how to utilize this class to do interesting work.
+You can create an ambiguous sequence with the default generic alphabet like this:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio.Seq import Seq
+&gt;&gt;&gt; my_seq = Seq("AGTACACTGGT")
+&gt;&gt;&gt; my_seq
+Seq('AGTACACTGGT', Alphabet())
+&gt;&gt;&gt; my_seq.alphabet
+Alphabet()
+</PRE><P>However, where possible you should specify the alphabet explicitly when creating your sequence objects - in this case an unambiguous DNA alphabet object:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio.Seq import Seq
+&gt;&gt;&gt; from Bio.Alphabet import IUPAC
+&gt;&gt;&gt; my_seq = Seq('AGTACACTGGT', IUPAC.unambiguous_dna)
+&gt;&gt;&gt; my_seq
+Seq('AGTACACTGGT', IUPACUnambiguousDNA())
+&gt;&gt;&gt; my_seq.alphabet
+IUPACUnambiguousDNA()
+</PRE><H2 CLASS="section"><A NAME="toc11"></A><A NAME="htoc18">3.2</A>&#XA0;&#XA0;Sequences act like strings</H2><P>In many ways, we can deal with Seq objects as if they were normal python strings, for example getting the length, or iterating over the elements:</P><PRE CLASS="verbatim">from Bio.Seq import Seq
+from Bio.Alphabet import IUPAC
+my_seq = Seq('GATCGATGGGCCTATATAGGATCGAAAATCGC', IUPAC.unambiguous_dna)
+for index, letter in enumerate(my_seq) :
+    print index, letter
+print len(letter)
+</PRE><P>You can access elements of the sequence in the same way as for strings (but remember, python counts from zero!):</P><PRE CLASS="verbatim">&gt;&gt;&gt; print my_seq[0] #first element
+&gt;&gt;&gt; print my_seq[2] #third element
+&gt;&gt;&gt; print my_seq[-1] #list element
+</PRE><P>The <CODE>Seq</CODE> object has a <CODE>.count()</CODE> method, just like a string:</P><PRE CLASS="verbatim">&gt;&gt;&gt; len(my_seq)
+32
+&gt;&gt;&gt; my_seq.count("G")
+10
+&gt;&gt;&gt; float(my_seq.count("G") + my_seq.count("C")) / len(my_seq)
+0.46875
+</PRE><P>While you could use the above snippet of code to calculate a GC%, note that Biopython does have some GC functions already built in, see the <CODE>Bio.SeqUtils</CODE> module.</P><H2 CLASS="section"><A NAME="toc12"></A><A NAME="htoc19">3.3</A>&#XA0;&#XA0;Slicing a sequence</H2><P>A more complicated example, let&#X2019;s get a slice of the sequence:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio.Seq import Seq
+&gt;&gt;&gt; from Bio.Alphabet import IUPAC
+&gt;&gt;&gt; my_seq = Seq('GATCGATGGGCCTATATAGGATCGAAAATCGC', IUPAC.unambiguous_dna)
+&gt;&gt;&gt; my_seq[4:12]
+Seq('GATGGGCC', IUPACUnambiguousDNA())
+</PRE><P>Two things are interesting to note. First, this follows the normal conventions for python strings. So the first element of the sequence is 0 (which is normal for computer science, but not so normal for biology). When you do a slice the first item is included (i.&#XA0;e.&#XA0;4 in this case) and the last is excluded (12 in this case), which is the way things work in python, but of course not necessarily the way everyone in the world would expect. The main goal is to stay consistent with what python does.</P><P>The second thing to notice is that the slice is performed on the sequence data string, but the new object produced is another <CODE>Seq</CODE> object which retains the alphabet information from the original <CODE>Seq</CODE> object.</P><P>Also like a python string, you can do slices with a start, stop and <EM>stride</EM> (the step size, which defaults to one). For example, we can get the first, second and third codon positions of this DNA sequence:</P><PRE CLASS="verbatim">&gt;&gt;&gt; my_seq[0::3]
+Seq('GCTGTAGTAAG', IUPACUnambiguousDNA())
+&gt;&gt;&gt; my_seq[1::3]
+Seq('AGGCATGCATC', IUPACUnambiguousDNA())
+&gt;&gt;&gt; my_seq[2::3]
+Seq('TAGCTAAGAC', IUPACUnambiguousDNA())
+</PRE><P>Another stride trick you might have seen with a python string is the use of a -1 stride to reverse the string. You can do this with a <CODE>Seq</CODE> object too:</P><PRE CLASS="verbatim">&gt;&gt;&gt; my_seq[::-1]
+Seq('CGCTAAAAGCTAGGATATATCCGGGTAGCTAG', IUPACUnambiguousDNA())
+</PRE><H2 CLASS="section"><A NAME="toc13"></A><A NAME="htoc20">3.4</A>&#XA0;&#XA0;Turning Seq objects into strings</H2><P>If you are really do just need a plain string, for example to print out, write to a file, or insert into a database, then this is very easy to get:</P><PRE CLASS="verbatim">&gt;&gt;&gt; my_seq.tostring()
+'GATCGATGGGCCTATATAGGATCGAAAATCGC'
+</PRE><H2 CLASS="section"><A NAME="toc14"></A><A NAME="htoc21">3.5</A>&#XA0;&#XA0;Nucleotide sequences and (reverse) complements</H2><P>
+<A NAME="sec:seq-reverse-complement"></A></P><P>For nucleotide sequences, you can easily obtain the complement or reverse complement of a Seq object:</P><PRE CLASS="verbatim">&gt;&gt;&gt; my_seq
+Seq('GATCGATGGGCCTATATAGGATCGAAAATCGC', IUPACUnambiguousDNA())
+&gt;&gt;&gt; my_seq.complement()
+Seq('CTAGCTACCCGGATATATCCTAGCTTTTAGCG', IUPACUnambiguousDNA())
+&gt;&gt;&gt; my_seq.reverse_complement()
+Seq('GCGATTTTCGATCCTATATAGGCCCATCGATC', IUPACUnambiguousDNA())
+</PRE><P>In all of these operations, the alphabet property is maintained. This is very useful in case you accidentally end up trying to do something weird like take the (reverse)complement of a protein seuqence:</P><PRE CLASS="verbatim">&gt;&gt;&gt; protein_seq = Seq("EVRNAK", IUPAC.protein)
+&gt;&gt;&gt; dna_seq = Seq("ACGT", IUPAC.unambiguous_dna)
+&gt;&gt;&gt; protein_seq.complement()
+Traceback (most recent call last):
+  File "&lt;stdin&gt;", line 1, in ?
+  File "/usr/local/lib/python2.4/site-packages/Bio/Seq.py", line 108, in complement
+    raise ValueError, "Proteins do not have complements!"
+ValueError: Proteins do not have complements!
+</PRE><H2 CLASS="section"><A NAME="toc15"></A><A NAME="htoc22">3.6</A>&#XA0;&#XA0;Concatenating or adding sequences</H2><P>Naturally, you can in principle add any two Seq objects together - just like you can with python strings to concatenate them. However, you can&#X2019;t add sequences with incompatible alphabets, such as a protein sequence and a DNA sequence:</P><PRE CLASS="verbatim">&gt;&gt;&gt; protein_seq + dna_seq
+Traceback (most recent call last):
+  File "&lt;stdin&gt;", line 1, in ?
+  File "/usr/local/lib/python2.4/site-packages/Bio/Seq.py", line 42, in __add__
+    raise TypeError, ("incompatable alphabets", str(self.alphabet),
+TypeError: ('incompatable alphabets', 'IUPACProtein()', 'IUPACUnambiguousDNA()')
+</PRE><P>If you <EM>really</EM> wanted to do this, you&#X2019;d have to first give both sequences generic alphabets:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio.Alphabet import generic_alphabet
+&gt;&gt;&gt; protein_seq.alphabet = generic_alphabet
+&gt;&gt;&gt; dna_seq.alphabet = generic_alphabet
+&gt;&gt;&gt; protein_seq + dna_seq
+Seq('EVRNAKACGT', Alphabet())
+</PRE><P>Here is an example of adding a generic nucleotide sequence to an unambiguous IUPAC DNA sequence, resulting in an ambiguous nucleotide sequence:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio.Seq import Seq
+&gt;&gt;&gt; from Bio.Alphabet import generic_nucleotide
+&gt;&gt;&gt; from Bio.Alphabet import IUPAC
+&gt;&gt;&gt; nuc_seq = Seq('GATCGATGC', generic_nucleotide)
+&gt;&gt;&gt; dna_seq = Seq('ACGT', IUPAC.unambiguous_dna)
+&gt;&gt;&gt; nuc_seq
+Seq('GATCGATGC', NucleotideAlphabet())
+&gt;&gt;&gt; dna_seq
+Seq('ACGT', IUPACUnambiguousDNA())
+&gt;&gt;&gt; nuc_seq + dna_seq
+Seq('GATCGATGCACGT', NucleotideAlphabet())
+</PRE><H2 CLASS="section"><A NAME="toc16"></A><A NAME="htoc23">3.7</A>&#XA0;&#XA0;MutableSeq objects</H2><P>Just like the normal python string, the <CODE>Seq</CODE> object is &#X201C;read only&#X201D;, or in python terminology, not mutable. Apart from the wanting the <CODE>Seq</CODE> object to act like a string, this is also a useful default since in many biological applications you want to ensure you are not changing your sequence data:</P><PRE CLASS="verbatim">&gt;&gt;&gt; my_seq[5] = "G"
+Traceback (most recent call last):
+  File "&lt;stdin&gt;", line 1, in ?
+AttributeError: 'Seq' instance has no attribute '__setitem__'
+</PRE><P>However, you can convert it into a mutable sequence (a <CODE>MutableSeq</CODE> object) and do pretty much anything you want with it:</P><PRE CLASS="verbatim">&gt;&gt;&gt; mutable_seq = my_seq.tomutable()
+&gt;&gt;&gt; print mutable_seq
+MutableSeq('GATCGATGGGCCTATATAGGATCGAAAATCGC', IUPACUnambiguousDNA())
+&gt;&gt;&gt; mutable_seq[5] = "T"
+&gt;&gt;&gt; print mutable_seq
+MutableSeq('GATCGTTGGGCCTATATAGGATCGAAAATCGC', IUPACUnambiguousDNA())
+&gt;&gt;&gt; mutable_seq.remove("T")
+&gt;&gt;&gt; print mutable_seq
+MutableSeq('GACGTTGGGCCTATATAGGATCGAAAATCGC', IUPACUnambiguousDNA())
+&gt;&gt;&gt; mutable_seq.reverse()
+&gt;&gt;&gt; print mutable_seq
+MutableSeq('CGCTAAAAGCTAGGATATATCCGGGTTGCAG', IUPACUnambiguousDNA())
+</PRE><H2 CLASS="section"><A NAME="toc17"></A><A NAME="htoc24">3.8</A>&#XA0;&#XA0;Transcribing and Translation</H2><P>Now that the nature of the sequence object makes some sense, the next
+thing to look at is what kind of things we can do with a sequence. The
+<CODE>Bio</CODE> directory contains two useful modules to transcribe and
+translate a sequence object. These tools work based on the alphabet of
+the sequence.</P><P>For instance, let&#X2019;s supposed we want to transcribe a DNA sequence:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio.Seq import Seq
+&gt;&gt;&gt; from Bio.Alphabet import IUPAC
+&gt;&gt;&gt; my_seq = Seq("GATCGATGGGCCTATATAGGATCGAAAATCGC", IUPAC.unambiguous_dna)
+</PRE><P>This contains an unambiguous alphabet, so to transcribe we would do the following:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import Transcribe
+&gt;&gt;&gt; transcriber = Transcribe.unambiguous_transcriber
+&gt;&gt;&gt; my_rna_seq = transcriber.transcribe(my_seq)
+&gt;&gt;&gt; print my_rna_seq
+Seq('GAUCGAUGGGCCUAUAUAGGAUCGAAAAUCGC', IUPACUnambiguousRNA())
+</PRE><P>The alphabet of the new RNA Seq object is created for free, so again, dealing with a <CODE>Seq</CODE> object is no more difficult then dealing with a simple string.</P><P>You can also reverse transcribe RNA sequences:</P><PRE CLASS="verbatim">&gt;&gt;&gt; transcriber.back_transcribe(my_rna_seq)
+Seq('GATCGATGGGCCTATATAGGATCGAAAATCGC', IUPACUnambiguousDNA())
+</PRE><P>To translate our DNA object we have quite a few choices. First, we can use any number of translation tables depending on what we know about our DNA sequence. The translation tables available in biopython were taken from information at <A HREF="ftp://ftp.ncbi.nlm.nih.gov/entrez/misc/data/gc.prt"><TT>ftp://ftp.ncbi.nlm.nih.gov/entrez/misc/data/gc.prt</TT></A>. So, you have tons of choices to pick from. For this, let&#X2019;s just focus on two choices: the Standard translation table, and the Translation table for Vertebrate Mitochondrial DNA. These tables are labeled with id numbers 1 and 2, respectively. Now that we know what tables we are looking to get, we&#X2019;re all set to perform a basic translation. First, we need to get our translators that use these tables. Since we are still dealing with our unambiguous DNA object, we want to fetch translators that take this into account:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import Translate
+&gt;&gt;&gt; standard_translator = Translate.unambiguous_dna_by_id[1]
+&gt;&gt;&gt; mito_translator = Translate.unambiguous_dna_by_id[2]
+</PRE><P>Once we&#X2019;ve got the proper translators, it&#X2019;s time to go ahead and translate a sequence:</P><PRE CLASS="verbatim">&gt;&gt;&gt; my_seq = Seq("GCCATTGTAATGGGCCGCTGAAAGGGTGCCCGA", IUPAC.unambiguous_dna)
+&gt;&gt;&gt; standard_translator.translate(my_seq)
+Seq('AIVMGR*KGAR', IUPACProtein())
+&gt;&gt;&gt; mito_translator.translate(my_seq)
+Seq('AIVMGRWKGAR', IUPACProtein())
+</PRE><P>Notice that the default translation will just go ahead and proceed blindly through a stop codon. If you are aware that you are translating some kind of open reading frame and want to just see everything up until the stop codon, this can be easily done with the <CODE>translate_to_stop</CODE> function:</P><PRE CLASS="verbatim">&gt;&gt;&gt; standard_translator.translate_to_stop(my_seq)
+Seq('AIVMGR', IUPACProtein())
+</PRE><P>Similar to the transcriber, it is also possible to reverse translate a protein into a DNA sequence:</P><PRE CLASS="verbatim">&gt;&gt;&gt; my_protein = Seq("AVMGRWKGGRAAG", IUPAC.protein)
+&gt;&gt;&gt; standard_translator.back_translate(my_protein)
+Seq('GCTGTTATGGGTCGTTGGAAGGGTGGTCGTGCTGCTGGT', IUPACUnambiguousDNA())
+</PRE><H2 CLASS="section"><A NAME="toc18"></A><A NAME="htoc25">3.9</A>&#XA0;&#XA0;Working with directly strings</H2><P>To close this chapter, for those you who <EM>really</EM> don&#X2019;t want to use the sequence objects, there are a few module level functions in <CODE>Bio.Seq</CODE> which will accept plain python strings (or <CODE>Seq</CODE> objects or <CODE>MutableSeq</CODE> objects):</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio.Seq import reverse_complement, transcribe, back_transcribe, translate
+&gt;&gt;&gt; my_string = "GCTGTTATGGGTCGTTGGAAGGGTGGTCGTGCTGCTGGTTAG"
+&gt;&gt;&gt; reverse_complement(my_string)
+'CTAACCAGCAGCACGACCACCCTTCCAACGACCCATAACAGC'
+&gt;&gt;&gt; transcribe(my_string)
+'GCUGUUAUGGGUCGUUGGAAGGGUGGUCGUGCUGCUGGUUAG'
+&gt;&gt;&gt; back_transcribe(my_string)
+'GCTGTTATGGGTCGTTGGAAGGGTGGTCGTGCTGCTGGTTAG'
+&gt;&gt;&gt; translate(my_string)
+'AVMGRWKGGRAAG*'
+</PRE><P>You are however, encouraged to work with the <CODE>Seq</CODE> object by default.</P><HR>
+<A HREF="Tutorial003.html"><IMG SRC="previous_motif.gif" ALT="Previous"></A>
+<A HREF="index.html"><IMG SRC="contents_motif.gif" ALT="Up"></A>
+<A HREF="Tutorial005.html"><IMG SRC="next_motif.gif" ALT="Next"></A>
+</BODY>
+</HTML>

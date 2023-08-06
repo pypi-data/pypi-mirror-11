@@ -1,0 +1,344 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+            "http://www.w3.org/TR/REC-html40/loose.dtd">
+<HTML>
+<HEAD>
+
+<META http-equiv="Content-Type" content="text/html; charset=US-ASCII">
+<META name="GENERATOR" content="hevea 1.10">
+<LINK rel="stylesheet" type="text/css" href="Tutorial.css">
+<TITLE>Accessing NCBI&#X2019;s Entrez databases</TITLE>
+</HEAD>
+<BODY >
+<A HREF="Tutorial007.html"><IMG SRC="previous_motif.gif" ALT="Previous"></A>
+<A HREF="index.html"><IMG SRC="contents_motif.gif" ALT="Up"></A>
+<A HREF="Tutorial009.html"><IMG SRC="next_motif.gif" ALT="Next"></A>
+<HR>
+<H1 CLASS="chapter"><A NAME="htoc59">Chapter&#XA0;7</A>&#XA0;&#XA0;Accessing NCBI&#X2019;s Entrez databases</H1><P>
+<A NAME="chapter:entrez"></A></P><P>Entrez (<A HREF="http://www.ncbi.nlm.nih.gov/Entrez"><TT>http://www.ncbi.nlm.nih.gov/Entrez</TT></A>) is a data retrieval system that provides users access to NCBI&#X2019;s databases such as PubMed, GenBank, GEO, and many others. You can access Entrez from a web browser to manually enter queries, or you can use Biopython&#X2019;s <CODE>Bio.Entrez</CODE> module for programmatic access to Entrez. The latter allows you for example to search PubMed or download GenBank records from within a Python script.</P><P>The <CODE>Bio.Entrez</CODE> module makes use of the Entrez Programming Utilities, consisting of eight tools that are described in detail on NCBI&#X2019;s page at <A HREF="http://www.ncbi.nlm.nih.gov/entrez/utils/"><TT>http://www.ncbi.nlm.nih.gov/entrez/utils/</TT></A>. Each of these tools corresponds to one Python function in the <CODE>Bio.Entrez</CODE> module, as described in the sections below. This module makes sure that the correct URL is used for the queries, and that not more than one request is made every three seconds, as required by NCBI.</P><P>The output returned by the Entrez Programming Utilities is typically in XML format. To parse such output, you have several options:
+</P><OL CLASS="enumerate" type=1><LI CLASS="li-enumerate">
+Use <CODE>Bio.Entrez</CODE>&#X2019;s parser to parse the XML output into a Python object;
+</LI><LI CLASS="li-enumerate">Use the DOM (Document Object Model) parser in Python&#X2019;s standard library;
+</LI><LI CLASS="li-enumerate">Use the SAX (Simple API for XML) parser in Python&#X2019;s standard library;
+</LI><LI CLASS="li-enumerate">Read the XML output as raw text, and parse it by string searching and manipulation.
+</LI></OL><P>
+For the DOM and SAX parsers, see the Python documentation. The parser in <CODE>Bio.Entrez</CODE> is discussed below.</P><P>For sequence databases, the Entrez Programming Utilities can also generate output in other formats (such as the Fasta and GenBank file format). This can then be parsed into a SeqRecord using <CODE>Bio.SeqIO</CODE> (see Chapter&#XA0;<A HREF="Tutorial005.html#chapter:Bio.SeqIO">4</A>, and the example below).</P><H2 CLASS="section"><A NAME="toc32"></A><A NAME="htoc60">7.1</A>&#XA0;&#XA0;Entrez Guidelines</H2><P>
+<A NAME="sec:entrez-guidelines"></A>
+Before using Biopython to access the NCBI&#X2019;s online resources (via <CODE>Bio.Entrez</CODE> or some of the other modules), please read the <A HREF="http://www.ncbi.nlm.nih.gov/entrez/query/static/eutils_help.html#UserSystemRequirements">NCBI&#X2019;s Entrez User Requirements</A>. If the NCBI finds you are abusing their systems, they can and will ban your access! </P><P>To paraphrase:</P><UL CLASS="itemize"><LI CLASS="li-itemize">
+For any series of more than 100 requests, do this at weekends or outside USA peak times. This is up to you to obey.
+</LI><LI CLASS="li-itemize">Use the <A HREF="http://eutils.ncbi.nlm.nih.gov"><TT>http://eutils.ncbi.nlm.nih.gov</TT></A> address, not the standard NCBI Web address. Biopython uses this web address.
+</LI><LI CLASS="li-itemize">Make no more than one request every 3 seconds. This is automatically enforced by Biopython.
+</LI><LI CLASS="li-itemize">Use the optional email parameter so the NCBI can contact you if there is a problem. In the examples below, we have used <TT>email="A.N.Other@example.com"</TT> for illustrative purposes. The <TT>example.com</TT> address is a reserved domain name specifically for documentation (RFC 2606). Please DO NOT use a random email &#X2013; it&#X2019;s better not to give an email at all.
+</LI><LI CLASS="li-itemize">If you are using Biopython within some larger software suite, use the tool parameter to specify this. The tool parameter will default to Biopython.
+</LI></UL><P>For large queries, the NCBI also recommend using their session history feature (the WebEnv session cookie string). This is only slightly more complicated.</P><P>In conclusion, be sensible with your usage levels. If you plan to download lots of data, consider other options. For example, if you want easy access to all the human genes, consider fetching each chromosome by FTP as a GenBank file, and importing these into your own BioSQL database (see Section&#XA0;<A HREF="Tutorial010.html#sec:BioSQL">9.5</A>).</P><H2 CLASS="section"><A NAME="toc33"></A><A NAME="htoc61">7.2</A>&#XA0;&#XA0;EInfo: Obtaining information about the Entrez databases</H2><P>EInfo provides field index term counts, last update, and available links for each of NCBI&#X2019;s databases. In addition, you can use EInfo to obtain a list of all database names accessible through the Entrez utilities:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import Entrez
+&gt;&gt;&gt; handle = Entrez.einfo(email="A.N.Other@example.com")
+&gt;&gt;&gt; result = handle.read()
+</PRE><P>The variable <CODE>result</CODE> now contains a list of databases in XML format:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; print result
+&lt;?xml version="1.0"?&gt;
+&lt;!DOCTYPE eInfoResult PUBLIC "-//NLM//DTD eInfoResult, 11 May 2002//EN"
+ "http://www.ncbi.nlm.nih.gov/entrez/query/DTD/eInfo_020511.dtd"&gt;
+&lt;eInfoResult&gt;
+&lt;DbList&gt;
+        &lt;DbName&gt;pubmed&lt;/DbName&gt;
+        &lt;DbName&gt;protein&lt;/DbName&gt;
+        &lt;DbName&gt;nucleotide&lt;/DbName&gt;
+        &lt;DbName&gt;nuccore&lt;/DbName&gt;
+        &lt;DbName&gt;nucgss&lt;/DbName&gt;
+        &lt;DbName&gt;nucest&lt;/DbName&gt;
+        &lt;DbName&gt;structure&lt;/DbName&gt;
+        &lt;DbName&gt;genome&lt;/DbName&gt;
+        &lt;DbName&gt;books&lt;/DbName&gt;
+        &lt;DbName&gt;cancerchromosomes&lt;/DbName&gt;
+        &lt;DbName&gt;cdd&lt;/DbName&gt;
+        &lt;DbName&gt;gap&lt;/DbName&gt;
+        &lt;DbName&gt;domains&lt;/DbName&gt;
+        &lt;DbName&gt;gene&lt;/DbName&gt;
+        &lt;DbName&gt;genomeprj&lt;/DbName&gt;
+        &lt;DbName&gt;gensat&lt;/DbName&gt;
+        &lt;DbName&gt;geo&lt;/DbName&gt;
+        &lt;DbName&gt;gds&lt;/DbName&gt;
+        &lt;DbName&gt;homologene&lt;/DbName&gt;
+        &lt;DbName&gt;journals&lt;/DbName&gt;
+        &lt;DbName&gt;mesh&lt;/DbName&gt;
+        &lt;DbName&gt;ncbisearch&lt;/DbName&gt;
+        &lt;DbName&gt;nlmcatalog&lt;/DbName&gt;
+        &lt;DbName&gt;omia&lt;/DbName&gt;
+        &lt;DbName&gt;omim&lt;/DbName&gt;
+        &lt;DbName&gt;pmc&lt;/DbName&gt;
+        &lt;DbName&gt;popset&lt;/DbName&gt;
+        &lt;DbName&gt;probe&lt;/DbName&gt;
+        &lt;DbName&gt;proteinclusters&lt;/DbName&gt;
+        &lt;DbName&gt;pcassay&lt;/DbName&gt;
+        &lt;DbName&gt;pccompound&lt;/DbName&gt;
+        &lt;DbName&gt;pcsubstance&lt;/DbName&gt;
+        &lt;DbName&gt;snp&lt;/DbName&gt;
+        &lt;DbName&gt;taxonomy&lt;/DbName&gt;
+        &lt;DbName&gt;toolkit&lt;/DbName&gt;
+        &lt;DbName&gt;unigene&lt;/DbName&gt;
+        &lt;DbName&gt;unists&lt;/DbName&gt;
+&lt;/DbList&gt;
+&lt;/eInfoResult&gt;
+</PRE><P>Since this is a fairly simple XML file, we could extract the information it contains simply by string searching. Using <CODE>Bio.Entrez</CODE>&#X2019;s parser instead, we can directly parse this XML file into a Python object:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import Entrez
+&gt;&gt;&gt; handle = Entrez.einfo(email="A.N.Other@example.com")
+&gt;&gt;&gt; record = Entrez.read(handle)
+</PRE><P>Now <CODE>record</CODE> is a dictionary with exactly one key:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; record.keys()
+[u'DbList']
+</PRE><P>The values stored in this key is the list of database names shown in the XML above:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; record["DbList"]
+['pubmed', 'protein', 'nucleotide', 'nuccore', 'nucgss', 'nucest',
+ 'structure', 'genome', 'books', 'cancerchromosomes', 'cdd', 'gap',
+ 'domains', 'gene', 'genomeprj', 'gensat', 'geo', 'gds', 'homologene',
+ 'journals', 'mesh', 'ncbisearch', 'nlmcatalog', 'omia', 'omim', 'pmc',
+ 'popset', 'probe', 'proteinclusters', 'pcassay', 'pccompound',
+ 'pcsubstance', 'snp', 'taxonomy', 'toolkit', 'unigene', 'unists']
+</PRE><P>For each of these databases, we can use EInfo again to obtain more information:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; handle = Entrez.einfo(db="pubmed", email="A.N.Other@example.com")
+&gt;&gt;&gt; record = Entrez.read(handle)
+&gt;&gt;&gt; record["DbInfo"]["Description"]
+'PubMed bibliographic record'
+&gt;&gt;&gt; record["DbInfo"]["Count"]
+'17989604'
+&gt;&gt;&gt; record["DbInfo"]["LastUpdate"]
+'2008/05/24 06:45'
+</PRE><P>Try <CODE>record["DbInfo"].keys()</CODE> for other information stored in this record.</P><H2 CLASS="section"><A NAME="toc34"></A><A NAME="htoc62">7.3</A>&#XA0;&#XA0;ESearch: Searching the Entrez databases</H2><P>
+<A NAME="sec:entrez-esearch"></A>
+To search any of these databases, we use <CODE>Bio.Entrez.esearch()</CODE>. For example, let&#X2019;s search in PubMed for publications related to Biopython:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import Entrez
+&gt;&gt;&gt; handle = Entrez.esearch(db="pubmed", term="biopython", email="A.N.Other@example.com")
+&gt;&gt;&gt; record = Entrez.read(handle)
+&gt;&gt;&gt; record["IdList"]
+['16403221', '16377612', '14871861', '14630660', '12230038']
+</PRE><P>In this output, you see five PubMed IDs (16403221, 16377612, 14871861, 14630660, 12230038), which can be retrieved by EFetch (see section <A HREF="#sec:efetch">7.6</A>).</P><P>You can also use ESearch to search GenBank. Here we&#X2019;ll do a quick search for the <EM>rpl16</EM> gene in <EM>Opuntia</EM>:</P><PRE CLASS="verbatim">&gt;&gt;&gt; handle = Entrez.esearch(db="nucleotide",term="Opuntia and rpl16",
+                            email="A.N.Other@example.com")
+&gt;&gt;&gt; record = Entrez.read(handle)
+&gt;&gt;&gt; record["Count"]
+'9'
+&gt;&gt;&gt; record["IdList"]
+['57240072', '57240071', '6273287', '6273291', '6273290',
+ '6273289', '6273286', '6273285', '6273284']
+</PRE><P>Each of the IDs (57240072, 57240071, 6273287...) is a GenBank identifier. See section&#XA0;<A HREF="#sec:efetch">7.6</A> for information on how to actually download these GenBank records.</P><P>As a final example, let&#X2019;s get a list of computational journal titles:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; handle = Entrez.esearch(db="journals", term="computational",
+                            email="A.N.Other@example.com")
+&gt;&gt;&gt; record = Entrez.read(handle)
+&gt;&gt;&gt; record["Count"]
+'16'
+&gt;&gt;&gt; record["IdList"]
+['30367', '33843', '33823', '32989', '33190', '33009', '31986',
+ '34502', '8799', '22857', '32675', '20258', '33859', '32534',
+ '32357', '32249']
+</PRE><P>Again, we could use EFetch to obtain more information for each of these journal IDs.</P><P>ESearch has many useful options &#X2014; see the <A HREF="http://www.ncbi.nlm.nih.gov/entrez/query/static/esearch_help.html">ESearch help page</A> for more information.</P><H2 CLASS="section"><A NAME="toc35"></A><A NAME="htoc63">7.4</A>&#XA0;&#XA0;EPost</H2><P>
+EPost posts a list of UIs for use in subsequent search strategies; see the <A HREF="http://www.ncbi.nlm.nih.gov/entrez/query/static/epost_help.html">EPost help page</A> for more information. It is available from Biopython through <CODE>Bio.Entrez.epost()</CODE>.</P><H2 CLASS="section"><A NAME="toc36"></A><A NAME="htoc64">7.5</A>&#XA0;&#XA0;ESummary: Retrieving summaries from primary IDs</H2><P>
+ESummary retrieves document summaries from a list of primary IDs (see the <A HREF="http://www.ncbi.nlm.nih.gov/entrez/query/static/esummary_help.html">ESummary help page</A> for more information). In Biopython, ESummary is available as <CODE>Bio.Entrez.esummary()</CODE>. Using the search result above, we can for example find out more about the journal with ID 30367:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import Entrez
+&gt;&gt;&gt; handle = Entrez.esummary(db="journals", id="30367", email="A.N.Other@example.com")
+&gt;&gt;&gt; record = Entrez.read(handle)
+&gt;&gt;&gt; record[0]["Id"]
+'30367'
+&gt;&gt;&gt; record[0]["Title"]
+'Computational biology and chemistry'
+&gt;&gt;&gt; record[0]["Publisher"]
+'Pergamon,'
+</PRE><H2 CLASS="section"><A NAME="toc37"></A><A NAME="htoc65">7.6</A>&#XA0;&#XA0;EFetch: Downloading full records from Entrez</H2><P>
+<A NAME="sec:efetch"></A></P><P>EFetch is what you use when you want to retrieve a full record from Entrez.
+For the <EM>Opuntia</EM> example above, we can download GenBank record 57240072 using <CODE>Bio.Entrez.efetch</CODE>:</P><PRE CLASS="verbatim">&gt;&gt;&gt; handle = Entrez.efetch(db="nucleotide", id="57240072", rettype="genbank", 
+                           email="A.N.Other@example.com")
+&gt;&gt;&gt; print handle.read()
+LOCUS       AY851612                 892 bp    DNA     linear   PLN 10-APR-2007
+DEFINITION  Opuntia subulata rpl16 gene, intron; chloroplast.
+ACCESSION   AY851612
+VERSION     AY851612.1  GI:57240072
+KEYWORDS    .
+SOURCE      chloroplast Austrocylindropuntia subulata
+  ORGANISM  Austrocylindropuntia subulata
+            Eukaryota; Viridiplantae; Streptophyta; Embryophyta; Tracheophyta;
+            Spermatophyta; Magnoliophyta; eudicotyledons; core eudicotyledons;
+            Caryophyllales; Cactaceae; Opuntioideae; Austrocylindropuntia.
+REFERENCE   1  (bases 1 to 892)
+  AUTHORS   Butterworth,C.A. and Wallace,R.S.
+  TITLE     Molecular Phylogenetics of the Leafy Cactus Genus Pereskia
+            (Cactaceae)
+  JOURNAL   Syst. Bot. 30 (4), 800-808 (2005)
+REFERENCE   2  (bases 1 to 892)
+  AUTHORS   Butterworth,C.A. and Wallace,R.S.
+  TITLE     Direct Submission
+  JOURNAL   Submitted (10-DEC-2004) Desert Botanical Garden, 1201 North Galvin
+            Parkway, Phoenix, AZ 85008, USA
+FEATURES             Location/Qualifiers
+     source          1..892
+                     /organism="Austrocylindropuntia subulata"
+                     /organelle="plastid:chloroplast"
+                     /mol_type="genomic DNA"
+                     /db_xref="taxon:106982"
+     gene            &lt;1..&gt;892
+                     /gene="rpl16"
+     intron          &lt;1..&gt;892
+                     /gene="rpl16"
+ORIGIN      
+        1 cattaaagaa gggggatgcg gataaatgga aaggcgaaag aaagaaaaaa atgaatctaa
+       61 atgatatacg attccactat gtaaggtctt tgaatcatat cataaaagac aatgtaataa
+      121 agcatgaata cagattcaca cataattatc tgatatgaat ctattcatag aaaaaagaaa
+      181 aaagtaagag cctccggcca ataaagacta agagggttgg ctcaagaaca aagttcatta
+      241 agagctccat tgtagaattc agacctaatc attaatcaag aagcgatggg aacgatgtaa
+      301 tccatgaata cagaagattc aattgaaaaa gatcctaatg atcattggga aggatggcgg
+      361 aacgaaccag agaccaattc atctattctg aaaagtgata aactaatcct ataaaactaa
+      421 aatagatatt gaaagagtaa atattcgccc gcgaaaattc cttttttatt aaattgctca
+      481 tattttattt tagcaatgca atctaataaa atatatctat acaaaaaaat atagacaaac
+      541 tatatatata taatatattt caaatttcct tatataccca aatataaaaa tatctaataa
+      601 attagatgaa tatcaaagaa tctattgatt tagtgtatta ttaaatgtat atcttaattc
+      661 aatattatta ttctattcat ttttattcat tttcaaattt ataatatatt aatctatata
+      721 ttaatttata attctattct aattcgaatt caatttttaa atattcatat tcaattaaaa
+      781 ttgaaatttt ttcattcgcg aggagccgga tgagaagaaa ctctcatgtc cggttctgta
+      841 gtagagatgg aattaagaaa aaaccatcaa ctataacccc aagagaacca ga
+//
+</PRE><P>The argument <CODE>rettype="genbank"</CODE> lets us download this record in the GenBank format. Alternatively, you could for example use <CODE>rettype="fasta"</CODE> to get the Fasta-format; see the <A HREF="http://www.ncbi.nlm.nih.gov/entrez/query/static/efetchseq_help.html">EFetch Help page</A> for other options. The available formats depend on which database you are downloading from.</P><P>If you fetch the record in one of the formats accepted by <CODE>Bio.SeqIO</CODE> (see Chapter&#XA0;<A HREF="Tutorial005.html#chapter:Bio.SeqIO">4</A>), you can directly parse it into a <CODE>SeqRecord</CODE>:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import Entrez, SeqIO
+&gt;&gt;&gt; handle = Entrez.efetch(db="nucleotide", id="57240072",rettype="genbank",
+                           email="A.N.Other@example.com")
+&gt;&gt;&gt; record = SeqIO.read(handle, "genbank")
+&gt;&gt;&gt; print record
+ID: AY851612.1
+Name: AY851612
+Desription: Opuntia subulata rpl16 gene, intron; chloroplast.
+/sequence_version=1
+/source=chloroplast Austrocylindropuntia subulata
+....
+</PRE><P>By default you get the output in XML format, which you can parse using the <CODE>Bio.Entrez.read()</CODE> function:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import Entrez
+&gt;&gt;&gt; handle = Entrez.efetch(db="nucleotide", id="57240072",
+                           email="A.N.Other@example.com")
+&gt;&gt;&gt; record = Entrez.read(handle)
+&gt;&gt;&gt; record[0]["GBSeq_definition"]
+'Opuntia subulata rpl16 gene, intron; chloroplast'
+&gt;&gt;&gt; record[0]["GBSeq_source"]
+'chloroplast Austrocylindropuntia subulata'
+....
+</PRE><H2 CLASS="section"><A NAME="toc38"></A><A NAME="htoc66">7.7</A>&#XA0;&#XA0;ELink</H2><P>
+For help on ELink, see the <A HREF="http://www.ncbi.nlm.nih.gov/entrez/query/static/elink_help.html">ELink help page</A>. ELink is available from Biopython through <CODE>Bio.Entrez.elink()</CODE>.</P><H2 CLASS="section"><A NAME="toc39"></A><A NAME="htoc67">7.8</A>&#XA0;&#XA0;EGQuery: Obtaining counts for search terms</H2><P>
+EGQuery provides counts for a search term in each of the Entrez databases. This is particularly useful to find out how many items a search will return before actually performing the search with ESearch (see the example in <A HREF="#subsec:entrez_example_genbank">7.10.1</A> below).</P><P>In this example, we use <CODE>Bio.Entrez.egquery()</CODE> to obtain the counts for &#X201C;Biopython&#X201D;:</P><PRE CLASS="verbatim">&gt;&gt;&gt; handle = Entrez.egquery(term="biopython",
+                            email="A.N.Other@example.com") 
+&gt;&gt;&gt; record = Entrez.read(handle)
+&gt;&gt;&gt; record["eGQueryResult"][0]["DbName"]
+'pubmed'
+&gt;&gt;&gt; record["eGQueryResult"][0]["Count"]
+'5'
+</PRE><P>See the <A HREF="http://www.ncbi.nlm.nih.gov/entrez/query/static/egquery_help.html">EGQuery help page</A> for more information.</P><H2 CLASS="section"><A NAME="toc40"></A><A NAME="htoc68">7.9</A>&#XA0;&#XA0;ESpell: Obtaining spelling suggestions</H2><P>
+ESpell retrieves spelling suggestions. In this example, we use <CODE>Bio.Entrez.espell()</CODE> to obtain the correct spelling of Biopython:</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import Entrez
+&gt;&gt;&gt; handle = Entrez.espell(term="biopythooon", email="A.N.Other@example.com")
+&gt;&gt;&gt; record = Entrez.read(handle)
+&gt;&gt;&gt; record["Query"]
+'biopythooon'
+&gt;&gt;&gt; record["CorrectedQuery"]
+'biopython'
+</PRE><P>See the <A HREF="http://www.ncbi.nlm.nih.gov/entrez/query/static/espell_help.html">ESpell help page</A> for more information.</P><H2 CLASS="section"><A NAME="toc41"></A><A NAME="htoc69">7.10</A>&#XA0;&#XA0;Examples</H2><P>
+<A NAME="sec:entrez_examples"></A></P><H3 CLASS="subsection"><A NAME="htoc70">7.10.1</A>&#XA0;&#XA0;Searching and downloading Entrez Nucleotide records</H3><P>
+<A NAME="subsec:entrez_example_genbank"></A></P><P>Here we&#X2019;ll show a simple example of performing a remote Entrez query. In section&#XA0;<A HREF="Tutorial003.html#sec:orchids">2.3</A> of the parsing examples, we talked about using NCBI&#X2019;s Entrez website to search the NCBI nucleotide databases for info on Cypripedioideae, our friends the lady slipper orchids. Now, we&#X2019;ll look at how to automate that process using a Python script. In this example, we&#X2019;ll just show how to connect, get the results, and parse them, with the Entrez module doing all of the work.</P><P>First, we use EGQuery to find out the number of results we will get before actually downloading them:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import Entrez
+&gt;&gt;&gt; handle = Entrez.egquery(term='Cypripedioideae', email="A.N.Other@example.com")
+&gt;&gt;&gt; record = Entrez.read(handle)
+&gt;&gt;&gt; for row in record['eGQueryResult']:
+...     if row['DbName']=='nuccore':
+...         print row['Count']
+814
+</PRE><P>So, we expect to find 814 Entrez Nucleotide records. If you find some ridiculously high number of hits, you may want to reconsider if you really want to download all of them, which is our next step:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; from Bio import Entrez
+&gt;&gt;&gt; handle = Entrez.esearch(db='nucleotide', term='Cypripedioideae', retmax=814,
+                            email="A.N.Other@example.com")
+&gt;&gt;&gt; record = Entrez.read(handle)
+</PRE><P>Here, <CODE>record</CODE> is a Python dictionary containing the search results and some auxiliary information. Just for information, let&#X2019;s look at what is stored in this dictionary:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; print record.keys()
+[u'Count', u'RetMax', u'IdList', u'TranslationSet', u'RetStart', u'QueryTranslation']
+</PRE><P>First, let&#X2019;s check how many results were found:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; print record['Count']
+'814'
+</PRE><P>which is the number we expected. The 814 results are stored in <CODE>record['IdList']</CODE>:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; print len(record['IdList'])
+814
+</PRE><P>Let&#X2019;s look at the first five results:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; print record['IdList'][:5]
+['187237168', '187372713', '187372690', '187372688', '187372686']
+</PRE><P><A NAME="sec:entrez-batched-efetch"></A>
+We can download these records using <CODE>efetch</CODE>.
+While you could download these records one by one, to reduce the load on NCBI&#X2019;s servers, it is better to fetch a bunch of records at the same time, shown below.
+However, in this situation you should ideally be using the history feature described later in Section&#XA0;<A HREF="#subsec:entrez-webenv">7.10.3</A>.</P><PRE CLASS="verbatim">&gt;&gt;&gt; idlist = ",".join(record['IdList'][:5])
+&gt;&gt;&gt; print idlist
+187237168,187372713,187372690,187372688,187372686
+&gt;&gt;&gt; handle = Entrez.efetch(db='nucleotide', id=idlist, retmode='xml',
+                           email="A.N.Other@example.com")
+&gt;&gt;&gt; records = Entrez.read(handle)
+&gt;&gt;&gt; print len(records)
+5
+</PRE><P>Each of these records corresponds to one GenBank record.
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; print records[0].keys()
+[u'GBSeq_moltype', u'GBSeq_source', u'GBSeq_sequence',
+ u'GBSeq_primary-accession', u'GBSeq_definition', u'GBSeq_accession-version',
+ u'GBSeq_topology', u'GBSeq_length', u'GBSeq_feature-table',
+ u'GBSeq_create-date', u'GBSeq_other-seqids', u'GBSeq_division',
+ u'GBSeq_taxonomy', u'GBSeq_references', u'GBSeq_update-date',
+ u'GBSeq_organism', u'GBSeq_locus', u'GBSeq_strandedness']
+
+&gt;&gt;&gt; print records[0]['GBSeq_primary-accession']
+DQ110336
+
+&gt;&gt;&gt; print records[0]['GBSeq_other-seqids']
+['gb|DQ110336.1|', 'gi|187237168']
+
+&gt;&gt;&gt; print records[0]['GBSeq_definition']
+Cypripedium calceolus voucher Davis 03-03 A maturase (matR) gene, partial cds;
+mitochondrial
+
+&gt;&gt;&gt; print records[0]['GBSeq_organism']
+Cypripedium calceolus
+</PRE><P>You could use this to quickly set up searches &#X2013; but for heavy usage, see Section&#XA0;<A HREF="#subsec:entrez-webenv">7.10.3</A>.</P><H3 CLASS="subsection"><A NAME="htoc71">7.10.2</A>&#XA0;&#XA0;Finding the lineage of an organism</H3><P>Staying with the same organism, let&#X2019;s now find its lineage. First, we search the Taxonomy database for Cypripedioideae. We find exactly one accession number:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; handle = Entrez.esearch(db="Taxonomy", term="Cypripedioideae",
+                            email="A.N.Other@example.com")
+&gt;&gt;&gt; record = Entrez.read(handle)
+&gt;&gt;&gt; record["IdList"]
+['158330']
+&gt;&gt;&gt; record["IdList"][0]
+'158330'
+</PRE><P>Now, we use <CODE>efetch</CODE> to download this entry in the Taxonomy database and to parse it:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; handle = Entrez.efetch(db="Taxonomy", id="158330", retmode='xml')
+&gt;&gt;&gt; records = Entrez.read(handle)
+</PRE><P>Again, this record stores lots of information:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; records[0].keys()
+[u'Lineage', u'Division', u'ParentTaxId', u'PubDate', u'LineageEx',
+ u'CreateDate', u'TaxId', u'Rank', u'GeneticCode', u'ScientificName',
+ u'MitoGeneticCode', u'UpdateDate']
+</PRE><P>We can get the lineage directly from this record:
+</P><PRE CLASS="verbatim">&gt;&gt;&gt; records[0]['Lineage']
+'cellular organisms; Eukaryota; Viridiplantae; Streptophyta; Streptophytina;
+ Embryophyta; Tracheophyta; Euphyllophyta; Spermatophyta; Magnoliophyta;
+ Liliopsida; Asparagales; Orchidaceae'
+</PRE><H3 CLASS="subsection"><A NAME="htoc72">7.10.3</A>&#XA0;&#XA0;Using the history and WebEnv</H3><P>
+<A NAME="subsec:entrez-webenv"></A></P><P>Often you will want to make a series of linked queries. Most typically, running a search, perhaps refining the search, and then retrieving detailed search results. You <EM>can</EM> do this by making a series of separate calls to Entrez. However, the NCBI prefer you to take advantage of their history support.</P><P>For example, suppose we want to search and download all Orchid rpl16 nucleotide sequences, and store them in a FASTA file. We could naively combine the example code for <CODE>Bio.Entrez.esearch()</CODE> (Section&#XA0;<A HREF="#sec:entrez-esearch">7.3</A>) to get a list of GI numbers, and then repeatedly call <CODE>Bio.Entrez.efetch()</CODE> (Section&#XA0;<A HREF="#sec:efetch">7.6</A>) to download them all. You could reduce the number of queries by asking for the records in batches (see Section&#XA0;<A HREF="#sec:entrez-batched-efetch">7.10.1</A>). That would probably be better, but is still not what the NCBI encourage.</P><P>The approved approach is to run the search with the history feature. Then, we can fetch the results by reference to the search results - which the NCBI can anticipate and cache.</P><PRE CLASS="verbatim">from Bio import Entrez
+search_handle = Entrez.esearch(db="nucleotide",term="Opuntia and rpl16",
+                               usehistory="y", email="history.user@example.com")
+search_results = Entrez.read(search_handle)
+search_handle.close()
+
+gi_list = search_results["IdList"]
+count = int(search_results["Count"])
+assert count == len(gi_list)
+
+session_cookie = search_results["WebEnv"]
+query_key = search_results["QueryKey"] 
+</PRE><P>In addition to the GI numbers of the sequences found in the search, because we have asked to use the history feature the XML search results also include <TT>WebEnv</TT> and <TT>QueryKey</TT> values which are used to refer to these search results. Having stored these values in variables <TT>session_cookie</TT> and <TT>query_key</TT> we can use them as parameters to <CODE>Bio.Entrez.efetch()</CODE> instead of giving the GI numbers as identifiers. </P><P>While for small searches you might be OK downloading everything at once, its better download in batches. You use the <TT>retstart</TT> and <TT>retmax</TT> parameters to specify which range of search results you want returned (starting entry using zero-based counting, and maximum number of results to return). For example,</P><PRE CLASS="verbatim">batch_size = 3
+out_handle = open("orchid_rpl16.fasta", "w")
+for start in range(0,count,batch_size) :
+    end = min(count, start+batch_size)
+    print "Going to download record %i to %i" % (start+1, end)
+    fetch_handle = Entrez.efetch(db="nucleotide", rettype="fasta",
+                                 retstart=start, retmax=batch_size,
+                                 webenv=session_cookie, query_key=query_key,
+                                 email="history.user@example.com")
+    data = fetch_handle.read()
+    fetch_handle.close()
+    out_handle.write(data)
+out_handle.close()
+</PRE><P>And finally, don&#X2019;t forget to include your <EM>own</EM> email address in the Entrez calls.</P><HR>
+<A HREF="Tutorial007.html"><IMG SRC="previous_motif.gif" ALT="Previous"></A>
+<A HREF="index.html"><IMG SRC="contents_motif.gif" ALT="Up"></A>
+<A HREF="Tutorial009.html"><IMG SRC="next_motif.gif" ALT="Next"></A>
+</BODY>
+</HTML>
