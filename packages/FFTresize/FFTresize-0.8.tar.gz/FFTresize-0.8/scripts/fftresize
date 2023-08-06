@@ -1,0 +1,64 @@
+#!/usr/bin/env python
+
+'''FFTresize - Resize images using the FFT
+
+Usage:
+    fftresize <factor> <file>...
+    fftresize -h | --help
+    fftresize -v | --version
+
+Options:
+    -h, --help      Print this help.
+    -v, --version   Print version information.
+'''
+
+
+from __future__ import print_function
+from docopt import docopt
+try:
+    from os import EX_NOINPUT, EX_USAGE
+except ImportError:
+    EX_NOINPUT, EX_USAGE = 1, 2
+from os.path import abspath, exists, expanduser
+from sys import exit, float_info, stderr
+
+from avena import image, interp
+from fftresize import fftresize
+
+
+_EXT = '.png'
+
+
+def resize(filename, factor=1.5):
+    '''Resize an image by zero-padding in the frequency domain.
+
+    Return the filename of the resized image.
+    '''
+    img = image.read(filename)
+    new = interp.interp2(img, factor)
+    return image.save(new, filename, random=True, ext=_EXT, normalize=True)
+
+
+_long_version = 'FFTresize ' + fftresize.__version__
+
+
+def error(msg):
+    print('fftresize: error:', msg, file=stderr)
+
+
+if '__main__' in __name__:
+
+    arguments = docopt(__doc__, version=_long_version)
+
+    factor = float(arguments['<factor>'])
+    if factor < 1.0 + float_info.epsilon:
+        error('factor must be greater than 1.0')
+        exit(EX_USAGE)
+
+    files = arguments['<file>']
+    files = filter(lambda f: abspath(expanduser(f)), files)
+    for img in files:
+        if not exists(img):
+            error('could not find file: ' + img)
+        x = resize(img, factor)
+        print(x)
