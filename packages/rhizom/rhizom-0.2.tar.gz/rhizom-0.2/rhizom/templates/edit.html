@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% import '_macros.html' as macros %}
+
+{% block title %}{{ _("Edition") }} | {{ super() }}{% endblock %}
+
+
+{% block content %}
+
+{% if newrel_form.rtype.choices %} {# There is at least a relationship type defined #}
+
+{% if newrel_form.errors %}
+<div class="alert alert-danger">
+    {{ _("The form has errors, please fix them.") }}
+</div>
+{% endif %}
+
+<form role="form" method="post" class="form-table add"
+      action="{{ url_for('edit', graph_id=graph.id) }}">
+{{ newrel_form.hidden_tag() }}
+<table class="table table-centered edition">
+    <thead>
+        <tr>
+            <th colspan="2">{{ _("People") }}</th>
+            <th>{{ _("Type") }}</th>
+            <th>{{ _("Dotted") }}</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            {{ macros.render_field_table(newrel_form.source) }}
+            {{ macros.render_field_table(newrel_form.target) }}
+            {{ macros.render_field_table(newrel_form.rtype, class="form-control input-sm") }}
+            {{ macros.render_field_table(newrel_form.dotted, class="form-control input-sm") }}
+            <td>
+                <button type="submit" name="action" value="add"  title="{{ _("Add") }}"
+                        class="btn btn-sm btn-primary">
+                    <span class="glyphicon glyphicon-plus"></span>
+                </button>
+            </td>
+        </tr>
+        {% for rel in relationships %}
+        <tr>
+            <td class="name">{{ rel.source.name }}</td>
+            <td class="name">{{ rel.target.name }}</td>
+            <td>
+                <select name="ltype-edit" class="form-control input-sm">
+                    {% for rtype in rel_types %}
+                    <option value="{{ rtype }}"
+                        {% if rtype == rel.type_name %} selected {% endif %}
+                        >{{ rtype }}</option>
+                    {% endfor %}
+                </select>
+            </td>
+            <td>
+                <input name="dotted-edit" type="checkbox" class="form-control input-sm"
+                       {% if rel.dotted %}checked{% endif %} />
+            </td>
+            <td>
+                <input type="hidden" name="source-edit" value="{{ rel.source_id }}" />
+                <input type="hidden" name="target-edit" value="{{ rel.target_id }}" />
+                <input type="hidden" name="origltype-edit" value="{{ rel.type_name }}" />
+                <button name="action" value="edit" data-loading-text="..."
+                        class="btn btn-sm btn-info" title="{{ _("Update") }}">
+                    <span class="glyphicon glyphicon-edit"></span>
+                </button>
+                <button name="action" value="delete" data-loading-text="..."
+                        class="btn btn-sm btn-warning" title="{{ _("Delete") }}">
+                    <span class="glyphicon glyphicon-remove"></span>
+                </button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</form>
+
+
+{% else %} {# There is no relationship type defined #}
+<div class="alert alert-danger">
+    {{ _("No relationship type has been configured yet.") }}
+    {% if current_user.has_perm(graph, 'admin') %}
+    {% autoescape false %}
+    {{ _("Start by adding one <a %(href)s>on the admin page</a>.", href='href="%s"' % url_for('admin', graph_id=graph.id)) }}
+    {% endautoescape %}
+    {% else %}
+    {{ _("Ask the graph admin to add some.") }}
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block more_js %}
+<script src="{{ url_for('static', filename='typeahead.jquery.min.js') }}"></script>
+<script>
+$(function() {
+    // Autocomplete
+    var existingNames = [];
+    $('table.edition tbody td.name').each(function() {
+        var name = $(this).text();
+        if (existingNames.indexOf(name) === -1) {
+            existingNames.push(name);
+        }
+    });
+    $('table.table input[type="text"]').typeahead({
+        minLength: 3, highlight: true
+    }, {
+        name: 'persons',
+        source: function(query, cb) {
+            var suggestions = [];
+            existingNames.forEach(function(name) {
+                if (name.toLowerCase().indexOf(query.toLowerCase()) !== -1) {
+                    suggestions.push({value: name});
+                }
+            });
+            cb(suggestions);
+        }
+    });
+});
+</script>
+{% endblock %}
