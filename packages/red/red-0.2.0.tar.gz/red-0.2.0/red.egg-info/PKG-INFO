@@ -1,0 +1,122 @@
+Metadata-Version: 1.1
+Name: red
+Version: 0.2.0
+Summary: Python regex command-line tool, to replace functionality akin to 'perl -ne'.
+Home-page: https://www.bitbucket.org/johannestaas/red
+Author: Johan Nestaas
+Author-email: johannestaas@gmail.com
+License: GPLv3+
+Description: red
+        ===
+        
+        Python regex command-line tool, to replace functionality akin to 'perl -ne'.
+        
+        Installation
+        ------------
+        
+        From the project root directory::
+        
+            $ python setup.py install
+        
+        Usage
+        -----
+        
+        Use --help/-h to view info on the arguments::
+        
+            $ red --help
+        
+        The special variables available:
+        
+        - **line** for the entire line that was matched, without the trailing newline
+        - **g** for groups, which you index to get that match group, as **g[0]** in "(\w+) .*"
+        - **ag** for aggregated groups with the *-a* option, which is a list of all match groups
+        - **d** for the groupdict, which you can index by named group as **d["foo"]** in "(?P<foo>\w+) .*"
+        - **ad** for the aggregated group dicts, a list of dicts
+        
+        Example usage::
+        
+            $ cat test.txt 
+            foo 1 bar 2
+            fiz 5 baz 10
+            funk 10 bunk 9
+            funk a bunk b
+            a b c d
+            aaaaa
+            bbbb
+            cc
+        
+        Use it like grep::
+        
+            $ cat test.txt | red "\w+ (\d+) \w+ (\d+)" 
+            foo 1 bar 2
+            fiz 5 baz 10
+            funk 10 bunk 9
+        
+        It works with path as argument as well, *but the path must appear directly after the regex* (oddity of argparse).::
+            
+            $ red "\w+ (\d+) \w+ (\d+)" test.txt
+        
+        Use it to evaluate Python code on groups stored in variable **g**::
+        
+            $ red "\w+ (\d+) \w+ (\d+)" test.txt -e "int(g[0]) + int(g[1])"
+            3
+            15
+            19
+        
+        Import an arbitrary library and do absolutely anything::
+        
+            $ red '\w+ (\d+) \w+ (\d+)' test.txt -i json -e '"{} => {}".format(line, json.dumps(g))'
+            foo 1 bar 2 => ["1", "2"]
+            fiz 5 baz 10 => ["5", "10"]
+            funk 10 bunk 9 => ["10", "9"]
+        
+        Use it to aggregate across all of stdin, into list **ag**::
+        
+            $ cat test.txt | red "\w+ (\d+) \w+ (\d+)" -a "sum([int(x[0]) for x in ag])"
+            16
+        
+        Evaluate on each match, and aggregate against all matches::
+        
+            $ cat test.txt | red "\w+ (\d+) \w+ (\d+)" -a "sum([int(x[0]) for x in ag])" -e "'adding {}'.format(g[0])"
+            adding 1
+            adding 5
+            adding 10
+            16
+        
+        You can use named groups as well, stored in variables **d** and aggregated into **ad**::
+        
+            $ cat test.txt | red "\w+ (?P<first>\d+) \w+ \d+" -e "'first value is {first}'.format(**d)"
+            first value is 1
+            first value is 5
+            first value is 10
+        
+        Disclaimer
+        ----------
+        
+        Code in -e and -a are run through **eval**, so if you paste in code from someone,
+        it will run. Just sayin'. Only run code you trust, or have inspected personally.
+        The same goes for any library you import with -i.
+        
+        Release Notes
+        -------------
+        
+        :0.2.0:
+            Added -i/--import functionality
+        :0.1.1:
+            Path works as CLI arg
+        :0.1.0:
+            Version is available on pypi, with functionality of evaluation and aggregation
+        :0.0.1:
+            Project created
+        
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)
+Classifier: Environment :: Console
+Classifier: Environment :: X11 Applications :: Qt
+Classifier: Environment :: MacOS X
+Classifier: Environment :: Win32 (MS Windows)
+Classifier: Operating System :: POSIX
+Classifier: Operating System :: MacOS :: MacOS X
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Programming Language :: Python
