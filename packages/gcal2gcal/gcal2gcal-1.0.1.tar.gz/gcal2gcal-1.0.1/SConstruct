@@ -1,0 +1,22 @@
+import os,sys,subprocess
+
+env = Environment(ENV = os.environ)
+
+antlr_libs = ['external/antlr2.jar',
+               'external/antlr3.jar',
+               'external/stringtemplate-3.0.jar']
+
+ #yeah, I use the win32 python under cygwin:
+if env['PLATFORM'] in ['cygwin','win32']:
+    antlr_libs = [subprocess.Popen(['cygpath',p],
+                                   stdout=subprocess.PIPE)\
+                  .communicate()[0].strip('\n')
+                  for p in antlr_libs]
+    antlr_libs = ';'.join(antlr_libs)
+else:
+    antlr_libs = ':'.join(antlr_libs)
+    
+parser = env.Command(['src/LUADictLexer.py',
+                      'src/LUADictParser.py'],
+                     ['src/LUADict.g'],
+                     'java -cp "%s" org.antlr.Tool src/LUADict.g -d src' % antlr_libs)
