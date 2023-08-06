@@ -1,0 +1,74 @@
+# -*- coding: utf-8 -*-
+#
+# This file is part of Invenio.
+# Copyright (C) 2015 CERN.
+#
+# Invenio is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation; either version 2 of the
+# License, or (at your option) any later version.
+#
+# Invenio is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Invenio; if not, write to the Free Software Foundation, Inc.,
+# 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+
+
+notifications:
+  email: false
+
+sudo: false
+
+services:
+  - mysql
+  - redis
+  - elasticsearch
+
+language: python
+
+cache:
+  - apt
+  - pip
+
+env:
+  - REQUIREMENTS=lowest REXTRAS=docs
+  - REQUIREMENTS=release REXTRAS=docs
+  - REQUIREMENTS=devel REXTRAS=docs
+
+python:
+  - "2.7"
+
+before_install:
+  - "travis_retry pip install --upgrade pip"
+  - "travis_retry pip install check-manifest mock twine wheel coveralls"
+  - "python requirements.py --extras=$REXTRAS --level=min > .travis-lowest-requirements.txt"
+  - "python requirements.py --extras=$REXTRAS --level=pypi > .travis-release-requirements.txt"
+  - "python requirements.py --extras=$REXTRAS --level=dev > .travis-devel-requirements.txt"
+  - "mkdir -p ${VIRTUAL_ENV}/var/invenio.base-instance/"
+  - "cp .travis.invenio.cfg ${VIRTUAL_ENV}/var/invenio.base-instance/invenio.cfg"
+
+install:
+  - "travis_retry pip install -r .travis-$REQUIREMENTS-requirements.txt --allow-all-external"
+  - "travis_retry pip install -e .[$REXTRAS]"
+
+script:
+  - "check-manifest --ignore .travis-\\*-requirements.txt"
+  - "sphinx-build -qnN docs docs/_build/html"
+  - "python setup.py test"
+
+after_success:
+  - coveralls
+
+deploy:
+  provider: pypi
+  user: jirikuncar
+  password:
+    secure: XdoEzPuWB5QrvFfysNQspHXzwbyS5LjtqelPPR5tDpqa95aQ1WRZQ0acd26jrHTH4Wn72pnrOao8UsUql5DHdVDkfK6VwlDzQf5U3ER/FThiwytKlbb1kouiZSeOltY0H9UzggEha4fPgBdADovTC++GRMmHS6wJYbi/w99kLJOyCu19K2TGYZOOovbnoer0/MEjQw7wx5IyN/bd7SY5lpEKfgwPLidNjMUp1wSpUwSwkQ+9GYXQVd3+QY05tXb5feNv7voO758STpCvdQTMQP93S5xxrALkEtodjLDDi1a1AG833+PrezvKYv2rkWbtOEh799VG3KixIefqFIQbBodU3+dTZTA+ZZU9aK+r2ECexZYPRZoFyxww3byjMM3tRJJRp+i+LxDdvWrArD2/pF7oBjiYGq6Onzt0zWTds0CzW2Wg8VzG1wgdD+rRflVWvAK1RpdfUl9uLV+3Y2Au1HcpDjdXuFYouvsJkQaO4DpPTwDdeh86C+zhGulnPzZ860XvVmGIbgHHLF0CjnCNa+vUCIxTVEQxSPk+7vQlYvcKfZSyyxxPOLvOybbzgkYjI7HYspQwnOhsJYwFgL5pOAcQVGXFJUVvFbzR+5wwv6NGZCyKjipj7staRKO8Ec0PmxeSu62u+C2d4Qraqh+oD0U7ysYR336fSAX52hSRh8U=
+  distributions: "compile_catalog sdist bdist_wheel"
+  on:
+    tags: true
+    python: "2.7"
