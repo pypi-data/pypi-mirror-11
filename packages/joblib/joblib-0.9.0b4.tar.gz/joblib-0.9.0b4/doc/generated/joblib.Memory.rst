@@ -1,0 +1,28 @@
+joblib.Memory
+=============
+
+.. currentmodule:: joblib
+
+.. autoclass:: Memory
+
+   
+   .. automethod:: __init__
+
+   
+   .. rubric:: Methods
+
+   .. autosummary::
+   
+      ~Memory.__init__
+      ~Memory.cache
+      ~Memory.clear
+      ~Memory.debug
+      ~Memory.eval
+      ~Memory.format
+      ~Memory.warn
+   
+   
+
+   
+   
+   
