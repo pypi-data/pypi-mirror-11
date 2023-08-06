@@ -1,0 +1,220 @@
+Metadata-Version: 2.0
+Name: django-fabtasks
+Version: 0.1.1
+Summary: Common Fabric tasks for use in Django development/deployments
+Home-page: https://bitbucket.org/tsantor/django-fabtasks
+Author: Tim Santor
+Author-email: tsantor@xstudios.agency
+License: MIT
+Keywords: django-fabtasks
+Platform: UNKNOWN
+Classifier: Development Status :: 2 - Pre-Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Natural Language :: English
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.6
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.3
+Classifier: Programming Language :: Python :: 3.4
+Requires-Dist: django-extensions
+
+Django Fabric Tasks
+===================
+
+Author: Tim Santor tsantor@xstudios.agency
+
+Overview
+========
+
+These generic tasks are for use on internal X Studios Django projects.
+These tasks pair perfectly with our `Cookiecutter
+Django <https://bitbucket.org/tsantor/cookiecutter-django18-project>`__
+starter project.
+
+Project Structure
+=================
+
+In order to make these tasks reusable without a ton of parameters, etc.
+a portion of these commands assume a local/remote project structure as
+follows:
+
+::
+
+    my-project/             # Top-level project dir (any name)
+    ├── fabfile.py          # Our fabfile
+    ├── logs                # Contains our application/server logs
+    ├── manage.py
+    ├── media               # Contains our media files (user uploads)
+    ├── requirements.txt    # Our `pip freeze > requirements.txt` file
+    ├── app                 # Contains our app and its modules
+    └── static_collection   # Contains our collected static files
+
+Note: We setup all our Django projects in the same manner for
+consistency and start from this
+`cookiecutter <https://bitbucket.org/tsantor/cookiecutter-django18-project>`__
+tempate.
+
+Note: ``media`` and ``static_collection`` (or whatever you wish to
+name them) are assumed to live on the same physical server as the
+Django project. This is because we typically do not serve
+media/static files from Amazon S3 or another solution.
+
+Installation
+============
+
+To install Django Fabric Tasks, simply run the following within your
+virtualenv:
+
+::
+
+    pip install django-fabtasks
+
+Create fabfile.py
+=================
+
+In your project root, create ``fabfile.py`` with the following contents:
+
+::
+
+    import os
+
+    # 3rd Party
+    from fabric.api import *
+    from contextlib import contextmanager
+
+    import fabtasks.development as dev
+    import fabtasks.production as prod
+    from fabtasks.context import virtualenv
+
+    # -----------------------------------------------------------------------------
+    # Config
+    # -----------------------------------------------------------------------------
+
+    # Base env config
+    env.colorize_errors = True
+    env.repository = 'REPO_URL'
+    env.db_user = 'DB_USER'
+    env.db_name = 'DB_NAME'
+    env.virtualenv_dir = 'VIRTUALENV_DIR'
+    env.activate = '/root/.virtualenvs/VIRTUALENV_DIR/bin/activate'
+    env.apache_restart_command = 'apache_restart'
+
+    # Local env
+    env.local_group = 'staff'
+    env.local_project_root = os.getcwd()
+    env.local_static_root = os.path.join(os.getcwd(), 'static_collection', '')
+    env.local_media_root = os.path.join(os.getcwd(), 'media', '')
+
+
+    @task
+    def production():
+        """Production env overrides"""
+        env.hosts = ['xstudiosdev.com']
+        env.user = 'root'
+        env.group = 'apache'
+        env.domain = 'DOMAIN'
+        env.project_root = '/var/www/vhosts/{domain}'.format(**env)
+        env.static_root = '/var/www/vhosts/{domain}/static_collection/'.format(**env)
+        env.media_root = '/var/www/vhosts/{domain}/media/'.format(**env)
+
+
+    # Set the default environment
+    production()
+
+    # -----------------------------------------------------------------------------
+    # Project specific
+    # -----------------------------------------------------------------------------
+
+    # Your code goes here
+
+Features
+========
+
+Do a quick ``fab -l`` and behold the commands at your fingertips:
+
+::
+
+    dev.install                          Install from scratch (eg - after pull for first time)
+    dev.reset                            Reset project after breaking change
+    dev.sync                             Sync project with latest master
+    dev.db.copy_mysql                    Perform a local MySQL dump and import it on the remote machine
+    dev.db.createsuperuser               Create superuser
+    dev.db.dump_mysql                    Perform a MySQL dump of the database
+    dev.db.import_mysql                  Perform a MySQL import of the database
+    dev.db.makemigrations                Make migrations
+    dev.db.migrate                       Apply migrations
+    dev.db.reset                         Reset database
+    dev.files.collect_static             Collect static files
+    dev.files.copy_media                 Copy local media files to remote server
+    dev.files.copy_static                Copy local static files to remote server
+    dev.files.delete_media               Delete all media files but preserve directories
+    dev.files.delete_pyc                 Delete pyc files
+    dev.files.delete_unused              Delete unused media files that are not referenced in the database
+    dev.files.fix_permissions            Ensure proper permissions on project folders
+    dev.git.pull_master                  Git pull origin master
+    dev.setup.clear_logs                 Clear debug logs
+    dev.setup.create_local_settings      Create default local settings file
+    dev.setup.create_logs                Create logs dir and log files
+    dev.setup.create_media_dir           Create media dir
+    dev.setup.create_virtualenv          Create and active a virtual environment
+    dev.setup.pip_install_requirements   Install pip requirements from requirements.txt
+    dev.setup.pip_update                 Upgrade pip
+    dev.setup.pip_update_packages        Update outdated pip packages (Be careful!)
+    prod.deploy                          Deploy latest commit
+    prod.install                         Install from scratch (eg - after pull for first time)
+    prod.db.copy_mysql                   Perform a remote MySQL dump and import it on the local machine
+    prod.db.createsuperuser              Create superuser
+    prod.db.dump_mysql                   Perform a MySQL dump of the database
+    prod.db.import_mysql                 Perform a MySQL import of the database
+    prod.db.migrate                      Apply migrations
+    prod.db.reset                        Reset database
+    prod.files.collect_static            Collect static files
+    prod.files.copy_media                Copy remote media files to local
+    prod.files.copy_static               Copy remote static files to local
+    prod.files.delete_pyc                Delete pyc files
+    prod.files.delete_unused             Delete unused media files
+    prod.files.fix_permissions           Ensure proper permissions on project folders
+    prod.git.pull_master                 Git pull origin master
+    prod.services.apache_restart         Restart apache
+    prod.setup.clear_logs                Clear debug logs
+    prod.setup.create_logs               Create logs dir and log files
+    prod.setup.create_media_dir          Create media dir
+    prod.setup.pip_install_requirements  Install pip requirements from requirements.txt
+    prod.setup.pip_update                Upgrade pip
+
+Documentation
+=============
+
+Documentation is available
+`here <http://tsantor.bitbucket.org/django-fabtasks>`__.
+
+Issues
+======
+
+If you experience any issues, please create an
+`issue <https://bitbucket.org/tsantor/django-fabtasks/issues>`__ on
+Bitbucket.
+
+Not Exactly What You Want?
+==========================
+
+This is what I want. *It might not be what you want.* If you have
+differences in your preferred setup, I encourage you to fork this to
+create your own version. Or create your own; it doesn't strictly have to
+be a fork.
+
+
+History
+=======
+
+All notable changes to this project will be documented in this file.
+This project adheres to `Semantic Versioning <http://semver.org/>`__.
+
+0.1.0 (2015-08-17)
+------------------
+
+-  First release on PyPI.
+
+
