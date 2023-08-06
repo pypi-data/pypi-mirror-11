@@ -1,0 +1,263 @@
+Humble Client - Non official client for Humble Bundle
+*****************************************************
+
+Description
+===========
+
+Humble Client is a command line client for downloading your DRM-free games
+purchased on the `Humble Bundle`_ online store. It allows listing your
+orders (or bundles) and your games and downloading DRM-free ones.
+
+It includes basic filtering capabilities to exclude platforms you do not
+want or to download only a precise list of games.
+
+**This client is not supported in any way by Humble Bundle !**
+
+.. _Humble Bundle: https://www.humblebundle.com
+
+Quickstart
+----------
+
+Simply put your login information into the configuration file (see
+Configuration_) and run ``humblec download`` to get all your DRM-free games.
+You can also use ``humblec --key KEY download`` to get the games of a bundle
+without using an account.
+
+See Usage_ for more details.
+
+Dependencies
+============
+
+Python modules:
+
+* PyYAML,
+* requests.
+
+Command line tool:
+
+* wget_ (which is used to effectively download files).
+
+.. _wget: https://www.gnu.org/software/wget/
+
+Installation
+============
+
+You can always install the latest version from PyPi using:
+
+.. code-block:: bash
+
+   $ pip install humbleclient
+
+Using an archive, this software can be installed using
+
+.. code-block:: bash
+
+   $ python setup.py install
+
+Usage
+=====
+
+Add ``--key KEY`` before a command to avoid the need for an account
+(where ``KEY`` comes from the ``key=`` of a bundle URL
+https://www.humblebundle.com/downloads?key=XXXXXXXXXXXX).
+
+Listing orders
+--------------
+
+.. code-block:: bash
+
+   $ humblec list-bundles
+
+Options:
+
+* ``--content``: display the content of each bundle,
+* ``--files``  : display the individual files associated to each game.
+
+Listing games
+-------------
+
+.. code-block:: bash
+
+   $ humblec list-games
+
+Options:
+
+* ``--files``: display the individual files associated to each game.
+
+This command is slower than the previous one since it requires to
+download the complete games list before displaying it in order to
+display once games which have been purchased multiple times.
+
+Downloading games
+-----------------
+
+.. code-block:: bash
+
+   $ humblec download
+
+Only the files which are not filtered out by the filters (see
+Filtering_) will be downloaded.
+
+To precisely select what to download or to override the filters given in
+the configuration file, the following command line flags are available:
+
+* ``--bundles BUNDLE [BUNDLE ...]``: download only the given bundles,
+* ``--games GAME [GAME ...]``: download only the given games,
+* ``--platforms PLATFORM [PLATFORM ...]``: download only files for the given platforms,
+* ``--files FILE [FILE ...]``: download only files corresponding to the
+  given codenames.
+
+Be careful that other filters are still applied: for example, if you
+select a particular file with ``--files`` but the platform of this file
+is filtered out, nothing will be downloaded, you also need to override
+the platform with ``--platforms``.
+
+Other options:
+
+* ``--directory DIRECTORY`` or ``-d DIRECTORY``: download files to this
+  directory instead of the one in the configuration file,
+
+* ``--dry-run`` or ``-n``: do not download anything, just display
+  download commands.
+
+Configuration
+=============
+
+The configuration goes to ``~/.config/humbleclient/config.yml`` (or
+``$XDG_CONFIG_HOME/humbleclient/config.yml``).
+
+To begin to download files, you just need to enter your login details in
+the ``account`` section:
+
+.. code-block:: yaml
+
+   account:
+     email: you@example.com
+     password: xxxxxxxx
+
+You can also add key of bundles which are not claimed by your account
+using (you can mix account and keys, all bundles will be processed):
+
+.. code-block:: yaml
+
+   keys:
+     - XXXXXXXXXXXX
+     - YYYYYYYYYYYY
+
+Files will go the directory ``~/Humble`` or any directory of your
+choice:
+
+.. code-block:: yaml
+
+   directory: ~/Humble
+
+Advanced users may customize the format used to display list of games
+and orders and to generate the destination directories of download files
+(see Formatting_).
+
+Some filters allow to select more precisely the files which will be
+downloaded (see Filtering_).
+
+Example
+-------
+
+The default values are the following:
+
+.. code-block:: yaml
+
+   account:
+     email:
+     password:
+   
+   keys: []
+   
+   directory: ~/Humble
+   
+   exclude:
+     bundles: []
+     # bundles:
+     #   - hib8 # I do not like games from the Humble Indie Bundle 8
+     platforms: []
+     # platforms:
+     #   - mac # I do not have a mac
+     games: []
+     files: []
+   
+   format:
+     download: "{game_name}/{filename}"
+     file:     "- {title} ({platform}, {human_size}, {name}, {filename})"
+     game:     "- {title} ({name}, {url})"
+     order:    "* {title} ({name}, {url})"
+
+Filtering
+---------
+
+There are 4 filters available:
+
+* ``bundles``
+* ``platforms``
+* ``games``
+* ``files``
+
+Each filter expects a list of code names which can be found using
+``list-orders`` or ``list-games``.
+
+Formatting
+----------
+
+Output format can be customized using the ``format`` section of the
+configuration file. There are 4 different format string, which accept
+different variables:
+
+* ``order``
+
+  * ``key``: Key of the bundle
+  * ``title``: Title of the bundle
+  * ``name``: Code name of the bundle
+  * ``url``: URL of the bundle
+
+* ``game``
+
+  * ``name``: Code name of the game
+  * ``title``: Human name of the game
+  * ``icon``: URL of an icon
+  * ``url``: URL of the game
+  * ``editor``: Editor of the game
+
+* ``file`` and ``download``
+
+  * ``game_name``: Code name of the game
+  * ``game_title``: Human name of the game
+  * ``game_editor``: Human name of the editor
+  * ``platform``: Platform
+  * ``name``: Code name of the file
+  * ``title``: Human name of the download (often not really interesting,
+    like "Download")
+  * ``size``: Size of the file
+  * ``human_size``: Human size of the file
+  * ``sha1``: SHA1 hash of the file (if available)
+  * ``md5``: MD5 hash of the file (if available)
+  * ``url``: Download url
+  * ``torrent``: Torrent url (if available)
+  * ``filename``: Filename
+
+Download
+========
+
+* Version 0.1.3: http://chadok.info/humbleclient/humbleclient-0.1.3.tar.gz
+* Darcs repository: http://hub.darcs.net/oschwand/humbleclient/
+
+Bugs and comments
+=================
+
+Please submit bug reports on the `issues tracker`_.
+
+.. _issues tracker: http://hub.darcs.net/oschwand/humbleclient/issues
+
+Licence
+=======
+
+Humble is free software, released under the term of the GPLv3+.
+
+Copyright 2014-2015 Olivier Schwander <olivier.schwander@ens-lyon.org>
+

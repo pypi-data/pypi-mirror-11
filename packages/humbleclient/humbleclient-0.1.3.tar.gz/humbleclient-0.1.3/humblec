@@ -1,0 +1,243 @@
+#! /usr/bin/env python2
+
+import argparse
+import sys
+import os
+from os import makedirs
+from os.path import join, expanduser, dirname
+
+import yaml
+
+from humble import *
+
+config = {
+    "account": {
+        "email"    : "",
+        "password" : "",
+    },
+    "directory": "~/Humble",
+    "keys": [],
+    "format"   : {
+        "order"   : u"* {title} ({name}, {url})",
+        "game"    : u"- {title} ({name}, {url})",
+        "file"    : u"- {title} ({platform}, {human_size}, {name}, {filename})",
+        "download": u"{game_name}/{filename}",
+    },
+    "exclude": {
+        "bundles": [],
+        "platforms": [],
+        "games": [],
+        "files": [],
+    },
+}
+
+class FormatError(ValueError):
+    pass
+
+def format(format, name, variables, indent=0):
+    try:
+        return ' ' * indent + format[name].format(**variables)
+    except KeyError as e:
+        raise FormatError(name, *e.args)
+
+def orders(config, humble, args):
+    for order in humble.orders():
+        print format(config["format"], "order", order, indent=0)
+        
+        if args.content or args.files:
+            for game in order.content:
+                print format(config["format"], "game", game, indent=2)
+                
+                if args.files:
+                    for download in game.downloads:
+                        print format(config["format"], "file", download, indent=4)
+
+def games(config, humble, args):
+    for game in humble.games():
+        print format(config["format"], "game", game, indent=0)
+        
+        if args.files:
+            for download in game.downloads:
+                print format(config["format"], "file", download, indent=2)
+
+def download(config, humble, args):
+    if args.directory is None:
+        directory = expanduser(config["directory"])
+    else:
+        directory = args.directory[0]
+    
+    for order in humble.orders():
+        name = order["name"]
+        # exclude bundles in the filter list but only if the
+        # bundle does not appear in the command line
+        if name in config['exclude']['bundles'] and name not in args.bundles:
+            continue
+        
+        # if a bundles list has been given, exclude bundles which does
+        # not appear in the list
+        if len(args.bundles) > 0 and name not in args.bundles:
+            continue
+        
+        for game in order.content:
+            name = game["name"]
+            # exclude games in the filter list but only if the
+            # game does not appear in the command line
+            if name in config['exclude']['games'] and name not in args.games:
+                continue
+            
+            # if a game list has been given, exclude game which does not
+            # appear in the list
+            if len(args.games) > 0 and game["name"] not in args.games:
+                continue
+            
+            for download in game.downloads:
+                platform = download["platform"]
+                # exclude platforms in the filter list but only if the
+                # platform does not appear in the command line
+                if platform in config['exclude']['platforms'] and platform not in args.platforms:
+                    continue
+                
+                # if a platform list has been given, exclude platforms
+                # which does not appear in the list
+                if len(args.platforms) > 0 and platform not in args.platforms:
+                    continue
+                
+                name = download["name"]
+                # exclude files in the filter list but only if the
+                # file does not appear in the command line
+                if name in config['exclude']['files'] and name not in args.files:
+                    continue
+                
+                # if a download list has been given, exclude download
+                # which does not appear in the list
+                if len(args.files) > 0 and download["name"] not in args.files:
+                    continue
+                
+                dest = join(directory,
+                            format(config["format"], "download", download))
+                cmdline = [u"wget", u"-c", u"-O", dest, download["url"]]
+                
+                if args.dryrun:
+                    print u" ".join(cmdline).encode("UTF-8")
+                else:
+                    print dest
+                    try:
+                        makedirs(dirname(dest))
+                    except OSError:
+                        pass
+                    call(cmdline)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Humble -- Non official client for Humble Bundle', version=version)
+    parser.add_argument("-c", "--config",
+                        dest="config",
+                        default=os.path.expanduser("~/.config/humble/config.yml"),
+                        help="Configuration file")
+    parser.add_argument("--key", "-k",
+                        dest="key",
+                        metavar="KEY",
+                        nargs=1,
+                        default=None,
+                        help="Work on the given bundle key instead of using an account")
+    subparsers = parser.add_subparsers()
+    
+    parser_bundles = subparsers.add_parser('list-bundles', help='List bundles')
+    parser_bundles.add_argument("--content",
+                                dest="content",
+                                default=False,
+                                action="store_true",
+                                help="Display content of bundles")
+    parser_bundles.add_argument("--files",
+                                dest="files",
+                                default=False,
+                                action="store_true",
+                                help="Display individual files (imply --content)")
+    parser_bundles.set_defaults(func=orders)
+    
+    parser_games = subparsers.add_parser('list-games', help='List games')
+    parser_games.add_argument("--files",
+                              dest="files",
+                              default=False,
+                              action="store_true",
+                              help="Display individual files")
+    parser_games.set_defaults(func=games)
+    
+    parser_download = subparsers.add_parser('download', help='Download games')
+    parser_download.add_argument("--directory", "-d",
+                                 dest="directory",
+                                 metavar="DIRECTORY",
+                                 nargs=1,
+                                 default=None,
+                                 help="Download file to this directory instead of the one in the configuration file")
+    parser_download.add_argument("--dry-run", "-n",
+                                 dest="dryrun",
+                                 default=False,
+                                 action="store_true",
+                                 help="Do not download anything, just display wget commands")
+    parser_download.add_argument("--bundles", "-b",
+                                 metavar="BUNDLE",
+                                 dest="bundles",
+                                 nargs='+',
+                                 default=[],
+                                 help="Download only the given bundles")
+    parser_download.add_argument("--games", "-g",
+                                 metavar="GAME",
+                                 dest="games",
+                                 nargs='+',
+                                 default=[],
+                                 help="Download only the given games")
+    parser_download.add_argument("--platforms", "-p",
+                                 metavar="PLATFORM",
+                                 dest="platforms",
+                                 nargs='+',
+                                 default=[],
+                                 help="Download only files for the given platforms")
+    parser_download.add_argument("--files", "-f",
+                                 metavar="FILE",
+                                 dest="files",
+                                 nargs='+',
+                                 default=[],
+                                 help="Download only files corresponding to the given codenames")
+    parser_download.set_defaults(func=download)
+    
+    args = parser.parse_args()
+    
+    default_format = config["format"]
+    with open(args.config) as f:
+        config.update(yaml.safe_load(f))
+    
+    for (k, f) in config["format"].iteritems():
+        if type(config["format"][k]) is str:
+            config["format"][k] = unicode(f)
+    
+    if config["exclude"] is None:
+        config["exclude"] = {}
+    for filter in ["platforms", "games", "files", "bundles"]:
+        if filter not in config["exclude"]:
+            config["exclude"][filter] = []
+    
+    for f in ["order", "game", "file", "download"]:
+        if f not in config["format"]:
+            config["format"][f] = default_format[f]
+    
+    h = Humble()
+    
+    if args.key is not None:
+        h.keys(args.key)
+    else:
+        try:
+            h.login(config["account"]["email"], config["account"]["password"])
+        except LoginFailed as e:
+            print >>sys.stderr, "Login failed (error %s)" % str(e)
+            sys.exit(1)
+        h.keys(config["keys"])
+    
+    try:
+        args.func(config, h, args)
+    
+    except FormatError as e:
+        print >>sys.stderr, "Invalid key '%s' in format '%s'." % (e.args[1], e.args[0])
+        sys.exit(2)
+    except KeyboardInterrupt:
+        sys.exit(0)
+
