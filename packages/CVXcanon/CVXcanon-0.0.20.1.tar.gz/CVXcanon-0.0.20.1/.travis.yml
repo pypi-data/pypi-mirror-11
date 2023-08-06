@@ -1,0 +1,42 @@
+language: python
+python:
+  - "2.7"
+  - "3.4"
+os:
+  - linux
+#  - osx
+before_install:
+  # Install conda to avoid a lengthy build process from scipy and numpy 
+  # binaries (CVXCanon will automatically build NUMPY from 
+  # source if needed. SCIPY is only used by cvxpy, but building from 
+  # source for each build is too slow)
+  - sudo pip install conda
+  # install deps
+  - sudo conda init
+  - deps='pip numpy scipy'
+  - conda create -p $HOME/py --yes $deps "python=$TRAVIS_PYTHON_VERSION"
+  - export PATH=$HOME/py/bin:$PATH
+
+  # cvxpy dependency 
+  - sudo apt-get install -qq libatlas-base-dev gfortran
+  - export ATLAS="/usr/lib/atlas-base/libatlas.so"
+
+# command to install dependencies
+install:
+  - "sudo apt-get install swig"
+
+  # compiling library
+  - "python setup.py install"
+
+  # adding cvxpy 
+  - "cd tests"
+  - "git clone https://github.com/cvxgrp/cvxpy.git"
+  - "cd cvxpy"
+  - "python setup.py install"
+  - "pip install nose"
+
+# command to run tests
+script:  "nosetests cvxpy"
+
+notifications:
+  email: false
