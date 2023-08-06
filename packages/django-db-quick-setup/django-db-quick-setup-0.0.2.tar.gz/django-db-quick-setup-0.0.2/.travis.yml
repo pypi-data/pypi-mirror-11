@@ -1,0 +1,40 @@
+sudo: required
+services:
+  - docker
+language: python
+python:
+  - "2.7"
+  - "3.4"
+env:
+  matrix:
+    - DJANGO_SETTINGS_MODULE=settings.sqlite_only
+    - DJANGO_SETTINGS_MODULE=settings.mysql_only
+    - DJANGO_SETTINGS_MODULE=settings.postgresql_only
+before_script:
+  - sudo service docker restart
+  - sleep 10
+script:
+  - python setup.py pep8
+  - python setup.py sdist
+  - python setup.py bdist
+  - python setup.py install
+  - mkdir -p ../testdir
+  - mv manage.py test_settings.py settings ../testdir
+  - cd ../testdir
+  - ./manage.py db_quick_setup
+  - sleep 20
+  - docker ps -a
+  - if [[ -z "$(docker ps -q)" ]]; then docker logs "$(docker ps -q -n=1)" || true; fi
+  - ./manage.py migrate
+  - ./manage.py db_quick_setup
+  - sudo service docker restart
+  - sleep 10
+  - ./manage.py db_quick_setup
+  - sleep 10
+  - ./manage.py migrate
+  - sudo service docker restart
+  - sleep 10
+  - if [[ ! -z "$(docker ps -q -n=1)" ]]; then docker rm "$(docker ps -q -n=1)"; fi
+  - ./manage.py db_quick_setup
+  - sleep 10
+  - ./manage.py migrate
