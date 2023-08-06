@@ -1,0 +1,44 @@
+Changelog
+=========
+
+0.7 (150924)
+------------
+
+- Fix missing import and typo in setup.py-generation, which broke addons-installs.
+
+
+0.6 (150923)
+------------
+
+- Update README, improve installPlone().
+
+
+0.5 (150921)
+------------
+
+- Fix imports, better hlp-msgs, improve installPlone().
+
+
+0.4 (150920)
+------------
+
+- Update README
+
+
+0.3 (150920)
+------------
+
+- Fix changed import-paths.
+
+
+0.2 (150920)
+------------
+
+- Add adi.commons as dependency.
+
+
+0.1 (150920)
+------------
+
+- Initial release
+
