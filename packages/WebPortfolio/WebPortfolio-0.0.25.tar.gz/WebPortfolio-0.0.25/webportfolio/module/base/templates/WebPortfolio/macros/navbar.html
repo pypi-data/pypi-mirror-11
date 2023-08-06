@@ -1,0 +1,159 @@
+
+{% macro sub_list(nav_name, nav_items, nav_kwargs) %}
+
+    {% if nav_items %}
+      {% if nav_name %}
+          <li class="dropdown"><a href="#"
+                                  class="dropdown-toggle"
+                                  data-toggle="dropdown"
+                                  role="button"
+                                  aria-haspopup="true"
+                                  aria-expanded="false">{{ nav_name }} <span class="caret"></span></a>
+      {% endif %}
+
+      {% if nav_name %}
+          <ul class="dropdown-menu">
+      {% endif %}
+
+          {% for item in nav_items %}
+              {% set item_name = item[1] %}
+              {% set item_endpoint = item[2] %}
+              {% set item_kwargs = item[3] %}
+              {% set item_fa_icon = item_kwargs["fa_icon"] %}
+              {% set item_endpoint_kwargs = item_kwargs["endpoint_kwargs"] %}
+              {% set item_url = url_for(item_endpoint, _external=True, **item_endpoint_kwargs) %}
+
+              <li class="{% if item_url == request.url %}active{% endif %}">
+                  <a href="{{ item_url }}">
+                      {% if item_fa_icon %}<i class="fa fa-{{ item_fa_icon }}"></i>{% endif %}
+                      {{ item_name }}
+                  </a>
+              </li>
+          {% endfor %}
+
+      {% if nav_name %}
+          </ul>
+      {% endif %}
+
+      {% if nav_name %}
+          </li>
+      {% endif %}
+
+    {% endif %}
+
+{% endmacro %}
+
+
+{%  macro nav_list_content(nav_name, nav_items, nav_kwargs, allow_pull=False, align_right=False) %}
+        {% if allow_pull %}
+            {% if align_right %}
+                {% if nav_kwargs["align_right"] %}
+                    {{ sub_list(nav_name, nav_items, nav_kwargs) }}
+                {% endif %}
+            {% elif not nav_kwargs["align_right"] %}
+                {{ sub_list(nav_name, nav_items, nav_kwargs) }}
+            {% endif %}
+
+        {% else %}
+            {{ sub_list(nav_name, nav_items, nav_kwargs) }}
+        {% endif %}
+{%  endmacro %}
+
+
+
+{% macro nav_list(allow_pull=true, align_right=false, groups=None, exclude_groups=None) %}
+
+    <ul class="nav navbar-nav {% if allow_pull and align_right %}navbar-right{% endif %}">
+        {% for nav in __g.NAV_MENU %}
+            {% set nav_name = nav[1] %}
+            {% set nav_items = nav[2] %}
+            {% set nav_kwargs = nav[3] %}
+            {%  set is_group = nav_kwargs["kwargs"]%}
+
+            {%  if groups %}
+                {% if nav_kwargs["group"] in groups  %}
+                    {{ nav_list_content(nav_name,
+                                        nav_items,
+                                        nav_kwargs,
+                                        allow_pull=allow_pull,
+                                        align_right=align_right) }}
+                {% endif %}
+
+            {%  elif exclude_groups %}
+                {% if nav_kwargs["group"] not in exclude_groups  %}
+                    {{ nav_list_content(nav_name,
+                                        nav_items,
+                                        nav_kwargs,
+                                        allow_pull=allow_pull,
+                                        align_right=align_right) }}
+                {% endif %}
+
+            {%  else %}
+                {{ nav_list_content(nav_name,
+                                    nav_items,
+                                    nav_kwargs,
+                                    allow_pull=allow_pull,
+                                    align_right=align_right) }}
+            {%  endif %}
+
+        {% endfor %}
+    </ul>
+{% endmacro %}
+
+
+{#
+ To a create navbar
+
+ :brand: The brand of the site, can include anything
+ :brand_url: The url when the brand is clicked on
+ :fluid: If true it will expand menu all across
+ :fixed: If true it will place the menu on top in a fixed position
+ :fixed_padding_top: When fixed, specify the top padding in px
+ :menu_id: if there are more that one menu, to make them unique
+ :groups: (list) - list of menu groups to accept
+ :exclude_groups: (list) - list of menu groups to exclude
+ #}
+{% macro navbar(brand="",
+                brand_url="#",
+                fluid=True,
+                fixed=True,
+                fixed_padding_top="70px",
+                menu_id=1,
+                groups=[],
+                exclude_groups=[]) %}
+
+    {% if fixed %}
+        <style>
+            body{
+                padding-top: {{ fixed_padding_top }} !important;
+            }
+        </style>
+    {% endif %}
+
+    <nav class="navbar navbar-default {% if fixed %} navbar-fixed-top {% else %}navbar-static-top{% endif %}">
+      <div class="container{% if fluid == true%}-fluid{% endif %} ">
+        <div class="navbar-header">
+          <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#WP-navbar-collapse-{{ menu_id }}" aria-expanded="false">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </button>
+          <a class="navbar-brand" href="{{ brand_url }}">{{ brand | safe }}</a>
+        </div>
+
+        <div class="collapse navbar-collapse" id="WP-navbar-collapse-{{ menu_id }}">
+            {{ nav_list(allow_pull=true,
+                        align_right=false,
+                        groups=groups,
+                        exclude_groups=exclude_groups) }}
+
+            {{ nav_list(allow_pull=true,
+                        align_right=true,
+                        groups=groups,
+                        exclude_groups=exclude_groups) }}
+        </div>
+      </div>
+    </nav>
+{% endmacro %}
+
