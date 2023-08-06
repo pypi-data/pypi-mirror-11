@@ -1,0 +1,172 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Misc &mdash; python-raven 0.5.1 documentation</title>
+    
+    <link rel="stylesheet" href="_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.5.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="search" type="application/opensearchdescription+xml"
+          title="Search within python-raven 0.5.1 documentation"
+          href="_static/opensearch.xml"/>
+    <link rel="top" title="python-raven 0.5.1 documentation" href="index.html" />
+    <link rel="next" title="python module documentation" href="modules.html" />
+    <link rel="prev" title="Security" href="security.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="modules.html" title="python module documentation"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="security.html" title="Security"
+             accesskey="P">previous</a> |</li>
+        <li><a href="index.html">python-raven 0.5.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <div class="section" id="misc">
+<h1>Misc<a class="headerlink" href="#misc" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="response-url-for-cancels">
+<span id="cancel-url"></span><h2>Response URL for &#8220;cancels&#8221;<a class="headerlink" href="#response-url-for-cancels" title="Permalink to this headline">¶</a></h2>
+<p>The short story is that when the WLS wants to send a &#8220;response&#8221; to the WAA, it
+takes the URL you provided in the request, adds a <cite>WLS-Response</cite> query
+parameter, and redirects the client to that URL.</p>
+<p>Happily, it guarantees that this will be done by appending
+<cite>(?|&amp;)WLS-Response=...</cite> to the URL (which means that this process is easy to
+undo, which is a necessary part of <a class="reference internal" href="security.html#checking-response-values"><em>Checking response values</em></a>).</p>
+<p>However: while in version 3 it preserves any query parameters that were already
+in the request URL, in version 1 of the protocol it will not: that is, it
+deletes the query component before appending <cite>?WLS-Response...</cite>. Furthermore,
+while the current version of the WLS appears to reply with version 3 upon
+success, if you click &#8220;cancel&#8221; then it will use version 1, presumably because
+of reasons.</p>
+<p>The WLS does include in its response a copy of some of the request parameters,
+in particular, the return URL. It is possible to extract this from the
+response, and after inspecting WLS-Response, perform a redirect to it,
+recovering the deleted query parameters. The <cite>flask_glue</cite> does exactly this,
+and so hopefully you should not suffer problems on account of this behaviour.</p>
+<p>Note that if you for some reason had the requirement that requests to a certain
+page need only be Raven authenticated if a certain query parameter is present,
+then something like this would not work correctly:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">my_before_request</span><span class="p">():</span>
+    <span class="k">if</span> <span class="s">&quot;special&quot;</span> <span class="ow">in</span> <span class="n">request</span><span class="o">.</span><span class="n">args</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">flask_glue</span><span class="o">.</span><span class="n">before_request</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">None</span>
+</pre></div>
+</div>
+<p>... since if a user clicks Cancel, the special query parameter would not be
+set, so the <cite>before_request</cite> function would run, and the response from the WLS
+would not be handled. Instead, something like this would be necessary:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">def</span> <span class="nf">my_before_request</span><span class="p">():</span>
+    <span class="k">if</span> <span class="s">&quot;special&quot;</span> <span class="ow">in</span> <span class="n">request</span><span class="o">.</span><span class="n">args</span> <span class="ow">or</span> <span class="s">&quot;WLS-Response&quot;</span> <span class="ow">in</span> <span class="n">request</span><span class="o">.</span><span class="n">args</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">flask_glue</span><span class="o">.</span><span class="n">before_request</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">None</span>
+</pre></div>
+</div>
+<p>If you are not using the <cite>flask_glue</cite>, I suggest where possible just avoiding
+having significant query parameters on the URL that you use to perform Raven
+authentication, and then simply check that <cite>request.base_url</cite> matches the URL
+in the signed response. Otherwise, have a look at the implementation of
+<cite>flask_glue</cite> for inspiration.</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Misc</a><ul>
+<li><a class="reference internal" href="#response-url-for-cancels">Response URL for &#8220;cancels&#8221;</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="security.html"
+                        title="previous chapter">Security</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="modules.html"
+                        title="next chapter">python module documentation</a></p>
+  <h3>This Page</h3>
+  <ul class="this-page-menu">
+    <li><a href="_sources/misc.txt"
+           rel="nofollow">Show Source</a></li>
+  </ul>
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="modules.html" title="python module documentation"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="security.html" title="Security"
+             >previous</a> |</li>
+        <li><a href="index.html">python-raven 0.5.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2013, Daniel Richman.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2.2.
+    </div>
+  </body>
+</html>
