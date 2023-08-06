@@ -1,0 +1,70 @@
+
+# Coverage in variants
+
+## Variant QC
+
+Finally, looking at global metrics for variant calls such as the number of heterozygous calls, transition/transversion ratios, and the read coverage at sites that were called as variants. 
+
+> Unclear whether this is limited to the target / reporting regions or global. I think in general we need to clarify where metrics are a) global, b) limited to target regions, and c) limited to coverage regions.
+
+```{r table-variants, results='asis'}
+qc$ratio_het_hom = qc$Variations_heterozygous/qc$Variations_homozygous
+metrics = c("sample", "Variations_total", "Variations_in_dbSNP_pct",
+            "Variations_heterozygous", "Variations_homozygous", "ratio_het_hom", "Transition/Transversion")
+print(kable(qc[, metrics], align="c", digits=2))
+```
+### Variant coverage
+
+Another coverage plot, this time limited to positions identified as variants. Read coverage on the X-axis (limited to 100X), percentage of variants with that coverage on the Y-axis. The red line highlights the X=13 cutoff required for somewhat reliable heterogenous variant identification in germline samples.
+
+```{r variants-coverage}
+fns = list.files(file.path(path_results, "variants"), full.names = TRUE, pattern = "gc-depth-parse.tsv")
+tab = data.frame()
+for (fn in fns){
+    dt = read.table(fn, header=T,sep="\t")
+    dt = dt %>% filter(!grepl("[::.::]",depth))
+    dt[,2] = as.numeric(dt[,2])
+    q = quantile(dt[,2],c(0,.10,.25,.50,.75,.90,1))
+    labels=factor(rev(names(q)),levels=c("0%","10%","25%","50%","75%","90%","100%"))
+    dt = data.frame(variants_pct=labels, depth=q, sample=dt$sample[1])
+    tab = rbind(tab, dt)
+}
+
+ggplot(tab, aes(x=depth, y=variants_pct, group=sample)) +
+    geom_line(size=2, alpha=.5) +
+    geom_vline(xintercept=13, color='red') +
+    theme_bw() +
+    xlim(0,100) +
+    labs(list(x="# of reads", y="% variants with more than X reads", title="variants coverage"))
+```
+
+### Variant G/C bias
+
+Checking for G/C bias for called variants. This is again capped at 100X coverage; X-axis is G/C content of a read, Y-axis the number of reads supporting a variant, colour reflects the number of variants at that coverage and G/C window. 
+
+
+```{r variants-coverage-gc, fig.width=15, fig.height=15}
+rf <- colorRampPalette(rev(brewer.pal(11,'Spectral')))
+r <- c("white", rf(9))
+list_p = list()
+fns = list.files(file.path(path_results, "variants"), full.names = TRUE, pattern = "gc-depth-parse.tsv")
+for (fn in fns[1:2]){
+    dt = read.table(fn, header=T,sep="\t")
+
+    dt = dt %>% filter(!grepl("[::.::]",depth))
+    dt[,2] = as.numeric(dt[,2])
+    sample = dt$sample[1]
+    p = ggplot(dt, aes(CG, depth)) +
+        stat_bin2d() +
+        ylab("# of reads") +
+        scale_fill_gradientn(colours = r, guide = FALSE) + 
+        theme_bw() +
+        ylim(0, 100) +
+        scale_x_discrete(breaks=seq(0,100,10)) +
+        ggtitle(sample)
+
+    list_p[[as.character(sample)]]=p
+}
+
+do.call(grid.arrange, list_p)
+```
