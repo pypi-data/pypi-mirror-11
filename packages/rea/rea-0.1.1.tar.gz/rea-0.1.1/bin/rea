@@ -1,0 +1,236 @@
+#!/usr/bin/env python
+#
+# Copyright (C) 2014
+# Institut d'Astrophysique Spatiale
+#
+# Forked from the BoA project
+#
+# Copyright (C) 2002-2006
+# Max-Planck-Institut fuer Radioastronomie Bonn
+# Argelander Institut fuer Astronomie
+# Astronomisches Institut der Ruhr-Universitaet Bochum
+#
+# Produced for the LABOCA project
+#
+# This library is free software; you can redistribute it and/or modify it under
+# the terms of the GNU Library General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option) any
+# later version.
+#
+# This library is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU Library General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Library General Public License
+# along with this library; if not, write to the Free Software Foundation, Inc.,
+# 675 Massachusetts Ave, Cambridge, MA 02139, USA.
+#
+
+"""
+NAM: ReaStart.py (file)
+DES: Rea starting procedure
+"""
+
+__version__ = '$Revision: 2756 $'
+__date__ = '$Date: 2010-06-17 18:17:18 +0200 (jeu. 17 juin 2010) $'
+
+
+# ---------------------------------------------------------------------
+# ---- Import ---------------------------------------------------------
+# ---------------------------------------------------------------------
+
+import os
+import sys
+import string
+import numpy as np
+import cPickle
+
+import readline
+import rlcompleter
+readline.parse_and_bind("tab: complete")
+
+from rea.Bogli import *
+from rea import ReaConfig
+from rea import ReaMessageHandler, ReaCommandHistory, ReaFlagHandler
+from rea import ReaMapping, ReaPointing, ReaFocus
+from rea.Utilities import getTau, getCalCorr
+
+
+# ---------------------------------------------------------------------
+# ---- Print welcome message ------------------------------------------
+# ---------------------------------------------------------------------
+
+print
+print "Rea - the Receiver Array data Analysis Software"
+print
+print "Versions: Rea        :", os.getenv('REA_VERSION')
+print "          Rea Library:", os.getenv('REA_LIB_VERSION')
+print
+
+# ---------------------------------------------------------------------
+# ---- Initialisation of the Message File -----------------------------
+# ---------------------------------------------------------------------
+messages = ReaMessageHandler.MessHand('User')
+messages.initMessFile()
+
+# ---------------------------------------------------------------------
+# ---- Initialisation of the Command History --------------------------
+# ---------------------------------------------------------------------
+ReaCommandHistory.initHistory()
+
+# ---------------------------------------------------------------------
+# ---- Initialisation of the plotting routine -------------------------
+# ---------------------------------------------------------------------
+
+plot = Plot.plot
+draw = Plot.draw
+mplot = MultiPlot.plot
+mdraw = MultiPlot.draw
+
+# ---------------------------------------------------------------------
+# ---- Change the prompt if online mode  -----------------------------
+# if you dont like the color, choose a different one from the menue below
+# ---------------------------------------------------------------------
+
+if ReaConfig.online:
+    messages.info("Rea - Online mode")
+else:
+    messages.info("Rea - Offline mode")
+    if not os.getenv('REA_HOME_REA'):
+        os.environ['REA_HOME_REA'] = os.path.dirname(ReaConfig.__file__)
+
+sys.ps1 = 'rea> '
+sys.ps2 = '.... '
+
+
+# ---------------------------------------------------------------------
+# ---- Main program ---------------------------------------------------
+# ---------------------------------------------------------------------
+
+"""
+DES: You have to define an environment variable MBFITSXML,
+     whose value is the path to the file MBFits.xml,
+     including the file name itself
+     (ex: setenv MBFITSXML ./MBFits.xml )
+"""
+
+# TODO make an external read() routine which will return the
+# appropriate object and take care of memory allocation
+
+# data = ReaMapping.Map()
+# data = ReaPointing.Point()
+data = ReaFocus.Focus()
+
+try:
+    exec(
+        compile(open(os.getenv('REA_HOME_REA') + '/ReaShortcut.py').read(),
+                os.getenv('REA_HOME_REA') + '/ReaShortcut.py',
+                'exec'))
+except:
+    messages.warning("ReaShortcut not found, or error in execution")
+
+# try:
+#    execfile(os.getenv('REA_HOME_REA')+'/macros.py')
+# except:
+#    messages.warning("macros not found")
+
+# ---------------------------------------------------------------------
+# ---- Try to execute the interactive script --------------------------
+# ---- The variable PYTHONSTARTUP should point to interactive.py ------
+# ---------------------------------------------------------------------
+try:
+    if os.environ.get('PYTHONSTARTUP') \
+            and os.path.isfile(os.environ['PYTHONSTARTUP']):
+        exec(
+            compile(open(os.environ['PYTHONSTARTUP']).read(),
+                    os.environ['PYTHONSTARTUP'],
+                    'exec'))
+
+except:
+    messages.warning("interactive.py could not be loaded")
+
+# ---------------------------------------------------------------------
+# Function definitions
+# ---------------------------------------------------------------------
+import gc
+
+
+def test_memory():
+    attrDic = vars(data)
+    attrName = attrDic.keys()
+    nbAttr = len(attrName)
+    attrName.sort()
+
+    for badattribute in ['Bogli', 'MessHand', 'addLatWT', 'addLonWT',
+                         'flagValue', 'fwhm', 'numDataPoints', 'phase', 'scanNum']:
+        if badattribute in attrName:
+            attrName.remove(badattribute)
+    totsize = 0
+    for a in attrName:
+        totsize += len(attrDic[a])
+        print a, " : ", len(attrDic[a])
+        attrDic[a] = [0]
+
+    print "Total :", totsize
+
+
+def newRestoreData(fileName='ReaData.sav'):
+    """
+    DES: restore a TimelineData object previously saved in a file, and
+    set it as the currData attribute of ReaB
+    INP: (string) fileName: name of the input file
+    optional - default value = 'ReaData.sav'
+    """
+    tmp = restoreFile(fileName)
+
+    if hasattr(tmp, 'DataFlags'):
+        tmp.FlagHandler = ReaFlagHandler.createFlagHandler(
+            tmp.DataFlags.astype(np.int8))
+        tmp.DataFlags = None
+
+        tmp.ScanParam.FlagHandler = ReaFlagHandler.createFlagHandler(
+            tmp.ScanParam.Flags.astype(np.int32))
+        tmp.ScanParam.Flags = None
+
+        tmp.ReceiverArray.FlagHandler = ReaFlagHandler.createFlagHandler(
+            tmp.ReceiverArray.Flags.astype(np.int32))
+        tmp.ReceiverArray.Flags = None
+
+    return tmp
+
+
+def restoreFile(fileName):
+    """
+    DES: read an object that was stored using cPickle (e.g. using dumpData or dumpMap)
+    """
+    try:
+        f = file(fileName)
+    except IOError:
+        messages.error(" could not open file %s" % (fileName))
+        return 0
+    tmp = cPickle.load(f)
+    f.close()
+    return tmp
+
+# ---------------------------------------------------------------------
+# Finally, execute ReaOnOff.py which contains functions to process
+# ON-OFF scans observed with LABOCA
+# exec(compile(open(os.getenv('REA_HOME_REA') + '/ReaOnOff.py')
+#      .read(), os.getenv('REA_HOME_REA') + '/ReaOnOff.py', 'exec'))
+
+try:
+    from IPython.config.loader import Config
+    cfg = Config()
+    prompt_config = cfg.PromptManager
+    prompt_config.in_template = 'rea >\\#>: '
+    prompt_config.in2_template = '   .\\D.: '
+    prompt_config.out_template = 'rea <\\#<: '
+    from IPython.terminal.embed import InteractiveShellEmbed
+    ipshell = InteractiveShellEmbed(config=cfg, banner1 = '')
+    ipshell()
+    
+except:
+    print "WW - IPython not installed"
+    import code
+    code.interact(banner="", local=locals())
