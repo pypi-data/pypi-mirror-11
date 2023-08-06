@@ -1,0 +1,86 @@
+============
+Contributing
+============
+
+Contributions are welcome, and they are greatly appreciated! Every
+little bit helps, and credit will always be given.
+
+You can contribute in many ways:
+
+Types of Contributions
+----------------------
+
+Report Bugs
+~~~~~~~~~~~
+
+Report bugs at https://git.scicore.unibas.ch/AnnotationPipelines/Jobber/issues.
+
+If you are reporting a bug, please include:
+
+* Your operating system name and version.
+* Any details about your local setup that might be helpful in troubleshooting.
+* Detailed steps to reproduce the bug.
+
+Fix Bugs
+~~~~~~~~
+
+Look through the GitLab issues for bugs. Anything tagged with "bug"
+is open to whoever wants to implement it.
+
+Implement Features
+~~~~~~~~~~~~~~~~~~
+
+Look through the GitLab issues for features. Anything tagged with "feature" or "enhancement"
+is open to whoever wants to implement it.
+
+Write Documentation
+~~~~~~~~~~~~~~~~~~~
+
+Jobber could always use more documentation, whether as part of the
+official Jobber docs, in docstrings, or even on the web in blog posts,
+articles, and such.
+
+Submit Feedback
+~~~~~~~~~~~~~~~
+
+The best way to send feedback is to file an issue at https://git.scicore.unibas.ch/AnnotationPipelines/Jobber/issues.
+
+If you are proposing a feature:
+
+* Explain in detail how it would work.
+* Keep the scope as narrow as possible, to make it easier to implement.
+* Remember that this is a volunteer-driven project, and that contributions
+  are welcome :)
+
+Get Started!
+------------
+
+Ready to contribute? Here's how to set up `Jobber` for local development.
+
+1. Clone your fork locally::
+
+    $ git clone ssh://git@git.scicore.unibas.ch:2222/AnnotationPipelines/Jobber.git
+
+    for that you have to add the ssh key from your computer to the GitLab. See https://git.scicore.unibas.ch/help/ssh/README.
+
+2. Create a branch for local development::
+
+    $ git checkout -b name-of-your-bugfix-or-feature
+
+   Now you can make your changes locally.
+
+3. Commit your changes and push your branch to GitHub::
+
+    $ git add .
+    $ git commit -m "Your detailed description of your changes."
+    $ git push origin name-of-your-bugfix-or-feature
+
+7. Submit a merge request through the GitLab website.
+
+
+Tips
+----
+
+To run a subset of tests::
+
+    $ python -m unittest tests.test_Jobber
