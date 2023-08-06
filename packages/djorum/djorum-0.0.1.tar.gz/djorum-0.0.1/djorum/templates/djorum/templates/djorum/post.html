@@ -1,0 +1,161 @@
+{% extends 'forum/index.html' %}
+{% load crispy_forms_tags %}
+{% load staticfiles %}
+{% block head %}
+    <script>
+
+        function openReply(id) {
+            $('#' + id + ' > form')[0].style.display = "";
+            $('#' + id + ' > .reply-control')[0].style.display = "none"
+        }
+
+        function closeReply(id) {
+            $('#' + id + ' > form')[0].style.display = "none";
+            $('#' + id + ' > .reply-control')[0].style.display = "";
+            $('#' + id + ' > form')[0].reset();
+        }
+        {# TODO: move this #}
+    </script>
+{% endblock head %}
+
+
+{% load django_bootstrap_breadcrumbs %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    {% breadcrumb post.topic "forum:topic_posts" post.topic.slug %}
+    {% breadcrumb post "forum:post" post.topic post.slug %}
+
+{% endblock breadcrumbs %}
+
+
+{% block content %}
+
+    {% render_breadcrumbs %}
+
+    <!-- Posts  -->
+
+    <div class="well" style="margin-bottom: 0;">
+        {% if user.is_authenticated %}
+            {% if post.creator == user or post.topic.creator == user %}
+                <a href="{% url 'forum:post_delete' post.topic.slug post.slug %}">
+                    <button class="btn btn-sm btn-danger pull-right">
+                        Delete Post
+                    </button>
+                </a>
+
+            {% endif %}
+        {% endif %}
+        <h2 style="margin-top: 0;" {# todo: move #}>{{ post }}</h2>
+        <small>posted by <a href="{% url 'user_profile' post.creator %}"> {{ post.creator }} </a>
+            on {{ post.created.date }} at {{ post.created.time }}</small>
+        {{ post.body }}
+    </div>
+    <br><br>
+    {% load mptt_tags %}
+    <ul>
+        {% recursetree replies %}
+
+            <div class="media"><!-- post -->
+                <a class="pull-left"><!-- img -->
+                    <img class="img-responsive media-object img-circle" alt="Image Placeholder"
+                         src="{% static 'img/placeholder_avatar.svg' %}" style="width: 100%; height: 100%;">
+                </a>
+
+                <div class="media-body"><!-- post content-->
+                    <h4 class="media-heading"><!-- title-->
+
+
+                        <div class="reply-control">
+                            <a onclick="openReply({{ node.pk }})"><i class="fa fa-reply"></i></a>
+                        </div>
+
+                        <span>
+								{{ node.title }}
+
+								 <small>by <a href="{% url 'user_profile' node.creator %}">{{ node.creator }}</a>
+                                     at {{ node.created }}
+
+                                     {% if user.is_authenticated %}{# TODO: add is_admin? #}
+                                         {% if node.creator == user or node.topic.creator == user %}
+                                             <button type="button" class="pull-right btn btn-danger btn-xs"
+                                                     data-toggle="modal" data-target="#postModal{{ node.id }}">
+                                                 Delete
+                                             </button>
+                                             {# Change to button, see line 100 #}
+                                             {#                                             <a href="{% url 'forum:delete_reply' node.topic.slug node.post.slug node.id %}" data-target="#postModal{{ reply.id }}" data-toggle="modal">#}
+                                             {#                                             <i class="fa fa-trash-o"></i>#}
+                                         {% endif %}
+                                     {% endif %}
+                                 </small>
+							</span>
+                    </h4>
+			<span>
+				
+				{{ node.body }}
+
+				<div class="reply-from" id="{{ node.pk }}">
+                    <form action="{% url 'forum:comment_reply' post.topic.slug post.slug node.slug %}" method="POST"
+                          style="display: none">
+                        {% csrf_token %} {{ reply_form|crispy }}
+                        <div class="form-actions">
+                            <input type="submit" name="submit" value="Post" class="btn btn-primary" id="submit-save">
+                            <a class="btn pull-right" onclick="closeReply({{ node.pk }})"><span
+                                    class="glyphicon glyphicon-remove"></span></a>
+                        </div>
+                    </form>
+
+                </div>
+               {% include 'tribes/delete_reply_modal.html' %}
+
+
+                {% if not node.is_leaf_node %}
+                    {{ children }}
+                    {{ node.parent_attr }}
+
+                    {# TODO: test this and maybe clean up. turn delete into a link??? <i bin>#}
+                    {% include 'tribes/delete_reply_modal.html' %}
+
+                {% endif %}
+
+
+			</span>
+                </div>
+            </div>
+        {% endrecursetree %}
+    </ul>
+
+    {% if user.is_authenticated %}
+
+        <div>
+            <div class="panel">
+                <div class="panel-body" id="reply">
+                    <form action="{% url 'forum:post_comment' post.topic.slug post.slug %}" class="reply-form"
+                          method="POST" style="display: none">
+                        {% csrf_token %}
+                        {{ reply_form|crispy }}
+                        <div class="form-actions">
+                            <input type="submit" name="submit" value="Post" class="btn btn-primary" id="submit-save">
+                            <a class="btn pull-right" onclick="closeReply('reply')"><span
+                                    class="glyphicon glyphicon-remove"></span></a>
+                        </div>
+                    </form>
+                    <div class="reply-control">
+                        <button onclick="openReply('reply')" class="btn btn-primary">
+                            {% if post.reply_set.count %} Reply {% else %} Be the first to reply in
+                                {{ post.title }}{% endif %}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <p><a href="{% url 'account_login' %}">Login</a> or <a href="{% url 'account_signup' %}">Register</a> to join
+            the discussion!</p>
+    {% endif %}
+    </ul>
+
+
+
+
+{% endblock content %}
