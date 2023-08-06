@@ -1,0 +1,7 @@
+storage
+=======
+
+.. automodule:: storage
+    :members:
+    :undoc-members:
+    :show-inheritance:
