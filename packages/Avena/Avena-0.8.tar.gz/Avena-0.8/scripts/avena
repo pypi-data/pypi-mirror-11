@@ -1,0 +1,94 @@
+#!/usr/bin/env python
+
+'''Avena - an image processing tool
+
+Usage:
+    avena filter (high|low) <radius> <image>...
+    avena flip (vertical|horizontal) <image>...
+    avena interp <factor> <image>...
+    avena tile [--periodic] (9) <image>...
+    avena xcor (<image> <image>)...
+    avena -h | --help
+    avena -v | --version
+
+Options:
+    -h, --help      Print this help.
+    -v, --version   Print version information.
+'''
+
+
+from __future__ import print_function
+
+from docopt import docopt
+from functools import partial
+
+from avena import avena, image
+
+
+long_version = 'Avena ' + avena.__version__
+
+
+if __name__ == '__main__':
+
+    arguments = docopt(__doc__, version=long_version)
+
+    files = list(arguments['<image>'])
+    images = (image.read(i) for i in arguments['<image>'])
+
+    image_save = partial(image.save, random=True, normalize=True)
+
+    if arguments['filter']:
+
+        from avena import filter
+
+        radius = int(arguments['<radius>'])
+        for filename, img in zip(files, images):
+            if arguments['high']:
+                filtered_img = filter.highpass(img, radius)
+            elif arguments['low']:
+                filtered_img = filter.lowpass(img, radius)
+            print(image_save(filtered_img, filename))
+
+    elif arguments['flip']:
+
+        from avena import flip
+
+        if arguments['vertical']:
+            flip_func = flip.flip_vertical
+        else:
+            flip_func = flip.flip_horizontal
+        for filename, img in zip(files, images):
+            flipped_img = flip_func(img)
+            print(image_save(flipped_img, filename))
+
+    elif arguments['interp']:
+
+        from avena import interp
+
+        factor = float(arguments['<factor>'])
+
+        for filename, img in zip(files, images):
+            interp_img = interp.interp2(img, factor)
+            print(image_save(interp_img, filename))
+
+    elif arguments['tile']:
+
+        from avena import tile
+
+        if arguments['--periodic']:
+            if arguments['9']:
+                tile_func = tile.tile9_periodic
+        for filename, img in zip(files, images):
+            tiled_img = tile_func(img)
+            print(image_save(tiled_img, filename))
+
+    elif arguments['xcor']:
+
+        from avena import xcor2
+
+        first = next(images)
+        for filename, img in zip(files, images):
+            last = img
+            xcor_img = xcor2.xcor2(first, last)
+            print(image_save(xcor_img, filename))
+            first = last
