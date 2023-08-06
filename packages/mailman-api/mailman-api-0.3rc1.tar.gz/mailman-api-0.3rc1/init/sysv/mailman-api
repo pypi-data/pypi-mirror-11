@@ -1,0 +1,66 @@
+#!/bin/sh
+
+### BEGIN INIT INFO
+# Provides:          mailman-api
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Mailman API
+# Description:       Starts and stops the mailman-api daemon.
+### END INIT INFO
+
+# Author: Antonio Terceiro <terceiro@softwarelivre.org>
+
+DESC="Mailman REST API"
+NAME=mailman-api
+DAEMON=/usr/bin/$NAME
+PIDFILE=/var/run/${NAME}.pid
+
+OPTIONS=''
+
+if [ -r /etc/default/$NAME ]; then
+  . /etc/default/$NAME
+fi
+
+test -x "$DAEMON" || exit
+
+if [ -z "$DEAMON_USER" ]; then
+  if [ -d /var/lib/mailman/archives/private ]; then
+    DAEMON_USER=$(stat -c %U /var/lib/mailman/archives/private)
+  else
+    if id list >/dev/null 2>&1; then
+      DAEMON_USER=list
+    else
+      DAEMON_USER=mailman
+    fi
+  fi
+fi
+
+. /lib/lsb/init-functions
+
+do_start() {
+  start-stop-daemon --start --exec $DAEMON --pidfile $PIDFILE --make-pidfile --name $NAME --user $DAEMON_USER --background -- $OPTIONS
+}
+
+do_stop() {
+  start-stop-daemon --stop --name $NAME --pidfile $PIDFILE
+}
+
+case "$1" in
+  start)
+    do_start
+    ;;
+  stop)
+    do_stop
+    ;;
+  restart|force-reload)
+    do_stop
+    do_start
+    ;;
+  *)
+    echo "usage: $0 start|stop|restart"
+    exit 3
+    ;;
+esac
+exit 0
