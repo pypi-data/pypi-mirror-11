@@ -1,0 +1,140 @@
+A sample Python project
+=========================
+License
+-------
+
+.. image:: https://img.shields.io/pypi/l/python_packaging_demo.svg
+    :target: https://github.com/webee/python-packaging-demo/blob/master/LICENSE
+    :alt: The MIT License
+
+PYPI
+----
+
+.. image:: https://img.shields.io/pypi/v/python_packaging_demo.svg
+    :target: https://pypi.python.org/pypi/python_packaging_demo
+    :alt: Latest Version
+
+.. image:: https://img.shields.io/pypi/wheel/python_packaging_demo.svg
+    :target: https://pypi.python.org/pypi/python_packaging_demo
+    :alt: wheel
+
+.. image:: https://img.shields.io/pypi/format/python_packaging_demo.svg
+    :target: https://pypi.python.org/pypi/python_packaging_demo
+    :alt: format
+
+.. image:: https://img.shields.io/pypi/pyversions/python_packaging_demo.svg
+    :target: https://pypi.python.org/pypi/python_packaging_demo
+    :alt: python versions
+
+.. image:: https://img.shields.io/pypi/implementation/python_packaging_demo.svg
+    :target: https://pypi.python.org/pypi/python_packaging_demo
+    :alt: implementation
+
+.. image:: https://img.shields.io/pypi/status/python_packaging_demo.svg
+    :target: https://pypi.python.org/pypi/python_packaging_demo
+    :alt: status
+
+.. image:: https://img.shields.io/pypi/dm/python_packaging_demo.svg
+    :target: https://pypi.python.org/pypi/python_packaging_demo
+    :alt: downloads/month
+
+.. image:: https://img.shields.io/pypi/dw/python_packaging_demo.svg
+    :target: https://pypi.python.org/pypi/python_packaging_demo
+    :alt: downloads/week
+
+.. image:: https://img.shields.io/pypi/dd/python_packaging_demo.svg
+    :target: https://pypi.python.org/pypi/python_packaging_demo
+    :alt: downloads/day
+
+Describe
+--------
+
+A sample project that demonstrate python packaging and upload to pypi.
+
+build && upload
+::
+
+    $ python setup.py sdist
+    $ python setup.py bdist_wheel
+    $ python setup.py register -r pypi
+    $ python setup.py sdist upload -r pypi
+    $ python setup.py bdist_wheel upload -r pypi
+    or
+    $ twine upload dist/*
+
+
+How to packaging
+""""""""""""""""
+
+refer to: https://hynek.me/articles/sharing-your-labor-of-love-pypi-quick-and-dirty/
+
+and https://python-packaging-user-guide.readthedocs.org/en/latest/distributing.html
+
+
+Docs
+""""
+sphinx: http://sphinx-doc.org/tutorial.html
+
+
+Add shields and progress bar
+""""""""""""""""""""""""""""
+http://shields.io/
+
+https://github.com/fehmicansaglam/progressed.io
+
+
+.. :changelog:
+
+Changelog
+=========
+
+change logs.
+
+
+0.1.5/6 (2015-09-11)
+--------------------
+
+-- update docs.
+-- update docs and some shields.
+
+
+0.1.3/4 (2015-09-10)
+--------------------
+
+**oh no.**
+-- fix CHANGE_LOG.
+
+
+0.1.2 (2015-09-10)
+------------------
+
+-- update CHANGE_LOG.
+
+
+0.1.1 (2015-09-10)
+------------------
+
+-- Fix README.
+
+
+0.1.0 (2015-09-10)
+------------------
+
+- Initial release.
+
+
+Credits
+-------
+
+`python_packaging_demo <https://github.com/webee/python-packaging-demo>`_ is written and maintained by `webee.yw <https://github.com/webee>`_.
+
+Contributors
+------------
+
+The following wonderful people contributed directly or indirectly to this project:
+
+- `hyperwood.yw <https://github.com/hyperwood>`_
+
+Please add yourself here alphabetically when you submit your first pull request.
+
+
