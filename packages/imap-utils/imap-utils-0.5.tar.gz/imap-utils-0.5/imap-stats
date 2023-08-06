@@ -1,0 +1,151 @@
+#!/usr/bin/python
+# -*- coding: UTF-8 -*-
+# vim: expandtab sw=4 ts=4 sts=4:
+'''
+Creates folders on IMAP.
+'''
+__author__ = 'Michal Čihař'
+__email__ = 'michal@cihar.com'
+__license__ = '''
+Copyright (c) 2003 - 2014 Michal Čihař
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'''
+import sys
+import getopt
+import IMAPUtils
+import re
+
+MAILBOX_RE = re.compile(r'\((?P<flags>(\s*\\\w*)*)\)\s+(?P<delim>[^ ]*)\s+(?P<name>.*)')
+POSSIBLY_QUOTED_RE = re.compile(r'"?([^"]*)"?')
+
+class ListIMAP(IMAPUtils.IMAPUtil):
+    '''
+    Class for listing IMAP folders with stats.
+    '''
+
+    def parse_folder(self, item):
+        '''
+        Parses folder reply from IMAP.
+        '''
+        match = MAILBOX_RE.match(item)
+
+        if not match:
+            return (None, None)
+
+        delim = POSSIBLY_QUOTED_RE.match(match.group('delim')).group(1)
+        path = POSSIBLY_QUOTED_RE.match(match.group('name')).group(1)
+        flags = match.group('flags')
+        return (path, flags)
+
+    def list(self, decode = True, unseen = True, recent = True, 
+            messages = True):
+        '''
+        Lists all folders.
+        '''
+        typ, lst = self._imap.list()   
+        if typ != 'OK':
+            sys.stderr.write("list: %s\n" % str((typ, lst)))
+            sys.exit(2)
+
+        status = '('
+        if unseen:
+            status += 'UNSEEN '
+        if recent:
+            status += 'RECENT '
+        if messages:
+            status += 'MESSAGES '
+        status = status.strip()
+        status += ')'         
+
+
+        for item in lst:
+            path, flags = self.parse_folder(item)
+
+            if path is None:
+                continue
+
+            if flags.find('\\Noselect') != -1:
+                continue
+
+            typ, val = self._imap.status(path, status)
+            if typ != 'OK':
+                sys.stderr.write("status[%s]: %s\n" % (path, str((typ, val))))
+            else:
+                if decode:
+                    items = val[0].split(' ', 1)
+                    print '"%s"%s' % (
+                            unicode(path, 'imap4-utf-7'), 
+                            items[1])
+                else:
+                    print val[0]
+
+    def run(self, decode = True, unseen = True, recent = True, 
+            messages = True):
+        '''
+        Executes all actions.
+        '''
+        self.login()
+        self.list(decode, unseen, recent, messages)
+
+def usage():
+    '''
+    Shows help.
+    '''
+    print '''
+Usage: imap-stats [params]
+Params:
+ -h/--help          Shows this help.
+ -v/--version       Shows version.
+ -u/--no-unseen     Do not show unseen messages count.
+ -r/--no-recent     Do not show recent messages count.
+ -m/--no-messages   Do not show all messages count.
+ -d/--no-decode     Show raw folder names.
+'''
+
+if __name__ == '__main__':
+    DECODE = True
+    UNSEEN = True
+    RECENT = True
+    MESSAGES = True
+
+    try:
+        OPTS, IGNORED = getopt.getopt(sys.argv[1:], 'hurmvd', [
+            'help', 
+            'version', 
+            'no-RECENT', 
+            'no-UNSEEN', 
+            'no-MESSAGES', 
+            'no-DECODE'])
+    except getopt.GetoptError:
+        usage()
+        sys.exit(2)
+
+    for opt, arg in OPTS:
+        if opt in ('-h', '--help'):
+            usage()
+            sys.exit(0)
+        if opt in ('-v', '--version'):
+            print 'imap-stats version %s' % IMAPUtils.__version__
+            sys.exit(0)
+        if opt in ('-u', '--no-UNSEEN'):
+            UNSEEN = False
+        if opt in ('-r', '--no-RECENT'):
+            RECENT = False
+        if opt in ('-m', '--no-MESSAGES'):
+            MESSAGES = False
+        if opt in ('-d', '--no-DECODE'):
+            DECODE = False
+
+    ListIMAP().run(DECODE, UNSEEN, RECENT, MESSAGES)
