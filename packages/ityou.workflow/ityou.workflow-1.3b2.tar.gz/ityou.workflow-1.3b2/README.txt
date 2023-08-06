@@ -1,0 +1,8 @@
+Introduction
+============
+
+
+DO NOT install this product directly!
+Use ityou.ESI form pypi repository:
+
+https://pypi.python.org/pypi/ityou.ESI
