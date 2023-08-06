@@ -1,0 +1,3 @@
+Most state machine libraries are "static" and require the flow in the state machine to be definied programmatically.  Flowr is designed so that you can build state machine flows and store them in a database.  There are two key concepts: rule graphs and state machines.  The programmer defines one or more sets of rules that describe the allowed flow between states, the user can then use the GUI tools to construct state machines that follow these rules and store the machines in the database.  The state machines can then be instantiated for processing the flow which triggers call-back mechanisms in the rule objects on entering and leaving a state. 
+
+
