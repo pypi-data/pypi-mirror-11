@@ -1,0 +1,259 @@
+swagger: '2.0'
+info:
+    title: KloudBuster Rest API Specification
+    description: |
+        A tool to load OpenStack clouds end to end in both control plane and
+        data plane.
+    version: "0.1.0"
+host: 127.0.0.1:8080
+basePath: /api
+schemes:
+    - http
+    - https
+consumes:
+    - application/json
+produces:
+    - application/json
+paths:
+    /config/default_config:
+        get:
+            description: |
+                Get the default KloudBuster configuration from server
+            tags:
+                - config
+            responses:
+                200:
+                    description: The default configuration
+                    schema:
+                        type: string
+                        format: json
+
+    /config/running_config:
+        post:
+            description: |
+                Create a new KloudBuster session with provided configuration
+            parameters:
+                - name: arg
+                  in: body
+                  description: The configuration for KloudBuster
+                  required: true
+                  schema:
+                      $ref: '#/definitions/Configuration_New'
+            tags:
+                - config
+            responses:
+                200:
+                    description: Session is created successfully
+                    schema:
+                        type: string
+                        format: md5sum
+                        description: The newly created session ID
+                400:
+                    description: Error while parsing the configuration file
+                    schema:
+                        type: string
+                        description: Errors in details
+                403:
+                    description: Session is already existed
+
+    /config/running_config/{session_id}:
+        get:
+            description: |
+                Get the running configuration of a KloudBuster session
+            parameters:
+                - name: session_id
+                  type: string
+                  format: md5sum
+                  in: path
+                  description: The session to be queried
+                  required: true
+            tags:
+                - config
+            responses:
+                200:
+                    description: The running configuration
+                    schema:
+                        type: string
+                        format: json
+                404:
+                    description: The session_id is not found or invalid
+
+        put:
+            description: |
+                (NOT IMPLEMENTED)
+                Update KloudBuster configuration for an existing session
+            parameters:
+                - name: session_id
+                  type: string
+                  format: md5sum
+                  in: path
+                  description: |
+                      The session to be updated
+                  required: true
+                - name: arg
+                  in: body
+                  description: The configuration to be updated
+                  required: true
+                  schema:
+                      # @TODO: Adding Configuration_Update
+                      $ref: '#/definitions/Configuration_New'
+            tags:
+                - config
+            responses:
+                200:
+                    description: |
+                        Configuration of given session is updated successfully
+                405:
+                    description: |
+                        Cannot change configuration while KloudBuster is running
+        delete:
+            description: |
+                Terminate the given session in KloudBuster server
+            parameters:
+                - name: session_id
+                  type: string
+                  in: path
+                  description: |
+                      The session to be terminated
+                  required: true
+            tags:
+                - config
+            responses:
+                200:
+                    description: The session is terminated successfully
+                404:
+                    description: The session_id is not found or invalid
+
+    /kloudbuster/version:
+        get:
+            description: Get KloudBuster server version
+            tags:
+                - kloudbuster
+            responses:
+                200:
+                    description: OK
+                    schema:
+                        type: string
+                        description: The version of the KloudBuster server
+
+    /kloudbuster/status/{session_id}:
+        get:
+            description: |
+                Get KloudBuster server status for a given session
+            parameters:
+                - name: session_id
+                  type: string
+                  format: md5sum
+                  in: path
+                  description: The session to be queried
+                  required: true
+            tags:
+                - kloudbuster
+            responses:
+                200:
+                    description: OK
+                    schema:
+                        type: string
+                        description: The status of the given session
+                404:
+                    description: The session_id is not found or invalid
+
+    /kloudbuster/log/{session_id}:
+        get:
+            description: |
+                Get KloudBuster console log for a given session
+            parameters:
+                - name: session_id
+                  type: string
+                  format: md5sum
+                  in: path
+                  description: The session to be queried
+                  required: true
+                - name: offset
+                  type: int
+                  in: query
+                  description: The offset of the log file to read
+                  required: false
+            tags:
+                - kloudbuster
+            responses:
+                200:
+                    description: OK
+                    schema:
+                        type: string
+                        description: The console log of the given session
+                400:
+                    description: Parameter is missing or invalid
+                404:
+                    description: The session_id is not found or invalid
+
+    /kloudbuster/report/{session_id}:
+        get:
+            description: |
+                Get the latest KloudBuster periodical report for a given session.
+                Set final to true to retrieve the final report.
+            parameters:
+                - name: session_id
+                  type: string
+                  format: md5sum
+                  in: path
+                  description: The session to be queried
+                  required: true
+                - name: final
+                  type: boolean
+                  in: query
+                  description: Set to true to retrieve the final report
+                  required: false
+            tags:
+                - kloudbuster
+            responses:
+                200:
+                    description: OK
+                    schema:
+                        type: string
+                        description: The periodical report of the given session
+                404:
+                    description: The session_id is not found or invalid
+
+    /kloudbuster/run/{session_id}:
+        post:
+            description: |
+                Run KloudBuster for a given session
+            parameters:
+                - name: session_id
+                  type: string
+                  format: md5sum
+                  in: path
+                  description: |
+                      The session to be run
+                  required: true
+            tags:
+                - kloudbuster
+            responses:
+                200:
+                    description: Successfully start the given session
+                403:
+                    description: |
+                        KloudBuster is already running on the given session
+                404:
+                    description: The session_id is not found or invalid
+
+definitions:
+    Configuration_New:
+        properties:
+            credentials:
+                type: string
+                format: json
+                description: Credentials for the clouds
+            kb_cfg:
+                type: string
+                format: json
+                description: User overrided configs
+            topo_cfg:
+                type: string
+                format: json
+                description: Topology config
+            tenants_cfg:
+                type: string
+                format: json
+                description: Tenant and User list for reusing
