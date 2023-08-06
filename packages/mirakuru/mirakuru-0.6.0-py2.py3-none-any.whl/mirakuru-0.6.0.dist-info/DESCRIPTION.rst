@@ -1,0 +1,212 @@
+mirakuru
+========
+
+Mirakuru is a process orchestration tool designed for functional and integration tests.
+
+Maybe you want to be able to start a database before you start your program
+or maybe you just need to set additional services up for your tests.
+This is where you should consider using **mirakuru** to add superpowers to your program or tests.
+
+
+.. image:: https://pypip.in/v/mirakuru/badge.png
+    :target: https://pypi.python.org/pypi/mirakuru/
+    :alt: Latest PyPI version
+
+.. image:: https://readthedocs.org/projects/mirakuru/badge/?version=v0.6.0
+    :target: https://readthedocs.org/projects/mirakuru/?badge=v0.6.0
+    :alt: Documentation Status
+
+.. image:: https://pypip.in/d/mirakuru/badge.png
+    :target: https://pypi.python.org/pypi/mirakuru/
+    :alt: Number of PyPI downloads
+
+.. image:: https://pypip.in/wheel/mirakuru/badge.png
+    :target: https://pypi.python.org/pypi/mirakuru/
+    :alt: Wheel Status
+
+.. image:: https://pypip.in/egg/mirakuru/badge.png
+    :target: https://pypi.python.org/pypi/mirakuru/
+    :alt: Egg Status
+
+.. image:: https://pypip.in/license/mirakuru/badge.png
+    :target: https://pypi.python.org/pypi/mirakuru/
+    :alt: License
+
+Package status
+--------------
+
+.. image:: https://travis-ci.org/ClearcodeHQ/mirakuru.svg?branch=v0.6.0
+    :target: https://travis-ci.org/ClearcodeHQ/mirakuru
+    :alt: Tests
+
+.. image:: https://coveralls.io/repos/ClearcodeHQ/mirakuru/badge.png?branch=v0.6.0
+    :target: https://coveralls.io/r/ClearcodeHQ/mirakuru?branch=v0.6.0
+    :alt: Coverage Status
+
+.. image:: https://requires.io/github/ClearcodeHQ/mirakuru/requirements.svg?tag=v0.6.0
+     :target: https://requires.io/github/ClearcodeHQ/mirakuru/requirements/?tag=v0.6.0
+     :alt: Requirements Status
+
+
+About
+-----
+
+In a project that relies on multiple processes there might be a need to guard code
+with tests that verify interprocess communication. So one needs to set up all of
+required databases, auxiliary and application services to verify their cooperation.
+Synchronising (or orchestrating) test procedure with tested processes might be a hell.
+
+If so, then **mirakuru** is what you need.
+
+``Mirakuru`` starts your process and waits for the clear indication that it's running.
+Library provides six executors to fit different cases:
+
+* SimpleExecutor - starts a process and does not wait for anything.
+  It is useful to stop or kill a process and its subprocesses.
+  Base class for all the rest of executors.
+* Executor - base class for executors verifying if a process has started.
+* OutputExecutor - waits for a specified output to be printed by a process.
+* TCPExecutor - waits for the ability to connect through TCP with a process.
+* HTTPExecutor - waits for a successful HEAD request (and TCP before).
+* PidExecutor - waits for a specified .pid file to exist.
+
+.. code-block:: python
+
+    from mirakuru import HTTPExecutor
+    from httplib import HTTPConnection, OK
+
+
+    def test_it_works():
+        # The ``./http_server`` here launches some HTTP server on the 6543 port,
+        # but naturally it is not immediate and takes a non-deterministic time:
+        executor = HTTPExecutor("./http_server", url="http://127.0.0.1:6543/")
+
+        # Start the server and wait for it to run (blocking):
+        executor.start()
+        # Here the server should be running!
+        conn = HTTPConnection("127.0.0.1", 6543)
+        conn.request("GET", "/")
+        assert conn.getresponse().status is OK
+        executor.stop()
+
+
+A command by which executor spawns a process can be defined by either string or list.
+
+.. code-block:: python
+
+    # command as string
+    TCPExecutor('python -m smtpd -n -c DebuggingServer localhost:1025', host='localhost', port=1025)
+    # command as list
+    TCPExecutor(
+        ['python', '-m', 'smtpd', '-n', '-c', 'DebuggingServer', 'localhost:1025'],
+        host='localhost', port=1025
+    )
+
+Authors
+-------
+
+The project was firstly developed by `Mateusz Lenik <http://mlen.pl>`_
+as the `summon_process <https://github.com/mlen/summon_process>`_.
+Later forked, renamed into **mirakuru** and tended to by The A Room @ `Clearcode <http://clearcode.cc>`_
+and `the other authors <https://github.com/ClearcodeHQ/mirakuru/blob/master/AUTHORS.rst>`_.
+
+License
+-------
+
+``mirakuru`` is licensed under LGPL license, version 3.
+
+Contributing and reporting bugs
+-------------------------------
+
+Source code is available at: `ClearcodeHQ/mirakuru <https://github.com/ClearcodeHQ/mirakuru>`_.
+Issue tracker is located at `GitHub Issues <https://github.com/ClearcodeHQ/mirakuru/issues>`_.
+Projects `PyPI page <https://pypi.python.org/pypi/mirakuru>`_.
+
+When contributing, don't forget to add your name to the AUTHORS.rst file.
+
+
+CHANGELOG
+=========
+
+0.6.0
+----------
+
+- [fix] modify MANIFEST to prune tests folder
+- [feature] HTTPExecutor will now set the default 80 if not present in url
+- [feature] Detect subprocesses exiting erroneously while polling the checks and error early.
+- [fix] make test_forgotten_stop pass by preventing the shell from optimizing forking out
+
+0.5.0
+----------
+
+- Corrected code to conform with W503, D210 and E402 linters errors as reported by pylama 6.3.1
+- [feature] introduces a hack that kills all subprocesses of executor process.
+  It requires 'ps xe -ww' command being available in OS otherwise logs error.
+- [refactoring] Classes name convention change.
+  Executor class got renamed into SimpleExecutor and StartCheckExecutor class got renamed into Executor.
+
+0.4.0
+-------
+
+- [feature] ability to set up custom signal for stopping and killing processes managed by executors
+- [feature] replaced explicit parameters with keywords for kwargs handled by basic Executor init method
+- [feature] Executor now accepts both list and string as a command
+- [fix] even it's not recommended to import all but `from mirakuru import *` didn't worked. Now it's fixed.
+- [tests] increased tests coverage.
+   Even test cover 100% of code it doesn't mean they cover 100% of use cases!
+- [code quality] increased Pylint code evaluation.
+
+0.3.0
+-------
+
+- [feature] PidExecutor that waits for specified file to be created.
+- PyPy compatibility
+- [fix] closing all resources explicitly
+
+0.2.0
+-------
+
+- [fix] - kill all children processes of Executor started with shell=True
+- [feature] executors are now context managers - to start executors for given context
+- [feature] Executor.stopped - context manager for stopping executors for given context
+- [feature] HTTPExecutor and TCPExecutor before .start() check whether port
+  is already used by other processes and raise AlreadyRunning if detects it
+- moved python version conditional imports into compat.py module
+
+
+0.1.4
+-------
+
+- fix issue where setting shell to True would execute only part of the command.
+
+0.1.3
+-------
+
+- fix issue where OutputExecutor would hang, if started process stopped producing output
+
+0.1.2
+-------
+
+- [fix] removed leftover sleep from TCPExecutor._wait_for_connection
+
+0.1.1
+-------
+
+- fixed MANIFEST.in
+- updated packaging options
+
+0.1.0
+-------
+
+- exposed process attribute on Executor
+- exposed port and host on TCPExecutor
+- exposed url on HTTPExecutor
+- simplified package structure
+- simplified executors operating API
+- updated documentation
+- added docblocks for every function
+- applied license headers
+- stripped orchestrators
+- forked off from summon_process
+
+
