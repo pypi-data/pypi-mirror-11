@@ -1,0 +1,154 @@
+#!/usr/bin/env python
+
+"""biomartian
+
+Query biomart from the command line.
+For help and examples, visit github.com/endrebak/biomartian
+
+Usage:
+    biomartian [--mart=MART] [--dataset=DATA] --mergecol=COL... --intype=IN... --outtype=OUT... [--noheader] FILE
+    biomartian [--mart=MART] [--dataset=DATA] --intype=IN --outtype=OUT
+    biomartian --list-marts
+    biomartian [--mart=MART] --list-datasets
+    biomartian [--mart=MART] [--dataset=DATASET] --list-attributes
+
+Arguments:
+    FILE                   file with COL(s) to join mart data on (- for STDIN)
+    -i IN --intype=IN      the datatype in the column to merge on
+    -o OUT --outtype=OUT   the datatype to get (joining on value COL)
+    -c COL --mergecol=COL  name or number of the column to join on in FILE
+
+Note:
+    Required args --intype, --outtype and --mergecol must be equal in number.
+
+Options:
+    -h      --help          show this message
+    -m MART --mart=MART     which mart to use [default: ensembl]
+    -d DATA --dataset=DATA  which dataset to use [default: hsapiens_gene_ensembl]
+    -n --noheader           the input data does not contain a header (must
+                            use integers to denote COL)
+
+Lists:
+    --list-marts       show all available marts
+    --list-datasets    show all available datasets for MART
+    --list-attributes  show all kinds of data available for MART and DATASET
+"""
+
+from __future__ import print_function
+
+from docopt import docopt
+import sys
+from numpy import equal, mod
+
+import warnings
+warnings.filterwarnings("ignore")
+
+def list_bm_info(list_marts, list_datasets, list_attributes, mart, dataset):
+    if list_marts:
+        lists = get_marts()
+    if list_datasets:
+        lists = get_datasets(mart)
+    if list_attributes:
+        lists = get_attributes(mart, dataset)
+
+    lists.to_csv(sys.stdout, sep="\t", index=False)
+    sys.exit()
+
+
+def append_data_to_infile(in_df, mergecols, intypes, outtypes, dataset, mart):
+
+    for column, intype, outtype in zip(mergecols, intypes, outtypes):
+
+        sorted_intype, sorted_outtype = _sort_args([intype, outtype])
+
+        intype_outtype_df = get_bm(sorted_intype, sorted_outtype, dataset, mart)
+
+        intype_outtype_df = _turn_int_cols_with_na_into_str(intype_outtype_df,
+                                                            outtype)
+
+        in_df = attach_data(in_df, intype_outtype_df, column, intype)
+
+    return in_df
+
+def _turn_int_cols_with_na_into_str(map_df, outtype):
+
+    """Turn float cols that actually contain ints into strtype.
+
+    Since there is no NaN for ints, intcols with NaNs are promoted to float.
+
+    This is annoying when ints are a better fit, i.e. for years (1996.0). It is
+    plain wrong when the int is a name, i.e. the "p53" gene is 1234 in some
+    annotations, NOT 1234.0.
+
+    To avoid such conversions, any 'int-float' columns are converted to strings.
+    """
+
+    outcol = map_df[outtype]
+
+    is_float = issubclass(outcol.dtype.type, float)
+
+    try:
+        all_are_ints = all(equal(mod(outcol.dropna(), 1), 0))
+    except TypeError:
+        return map_df
+
+    if is_float and all_are_ints:
+        map_df[outtype] = map_df[outtype].astype(str).apply(
+            lambda s: s.split(".")[0])
+
+    return map_df
+
+
+def _sort_args(args):
+
+    """Sorting args before calling function to ensure cache is triggered at
+    every opportunity."""
+
+    return sorted(args)
+
+if __name__ == "__main__":
+
+    print("""
+ _     _                            _   _
+| |__ (_) ___  _ __ ___   __ _ _ __| |_(_) __ _ _ __
+| '_ \| |/ _ \| '_ ` _ \ / _` | '__| __| |/ _` | '_ \\
+| |_) | | (_) | | | | | | (_| | |  | |_| | (_| | | | |
+|_.__/|_|\___/|_| |_| |_|\__,_|_|   \__|_|\__,_|_| |_|
+                   Query biomart from the command line
+""",
+          file=sys.stderr)
+
+    args = docopt(__doc__, help=True)
+
+    import pandas as pd
+    from numpy import float64
+
+    from ebs.imports import StringIO
+    from ebs.read_indata import read_indata
+    from ebs.args import turn_docopt_arg_names_into_valid_var_names
+    from ebs.merge_cols import attach_data
+
+    from biomartian.args.validate_args import validate_args
+    from biomartian.bm_queries.bm_query import get_marts, get_datasets, get_attributes, get_bm
+
+    args = turn_docopt_arg_names_into_valid_var_names(args)
+    # load cl-args into local namespace # pylint: disable=E0602
+    locals().update(args)
+
+
+    # just list data and exit
+    if list_marts or list_datasets or list_attributes:
+        list_bm_info(list_marts, list_datasets, list_attributes, mart, dataset)
+
+    # if infile given, append to infile and send result to stdout
+    if FILE:
+        validate_args(args)
+        in_df = read_indata(FILE, noheader)
+        result_df = append_data_to_infile(in_df, mergecol, intype, outtype, dataset,
+                                  mart)
+    # if no infile given just dump all data to stdout
+    else:
+        sorted_intype, sorted_outtype = _sort_args(intype + outtype)
+        result_df = get_bm(sorted_intype, sorted_outtype, dataset, mart)
+
+    result_df.to_csv(sys.stdout, sep="\t", index=False)
