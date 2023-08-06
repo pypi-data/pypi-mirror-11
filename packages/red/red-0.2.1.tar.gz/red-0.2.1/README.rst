@@ -1,0 +1,144 @@
+red
+===
+
+Python regex command-line tool, to replace functionality akin to 'perl -ne'.
+
+Installation
+------------
+
+From the project root directory::
+
+    $ python setup.py install
+
+Usage
+-----
+
+Use --help/-h to view info on the arguments::
+
+    $ red --help
+
+The special variables available:
+
+:**line**:
+    for the entire line that was matched, without the trailing newline
+:**g**:
+    for groups, which you index to get that match group, as **g[0]** in "(\w+) .*"
+:**ag**:
+    for aggregated groups with the *-a* option, which is a list of all match groups
+:**d**:
+    for the groupdict, which you can index by named group as **d["foo"]** in "(?P<foo>\w+) .*"
+:**ad**:
+    for the aggregated group dicts, a list of dicts
+
+Example usage::
+
+    $ cat test.txt 
+    foo 1 bar 2
+    fiz 5 baz 10
+    funk 10 bunk 9
+    funk a bunk b
+    a b c d
+    aaaaa
+    bbbb
+    cc
+
+Use it like grep::
+
+    $ cat test.txt | red "\w+ (\d+) \w+ (\d+)" 
+    foo 1 bar 2
+    fiz 5 baz 10
+    funk 10 bunk 9
+
+It works with path as argument as well, *but the path must appear directly after the regex* (oddity of argparse).::
+    
+    $ red "\w+ (\d+) \w+ (\d+)" test.txt
+
+Use it to evaluate Python code on groups stored in variable **g**::
+
+    $ red "\w+ (\d+) \w+ (\d+)" test.txt -e "int(g[0]) + int(g[1])"
+    3
+    15
+    19
+
+Import an arbitrary library and do absolutely anything::
+
+    $ red '\w+ (\d+) \w+ (\d+)' test.txt -i json -e '"{} => {}".format(line, json.dumps(g))'
+    foo 1 bar 2 => ["1", "2"]
+    fiz 5 baz 10 => ["5", "10"]
+    funk 10 bunk 9 => ["10", "9"]
+
+If you want to execute a few python statements before the eval, you can do that as well with **-x**::
+
+    $ red "(\w+) (\d+).*" test.txt -x 'x = int(g[1]) ; y = g[0][::-1]' -e '(x, y)'
+    (1, 'oof')
+    (5, 'zif')
+    (10, 'knuf')
+
+Use it to aggregate across all of stdin, into list **ag**::
+
+    $ cat test.txt | red "\w+ (\d+) \w+ (\d+)" -a "sum([int(x[0]) for x in ag])"
+    16
+
+Aggregate has its own **-X** for an exec before the aggregate too::
+
+    $ red "(\w+) (\d+).*" test.txt -X 's = sum(int(g[1]) for g in ag)' -a 's'
+    16
+
+Evaluate on each match, and aggregate against all matches::
+
+    $ cat test.txt | red "\w+ (\d+) \w+ (\d+)" -a "sum([int(x[0]) for x in ag])" -e "'adding {}'.format(g[0])"
+    adding 1
+    adding 5
+    adding 10
+    16
+
+You can use named groups as well, stored in variables **d** and aggregated into **ad**::
+
+    $ cat test.txt | red "\w+ (?P<first>\d+) \w+ \d+" -e "'first value is {first}'.format(**d)"
+    first value is 1
+    first value is 5
+    first value is 10
+
+Get creative!::
+
+    $ cat urls.txt 
+    https://www.google.com/
+    http://www.yahoo.com/
+    http://www.example.com/foo
+
+    $ red "(.*)" urls.txt -i requests -x 'response = requests.get(line)' -e '[response.status_code, response.content[:20]]'
+    [404, '<!doctype html>\n<htm']
+    [200, '<!doctype html><html']
+    [200, '<?xml version="1.0" ']
+
+    $ cat somelogfile.log 
+    INFO: visited http://www.example.com/foo
+    ERROR: visited https://www.google.com/
+    ERROR: visited http://www.yahoo.com/
+
+    $ cat somelogfile.log | red '(?P<debuglevel>ERROR|INFO): \S+ (?P<url>.*)' -i requests,collections -x 'response = requests.get(d["url"])' -e '(response.status_code, response.content[0:20])' -a 'collections.Counter([d["debuglevel"] for d in ad]).items()'
+    (404, '<!doctype html>\n<htm')
+    (200, '<!doctype html><html')
+    (200, '<?xml version="1.0" ')
+    [('INFO', 1), ('ERROR', 2)]
+
+Disclaimer
+----------
+
+Code in -e and -a are run through **eval**, so if you paste in code from someone,
+it will run. Just sayin'. Only run code you trust, or have inspected personally.
+The same goes for any library you import with -i.
+
+Release Notes
+-------------
+
+:0.2.1:
+    Added -x for pre-eval exec, added -i for importing libraries, and -X for aggregate exec
+:0.2.0:
+    Added -i/--import functionality
+:0.1.1:
+    Path works as CLI arg
+:0.1.0:
+    Version is available on pypi, with functionality of evaluation and aggregation
+:0.0.1:
+    Project created
