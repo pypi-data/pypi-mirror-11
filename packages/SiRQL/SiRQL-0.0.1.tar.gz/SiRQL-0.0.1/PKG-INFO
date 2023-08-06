@@ -1,0 +1,240 @@
+Metadata-Version: 1.1
+Name: SiRQL
+Version: 0.0.1
+Summary: SiRQL is a simple language specification which defines the way how to receive and query data over an http request.
+Home-page: https://dev.flarecast.eu/stash/projects/DM/repos/sirql/browse
+Author: Florian Bruggisser
+Author-email: florian.bruggisser@students.fhnw.ch
+License: UNKNOWN
+Download-URL: https://dev.flarecast.eu/stash/scm/dm/sirql.git
+Description: Simple REST Query Language (SiRQL)
+        ==================================
+        
+        SiRQL (pronounced
+        `**ˈsɜːrkl**\  <http://www.oxfordlearnersdictionaries.com/definition/english/circle_1]>`__)
+        is a simple language specification which defines the way how to receive
+        and query data over an http request.
+        
+        The goal of SiRQL is to provide a simple and human readable query text
+        and the possibility to define query fields in swagger.
+        
+        Implementations
+        ---------------
+        
+        Python
+        ~~~~~~
+        
+        |Latest Version| |Development Status| |Python Versions|
+        
+        ::
+        
+            pip install SiRQL
+        
+        Definition 1.2
+        --------------
+        
+        Example
+        ~~~~~~~
+        
+        This is a simple example of a SiRQL query which receives all the users
+        which are called ``Florian`` and are happy.
+        
+        ::
+        
+            http://example/users/find?name=eq("Florian")&is_happy=is(TRUE)
+        
+        Conditions
+        ~~~~~~~~~~
+        
+        SiRQL uses the uniform resource identifier
+        (`URI <https://tools.ietf.org/html/rfc3986>`__) specification to define
+        queries and send them over http to the server.
+        
+        Usually the REST protocol is used to serve the result and query the
+        data.
+        
+        ``baseurl``/find?``condition1``\ &\ ``condition2``\ &\ ``condition3``
+        
+        The conditions are combined with the ``AND`` operator:
+        
+        ``condition1`` AND ``condition2`` AND ``condition3``
+        
+        Structure
+        ^^^^^^^^^
+        
+        A condition is always structured by following pattern:
+        
+        ``field_name`` = ``operator``\ (``param1``, ``param2``, ...)
+        
+        +-----------------------+-----------------------------------------------------------------------+
+        | name                  | description                                                           |
+        +=======================+=======================================================================+
+        | resource\_name        | The resource field name which                                         |
+        +-----------------------+-----------------------------------------------------------------------+
+        | operator              | Read about operators in the next chapter                              |
+        +-----------------------+-----------------------------------------------------------------------+
+        | param1, param2, ...   | A parameter contains one value which will be used to query the data   |
+        +-----------------------+-----------------------------------------------------------------------+
+        
+        Operators
+        ~~~~~~~~~
+        
+        Currently SiRQL supports following operators with these limitations:
+        
+        -  Per query field only one operator can be used
+        -  Operators are **not** case sensitive
+        
+        Less than (lt)
+        ^^^^^^^^^^^^^^
+        
+        Compares the **field value** to the **parameter** and returns ``True``
+        if the field value is **lower** then the ``parameter``.
+        
+        ::
+        
+            http://example/data/find?age=lt(10)
+        
+        Greater than (gt)
+        ^^^^^^^^^^^^^^^^^
+        
+        Compares the **field value** to the **parameter** and returns ``True``
+        if the field value is **higher** then the ``parameter``.
+        
+        ::
+        
+            http://example/data/find?age=gt(10)
+        
+        Between (between)
+        ^^^^^^^^^^^^^^^^^
+        
+        Compares the **field value** to the **parameters** and returns ``True``
+        if the field value is **higher** than the ``first parameter`` and
+        **lower** than the ``second parameter``.
+        
+        ::
+        
+            http://example/data/find?age=between(5, 10)
+        
+        Equals to (eq)
+        ^^^^^^^^^^^^^^
+        
+        Compares the **field value** to the **parameters** and returns ``True``
+        if the field value matches **one** of the ``parameters`` exactly.
+        
+        Usually only one parameter is used:
+        
+        ::
+        
+            http://example/data/find?name=eq("Florian")
+        
+        It is possible to add multiple parameters which could match:
+        
+        ::
+        
+            http://example/data/find?name=eq("Florian", "Manuel")
+        
+        Results in a query like:
+        
+        ::
+        
+            if name is "Florian" OR "Manuel"
+        
+        Like (like)
+        ^^^^^^^^^^^
+        
+        Compares the **field value** to the **parameter** and returns ``True``
+        if the field value matches the ``parameter``.
+        
+        Wildcards like ``%`` can be used in the ``parameter`` string:
+        
+        ::
+        
+            http://example/data/find?name=like("Flo%")
+        
+        Is (is)
+        ^^^^^^^
+        
+        Returns ``True`` if the **field value** matches the given type.
+        
+        ::
+        
+            http://example/data/find?name=is(NULL)
+            http://example/data/find?name=is(FALSE)
+            http://example/data/find?name=is(TRUE)
+        
+        Negation (not)
+        ^^^^^^^^^^^^^^
+        
+        To negate an operator it is possible to use ``not_`` as operator prefix.
+        With the ``not_`` prefix the **result** of the expression will be
+        negated.
+        
+        This will match all values which are not ``Florian``:
+        
+        ::
+        
+            http://example/data/find?name=not_eq("Florian")
+        
+        Other examples:
+        
+        ::
+        
+            http://example/data/find?is_happy=not_is(True)
+            http://example/data/find?age=not_gt(10)
+            http://example/data/find?age=not_between(5, 10)
+        
+        String Parameter
+        ~~~~~~~~~~~~~~~~
+        
+        To pass text as a parameter it is possible to use quotes ``"``. In a
+        string query reserved characters like ``=``, ``(``, ``)``, ``,`` are
+        automatically escaped. Usually this is used to compare text or query
+        date-time.
+        
+        ::
+        
+            http://example/data/find?comment=eq("hello, (world)")
+        
+        String Escaping
+        ^^^^^^^^^^^^^^^
+        
+         Quotes
+        '''''''
+        
+        To escape quotes in strings it is possible to use the backslash
+        character ``\`` in front of the quote sign ``"``. With that it is
+        possible to use quote signs in strings.
+        
+        ::
+        
+            http://example/data/find?comment=eq("hello \"world\"")
+        
+        Backslash
+        '''''''''
+        
+        To escape a backslash ``\`` it is possible to write a double–backlash
+        which will be interpreted as one backslash.
+        
+        ::
+        
+            http://example/data/find?comment=eq("hello \\ world")
+        
+        About
+        -----
+        
+        Defined by i4Ds 2015
+        
+        .. |Latest Version| image:: https://img.shields.io/pypi/v/SiRQL.svg
+           :target: https://pypi.python.org/pypi?:action=display&name=SiRQL
+        .. |Development Status| image:: https://img.shields.io/pypi/status/SiRQL.svg
+           :target: https://dev.flarecast.eu/stash/projects/DM/repos/sirql/browse
+        .. |Python Versions| image:: https://img.shields.io/pypi/pyversions/SiRQL.svg
+           :target: https://dev.flarecast.eu/stash/projects/DM/repos/sirql/browse
+        
+Keywords: sirql,request,language,simple,generic,query
+Platform: UNKNOWN
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: OS Independent
