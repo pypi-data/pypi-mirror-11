@@ -1,0 +1,193 @@
+Rerun
+=====
+
+Command-line executable Python script to re-run the given command every time
+files are modified in the current directory or its subdirectories.
+
+Usage
+=====
+
+::
+
+    rerun [--help|-h] [--verbose|-v] [--ignore|-i=<file>] [--version] <command>
+
+Where::
+
+    <command>           Command to execute as a single arg, i.e. put it inside
+                        double quotes, or else spaces and other special
+                        characters should be escaped.
+    --help|-h           Show this help message and exit.
+    --ignore|-i=<file>  File or directory to ignore. Any directories of the
+                        given name (and their subdirs) are excluded from the
+                        search for changed files. Any modification to files of
+                        the given name are ignored. The given value is
+                        compared to basenames, so for example, "--ignore=def"
+                        will skip the contents of directory "./abc/def/" and
+                        will ignore file "./ghi/def". Can be specified multiple
+                        times.
+    --interactive, -I   Run the command in an interactive shell. This allows
+                        the use of shell aliases and functions, but is slower,
+                        less reliable and noisier on stdout/stderr, because it
+                        sources ~/.bashrc and the like before running the
+                        command. Not available on Windows.
+    --verbose|-v        Display the names of changed files before the command
+                        output.
+    --version           Show version number and exit.
+
+Example
+=======
+
+::
+
+    rerun --verbose --ignore=myoutputdir "python -m unittest mymodule"
+
+This will run your tests whenever you save your source code in the current
+dir or its subdirectories, but it won't rerun the tests a second time when .pyo
+files get updated as a result of executing the tests, nor when our program
+writes to myoutputdir.
+
+This is handy for seeing the new test results in another console window after
+you hit 'save' in your editor, without having to change window focus.
+
+Description
+===========
+
+Rerun detects changes to files by polling file modification times once per
+second. It looks in the current directory and all its subdirectories. On
+detecting any changes, it clears the terminal and reruns the given command.
+
+It always ignores directories called .svn, .git, .hg, .bzr, build and dist.
+Additions to this list can be given using --ignore.
+
+It always ignores files ending with .pyc or .pyo. This isn't currently
+user-overrideable.
+
+While polling sounds sub-optimal, I've yet to encounter a project large
+enough that rerun's resource usage was even noticeable. (Plus, see discussion
+of 'watchdog' below.)
+
+
+Dependencies
+============
+
+Tested on MacOSX, Ubuntu, WindowsXP, Windows 7.
+
+Tested on Python 2.6, 2.7 and 3.4.
+
+Python 2.6 requires argparse to be installed -
+see requirements_2.6.txt.
+
+No other dependencies.
+
+Hacking
+=======
+
+To run tests requires mock, tox. On Python 2.6 also requires unittest2.
+See requirements_dev.txt and requirements_dev_2.6.txt.
+
+See Makefile for a cheatsheet of commonly used commands I use while hacking
+on this.
+
+Install
+=======
+
+::
+
+    pip install rerun
+
+Known Problems
+==============
+
+See issues at https://github.com/tartley/rerun/issues
+
+
+Alternatives
+============
+
+PyPI package 'watchdog' is a cross-platform library for handling file-system
+events, which includes script 'watchmedo', which looks like a more serious and
+heavy-duty version of 'Rerun'.
+
+https://pypi.python.org/pypi/watchdog
+
+However, I can't get watchmedo to work for my primary use case, which is
+re-running tests when files are saved by Vim. This is due to the way Vim writes
+to temporary files and then moves the temp file to overwrite data atomically.
+Vim thus guarantees that the user never loses data, but also fails to generate
+the correct FS events that watchmedo is looking for.
+
+
+Thanks
+======
+
+Huge thanks to StackOverflow user 'rici', for explaining how to interpret
+shell aliases and functions in the given command using an interactive shell,
+and then how to retrieve the lost terminal once that shell terminates.
+http://stackoverflow.com/questions/25099895/from-python-start-a-shell-that-can-interpret-functions-and-aliases
+
+Thanks to Bitbucket user sgourley for reporting, chasing up and even
+offering to fix issue #1, an egregious bug in ignoring directories, before
+I finally spotted the error. Thanks for the prods!
+
+The idea came from the Bash command 'watch', and inspiration for this
+implementation came from an old blog post by Jeff Winkler, whos website
+http://jeffwinkler.net seems to have now died.
+
+
+Changes
+=======
+
+1.0.26
+    Prevent crash when a watched file gets deleted.
+
+1.0.25
+    Documentation tweaks.
+
+1.0.24
+    Last version broke rerun on Windows. Fixed now.
+    (module 'pwd', which we started using to identify the user's default shell,
+    doesn't exist on Windows.) So '-I' or '--interactive' won't work on
+    Windows, but probably the distinction between a regular shell and an
+    interactive one is meaningless there anyway.
+
+1.0.23
+    Running the given command using a *non*-interactive shell is now the
+    default behaviour. Running an interactive shell for each command invocation
+    requires sourcing .bashrc and the like, and hence is is slow, noisy on
+    stdout, and error-prone. For example, virtualenvwrapper often fails to
+    initialise properly and generates lots of output about it. An interactive
+    shell can be requested when required (i.e. when the command to be run
+    contains shell aliases or functions) with '--interactive' or '-I'.
+
+1.0.22
+    No longer crashes when a broken symlink exists under the cwd.
+
+1.0.21
+    Run user's given command in an interactive shell, so that shell aliases
+    and functions are correctly interpreted.
+
+1.0.20
+    (First release since migration to github)
+    Fix to run under Python 3 again, specifically tested on 3.4.
+
+1.0.19
+    Now expects commands to be a single arg (i.e. spaces etc should be
+    escaped, or the whole command quoted) thus allowing rerun to work on
+    composite commands, such as pipelines.
+
+1.0.18
+    Now runs on Python 2.6, and is tested on Python 3.3.
+
+
+Contact
+=======
+
+:Documentation & download:
+    http://pypi.python.org/pypi/rerun/
+
+:Souce code and issues:
+    https://github.com/tartley/rerun
+
+:Contact the author:
+    Jonathan Hartley, email: tartley at domain tartley.com, Twitter: @tartley.
+
