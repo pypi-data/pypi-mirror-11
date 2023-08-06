@@ -1,0 +1,91 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from __future__ import absolute_import, division, print_function
+
+import hashlib
+import unicodedata
+import os
+import argparse
+import mutagen
+from mutagen.id3 import ID3
+from mutagen.mp3 import MP3
+from mutagenerate.util import format_rows_output, int_or_self, print_length
+
+from collections import namedtuple
+
+Header = namedtuple('Header', ['name', 'mutagen_key', 'filterable', 'frame'])
+headers = [
+    Header('filename', 'f', False, None),
+    Header('artist', 'a', True, 'TPE1'),
+    Header('album', 'A', True, 'TALB'),
+    Header('title', 't', True, 'TIT2'),
+    Header('track', 't', True, 'TRCK'),
+    Header('year', 'y', True, 'TDRC'),
+    Header('genre', 'g', True, 'TCON'),
+    Header('length', 'l', False, None),
+    Header('cover', 'c', False, 'APIC:'),
+]
+
+parser = argparse.ArgumentParser(description='Process some integers.')
+parser.add_argument('paths', nargs='+')
+parser.add_argument('-s', '--sort', dest='sort', choices=('a', 'A', 't', 'g', 'y', 'T', 'c', 'f'), default='f')
+for h in headers:
+    if h.filterable:
+        parser.add_argument('--%s' % h.name, dest=h.name)
+args = parser.parse_args()
+
+sort_keys = {h.mutagen_key: h.name for h in headers}
+
+
+def get_frame(id3, name):
+    if name.endswith(':'):
+        for key, value in id3.items():
+            if key.startswith(name):
+                return hashlib.md5(value.data).hexdigest()[:6]
+        return None
+    return unicode(id3.get(name).text[0]) if name in id3 else None
+
+
+def print_id3s(id3s, sort):
+    if id3s:
+        cols = [h.name for h in headers]
+        rows = [[elem[col] for col in cols] for elem in id3s]
+        rows = sorted(rows, key=lambda r: int_or_self(r[cols.index(sort_keys[sort])]))
+        rows = [cols] + rows
+        print(format_rows_output(rows))
+    print()
+
+
+def parse_id3(dirname, fn, id3s, args):
+    try:
+        id3 = ID3(os.path.join(dirname, fn))
+        obj = {
+            'filename': unicodedata.normalize('NFC', fn.decode('utf8'))
+        }
+        for h in headers:
+            if h.frame:
+                obj[h.name] = get_frame(id3, h.frame)
+        if args.genre and unicode(obj['genre']) != args.genre:
+            return
+        if args.artist and unicode(obj['artist']) != args.artist:
+            return
+        mp3 = MP3(os.path.join(dirname, fn))
+        obj['length'] = print_length(mp3.info.length)
+        id3s.append(obj)
+    except mutagen.id3._util.ID3NoHeaderError:
+        pass
+
+if __name__ == '__main__':
+    local_id3s = []
+    for path in args.paths:
+        if os.path.isdir(path):
+            for dirname, _, fns in os.walk(path):
+                id3s = []
+                for fn in fns:
+                    parse_id3(dirname, fn, id3s, args)
+                print('%s:' % dirname)
+                print_id3s(id3s, args.sort)
+        else:
+            parse_id3(os.path.dirname(path), os.path.basename(path), local_id3s, args)
+    print_id3s(local_id3s, args.sort)
