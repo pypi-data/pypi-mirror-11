@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block title %}Chef node: {{ node.name }}{% endblock %}
+{% block header %}
+  {{ node.name }}
+  <small>
+    <a class="environment" href="{{ url_for('.environment', environment=node['chef_environment']) }}">
+      {{ node['chef_environment'] }}
+    </a>
+  </small>
+{% endblock %}
+{% block body %}
+<div class="row">
+  <div class="col-md-6">
+    <h3>Description</h3>
+
+    <ul>
+      <li>Environment: <code>{{ node['chef_environment'] }}</code></li>
+      <li>Platform: <code>{{ node['platform'] }} {{ node['platform_version'] }}</code></li>
+      {% if node['tags'] %}
+      <li>Tags: <code>{{ node['tags'] | join(', ') }}</code></li>
+      {% endif %}
+    </ul>
+  </div>
+
+  <div class="col-md-6">
+    <h3>Run list</h3>
+    <ul>
+    {% for item in node['run_list'] %}
+      <li>
+      <code>
+      {% if item.startswith('role[') %}
+      {% set role = item[5:-1] %}
+        role[<a href="{{ url_for('.role', role=role) }}">{{ role }}</a>]
+      {% else %}
+        {{ item }}
+      {% endif %}
+      </code>
+      </li>
+    {% endfor %}
+    </ul>
+  </div>
+</div>
+
+{% if node['packages'] %}
+<div class="row">
+  <div class="col-md-12">
+  {% for package_type, packages in node['packages'] | dictsort | reverse %}
+    <h3>Packages (<code><a href="{{ url_for('.packages_for_type', type=package_type)}}">{{ package_type }}</a></code>)</h3>
+    <table class="table table-condensed table-hover">
+      <thead>
+        <tr>
+          <th>Package</th>
+          <th>Version</th>
+          <th>Release</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for package, metadata in packages | dictsort %}
+        <tr>
+          <td>
+            <a href="{{ url_for('.package', type=package_type, name=package) }}">
+              <code>{{ package }}</code>
+            </a>
+          </td>
+          <td>
+            <code>{{ metadata['version'] }}</code>
+          </td>
+          <td>
+            <code>{{ metadata['release'] }}</code>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}
