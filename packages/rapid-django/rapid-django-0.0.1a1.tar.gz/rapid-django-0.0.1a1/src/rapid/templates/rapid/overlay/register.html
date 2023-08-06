@@ -1,0 +1,112 @@
+<script>
+    function position_overlay(target){
+        var win_w = $(window).width();
+        var w = target.width();
+        if(w < win_w){
+            var expected_left = (win_w - w) / 2;
+            var ofs = new Object();
+            ofs.left = expected_left;
+            ofs.top = 50;
+            target.offset(ofs);
+        }else{
+            var ofs = new Object();
+            ofs.left = 5;
+            ofs.top = 30;
+            target.offset(ofs);
+        }
+    }
+    function load_overlay(target, url, on_load, on_commit){
+        $.get(url, {}, function(data){
+            target.html(data);
+            overlay_actions(target, url, on_commit);
+            on_load(target);
+            position_overlay(target.closest("div.overlay"));
+        });
+    }
+    function overlay_actions(obj, target_url, on_commit){
+        var overlay = obj.closest(".overlay");
+        var parent_div = overlay.parent();
+        overlay.find(".overlay-close").click(function(event){
+            event.preventDefault();
+            remove_overlay(parent_div);
+        });
+        overlay.find(".overlay-commit").click(function(event){
+            if(on_commit){
+                on_commit(obj);
+                event.preventDefault();
+                remove_overlay(parent_div);
+            }else{
+                remove_overlay(parent_div);
+            }
+        });
+        obj.find("form").each(function(){
+            var ac = $(this).attr("action");
+            if (!ac){
+                $(this).attr("action", target_url);
+            }
+        });
+        if(on_commit){
+            obj.find('form[method="post"]').submit(function(event){
+                event.preventDefault();
+                on_commit(obj);
+				remove_overlay(parent_div);
+            });
+            obj.find('form:not([method="post"])').ajaxForm(function(data){
+                if(data){
+                    obj.html(data);
+					overlay_actions(obj, target_url, on_commit);
+                }else{
+                    remove_overlay(parent_div);
+                }
+            });
+        }else{
+            obj.find("form").ajaxForm(function(data){
+                if(data){
+                    obj.html(data);
+                }else{
+                    remove_overlay(parent_div);
+                }
+            });
+        }
+    }
+    function remove_overlay(obj){
+        var dt_div = obj.parent().closest("div.data");
+        if(dt_div.children("div").children(".must_reload").length > 0){
+            var reload_url = dt_div.children("a.reload").attr("href");
+            $.get(reload_url, function(data){
+                var o = dt_div.children("div.reload-here");
+                o.html(data);
+                overlay_actions(o, reload_url, false);
+                obj.remove();
+            });
+        }else{
+            obj.remove();
+        }
+    }
+    function show_overlay(target_url, source, on_commit){
+        var overlay_text = "{{ overlay_text }}";
+        var o = $("<div/>").html(overlay_text);
+        load_overlay(o.find(".overlay-data"), target_url, function(){
+            source.closest("div.data").append(o);
+        }, on_commit);
+    }
+    $(document).ready(function(){
+        $("body").on("click", "a.better-in-overlay", function(event){
+            if (!event.isDefaultPrevented()){
+                event.preventDefault();
+                var href=$(this).attr("href");
+                show_overlay(href, $(this), false);
+            }
+        });
+        $("body").on("click", "a:not(.better-in-overlay):not(.overlay-close):not(.overlay-commit):not(.interaction)", function(event){
+            if (!event.isDefaultPrevented()){
+                var href=$(this).attr("href");
+                var p = $(this).closest("div.reload-here")
+                if (p.length > 0){
+                    event.preventDefault();
+                    load_overlay(p, href, function(){}, false);
+                }
+            }
+        });
+    });
+</script>
