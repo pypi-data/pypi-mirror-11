@@ -1,0 +1,150 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+Usage:
+    aws-federation-client-cmd [--user=<username>] [--api-url=<api url>]
+                              [--show] [(<accountname> <rolename>)]
+
+Options:
+  -h --help                Show this
+  --user=<username>        The user you want to use.
+  --api-url=<api url>      The URL of the AFP server
+  --show                   Show credentials instead of opening subshell
+  <accountname>            The aws account id you want to login to.
+  <rolename>               The aws role you want to use for login.
+"""
+
+import getpass
+import os
+import random
+import socket
+import subprocess
+import sys
+import tempfile
+import yamlreader
+
+from docopt import docopt
+from afp_cli import AWSFederationClientCmd
+
+CFGDIR = '/etc/aws-federation-client'
+
+
+def get_user(username):
+    """Check if we have a given user, else take the current one"""
+    return username or getpass.getuser()
+
+
+def get_password(username):
+    """Return password for the given user"""
+    return getpass.getpass("Password for {0}: ".format(username))
+
+def load_config(global_config_dir=CFGDIR):
+    global_config = {}
+    if os.path.isdir(global_config_dir):
+        global_config = yamlreader.yaml_load(global_config_dir, {})
+
+    user_config = {}
+    user_config_dir = os.path.expanduser("~/.aws-federation-client")
+    if os.path.isdir(user_config_dir):
+        global_config = yamlreader.yaml_load(user_config_dir, {})
+
+    yamlreader.data_merge(global_config, user_config)
+    return global_config
+
+def get_default_afp_server():
+    """Return the FQDN of the host that is called "afp"
+
+    This is done by resolving "afp" into (potentially multiple) IPs.
+    One of those IPs is randomly chosen, then a reverse-lookup is performed
+    on that IP to get its FQDN.
+    """
+    try:
+        addrinfos = socket.getaddrinfo("afp", 443,
+                                       socket.AF_INET, socket.SOCK_STREAM)
+    except Exception, exc:
+        print >>sys.stderr, "Could not resolve hostname 'afp': %s" % exc
+        sys.exit(1)
+    addrinfo = random.choice(addrinfos)
+    afp_server_ip = addrinfo[4][0]
+
+    try:
+        return socket.gethostbyaddr(afp_server_ip)[0]
+    except Exception, exc:
+        print >>sys.stderr, "DNS reverse lookup failed for IP %s: %s" % (
+            afp_server_ip, exc)
+        sys.exit(1)
+
+RC_SCRIPT_TEMPLATE = """
+# Pretend to be an interactive, non-login shell
+for file in /etc/bash.bashrc ~/.bashrc; do
+    [ -f "$file" ] && . "$file"
+done
+
+PS1="(AWS) $PS1"
+export AWS_ACCESS_KEY_ID={AWS_ACCESS_KEY_ID}
+export AWS_SECRET_ACCESS_KEY={AWS_SECRET_ACCESS_KEY}
+export AWS_SESSION_TOKEN={AWS_SESSION_TOKEN}
+export AWS_SECURITY_TOKEN={AWS_SECURITY_TOKEN}
+"""
+def start_subshell(aws_credentials):
+    print "Press CTRL+D to exit."
+    rc_script = tempfile.NamedTemporaryFile()
+    rc_script.write(RC_SCRIPT_TEMPLATE.format(**aws_credentials))
+    rc_script.flush()
+    subprocess.call(
+        ["bash", "--rcfile", rc_script.name],
+        stdout=sys.stdout, stderr=sys.stderr, stdin=sys.stdin)
+    print "Leaving AFP subshell."
+
+
+def main():
+    """Main function for script execution"""
+    try:
+        arguments = docopt(__doc__)
+        try:
+            config = load_config()
+        except Exception, exc:
+            print >>sys.stderr, "Failed to load configuration:", exc
+            sys.exit(1)
+
+        api_url = arguments['--api-url'] or config.get('api_url')
+        if api_url is None:
+            api_url = 'https://{fqdn}/afp-api/latest'.format(fqdn=get_default_afp_server())
+        username = get_user(arguments['--user'])
+        password = get_password(username)
+        federation_client = AWSFederationClientCmd(api_url=api_url,
+                                                   username=username,
+                                                   password=password)
+        if arguments['<accountname>'] and arguments['<rolename>']:
+            account = arguments['<accountname>']
+            role = arguments['<rolename>']
+            try:
+                aws_credentials = federation_client.get_aws_credentials(account, role)
+            except Exception, exc:
+                print >>sys.stderr, "Failed to get credentials from AWS:", exc
+                sys.exit(1)
+
+            if arguments['--show']:
+                for key, value in aws_credentials.items():
+                    print "{key}='{value}'".format(key=key, value=value)
+            else:
+                print "Entering AFP subshell for account {0}, role {1}.".format(
+                    account, role)
+                try:
+                    start_subshell(aws_credentials)
+                except Exception, exc:
+                    print >>sys.stderr, "Failed to start subshell:", exc
+                    sys.exit(1)
+        else:
+            try:
+                federation_client.print_account_and_role_list()
+            except Exception, exc:
+                print >>sys.stderr, "Failed to get account list from AWS:", exc
+                sys.exit(1)
+    except KeyboardInterrupt:
+        sys.exit(0)
+
+
+if __name__ == '__main__':
+    main()
