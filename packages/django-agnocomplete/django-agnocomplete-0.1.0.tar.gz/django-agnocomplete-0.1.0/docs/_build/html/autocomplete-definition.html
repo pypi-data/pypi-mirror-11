@@ -1,0 +1,268 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Autocomplete definition &mdash; django-agnocomplete 0.0.0 documentation</title>
+    
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="django-agnocomplete 0.0.0 documentation" href="index.html" />
+    <link rel="next" title="Custom views and URLs" href="custom-views.html" />
+    <link rel="prev" title="Overview" href="overview.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="autocomplete-definition">
+<h1>Autocomplete definition<a class="headerlink" href="#autocomplete-definition" title="Permalink to this headline">¶</a></h1>
+<p>Here we&#8217;ll see how to define Agnocomplete-compatible autocomplete classes.</p>
+<div class="section" id="where-should-they-live">
+<h2>Where should they live?<a class="headerlink" href="#where-should-they-live" title="Permalink to this headline">¶</a></h2>
+<p>These classes <strong>must</strong> live in a module names <code class="docutils literal"><span class="pre">autocomplete</span></code>, located in one of your Django <code class="docutils literal"><span class="pre">INSTALLED_APPS</span></code>. How you&#8217;re organizing these modules is up to you, but the autodiscover feature <strong>needs</strong> them to be located in this module.</p>
+</div>
+<div class="section" id="general-options">
+<h2>General options<a class="headerlink" href="#general-options" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="page-size">
+<h3>Page size<a class="headerlink" href="#page-size" title="Permalink to this headline">¶</a></h3>
+<p>The page size parameter can have four different sources. It&#8217;s the maximum number of items returned by the autocomplete when you&#8217;re being querying it. In order to keep it performant and pertinent, it has limits.</p>
+<p>By default, it&#8217;s defined by the constants that live in the <code class="xref py py-mod docutils literal"><span class="pre">agnocomplete.constants</span></code> module:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="s">&quot;Agnocomplete default page size&quot;</span>
+<span class="n">AGNOCOMPLETE_DEFAULT_PAGESIZE</span> <span class="o">=</span> <span class="mi">10</span>
+
+<span class="s">&quot;Agnocomplete maximum page size&quot;</span>
+<span class="n">AGNOCOMPLETE_MAX_PAGESIZE</span> <span class="o">=</span> <span class="mi">100</span>
+
+<span class="s">&quot;Agnocomplete minimum page size&quot;</span>
+<span class="n">AGNOCOMPLETE_MIN_PAGESIZE</span> <span class="o">=</span> <span class="mi">3</span>
+</pre></div>
+</div>
+<p>You can override these module defaults using your django settings:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="c"># AGNOCOMPLETE specifics</span>
+<span class="n">AGNOCOMPLETE_DEFAULT_PAGESIZE</span> <span class="o">=</span> <span class="mi">15</span>
+<span class="n">AGNOCOMPLETE_MAX_PAGESIZE</span> <span class="o">=</span> <span class="mi">120</span>
+<span class="n">AGNOCOMPLETE_MIN_PAGESIZE</span> <span class="o">=</span> <span class="mi">2</span>
+</pre></div>
+</div>
+<p>If you need to specify a default / min / max page size for your specific Autocomplete class, you still can do it via a class property:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">class</span> <span class="nc">AutocompletePerson</span><span class="p">(</span><span class="n">AgnocompleteModel</span><span class="p">):</span>
+    <span class="n">page_size</span> <span class="o">=</span> <span class="mi">30</span>
+    <span class="n">page_size_max</span> <span class="o">=</span> <span class="mi">120</span>
+    <span class="n">page_size_min</span> <span class="o">=</span> <span class="mi">5</span>
+</pre></div>
+</div>
+<p>Finally, when the HTTP client (usually a JS script, but it can be a curl-like command line tool) is querying, it can add a <code class="docutils literal"><span class="pre">page_size</span></code> argument to tailor the page size to its need:</p>
+<div class="highlight-sh"><div class="highlight"><pre>curl http://yourserver/agnocomplete/AutocompletePerson/?q<span class="o">=</span>ali<span class="p">&amp;</span><span class="nv">page_size</span><span class="o">=</span>3
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">The minimum and maximum page size can&#8217;t be overridden by the client, to avoid performances issues.</p>
+</div>
+</div>
+<div class="section" id="minimum-length-of-query-size">
+<h3>Minimum length of query size<a class="headerlink" href="#minimum-length-of-query-size" title="Permalink to this headline">¶</a></h3>
+<p>It&#8217;s obvious that searching for a one-character-term is not a good idea, both on the backend side (too many pointless calls) or on the frontend (too many unusable results). To limit this, we advise the front-end integration not to call the agnocomplete URL if the search term typed in the search box doesn&#8217;t meet the minimum length.</p>
+<p>This is handled by the <code class="docutils literal"><span class="pre">query_size</span></code> parameter. As for the page size, this parameter can be overridden, but only in the backend.</p>
+<p>There are two important settings:</p>
+<ul class="simple">
+<li><code class="docutils literal"><span class="pre">AGNOCOMPLETE_DEFAULT_QUERYSIZE</span></code>: the usual default minimum length of the search term to be queried.</li>
+<li><code class="docutils literal"><span class="pre">AGNOCOMPLETE_MIN_QUERYSIZE</span></code>: the absolute minimum length of a search term.</li>
+</ul>
+<p>These variables are set in the <code class="docutils literal"><span class="pre">agnocomplete.constants</span></code> module.</p>
+<p>They can be overridden in the django settings, like this:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="n">AGNOCOMPLETE_DEFAULT_QUERYSIZE</span> <span class="o">=</span> <span class="mi">5</span>
+<span class="n">AGNOCOMPLETE_MIN_QUERYSIZE</span> <span class="o">=</span> <span class="mi">3</span>
+</pre></div>
+</div>
+<p>Also, this can be overridden in the autocomplete class definition, like this:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">class</span> <span class="nc">AutocompletePerson</span><span class="p">(</span><span class="n">AgnocompleteModel</span><span class="p">):</span>
+    <span class="n">query_size</span> <span class="o">=</span> <span class="mi">6</span>
+    <span class="n">query_size_min</span> <span class="o">=</span> <span class="mi">5</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p>They don&#8217;t have to be different, you can also force them to be equal:</p>
+<div class="last highlight-python"><div class="highlight"><pre><span class="n">AGNOCOMPLETE_DEFAULT_QUERYSIZE</span> <span class="o">=</span> <span class="n">AGNOCOMPLETE_MIN_QUERYSIZE</span> <span class="o">=</span> <span class="mi">3</span>
+</pre></div>
+</div>
+</div>
+<ol class="arabic simple">
+<li>In the input, we&#8217;re providing a <code class="docutils literal"><span class="pre">data-query-size</span></code> attribute you can fetch to adjust your frontend.</li>
+<li>If the AJAX view is called with a search term that is smaller than the Agnocomplete class minimum length, the resultset will be empty.</li>
+</ol>
+</div>
+</div>
+<div class="section" id="agnocompletefield">
+<h2>AgnocompleteField<a class="headerlink" href="#agnocompletefield" title="Permalink to this headline">¶</a></h2>
+<p>This basic class provides non-Django-model autocompletion tools. This class is built when your dataset is computed or generated, or a static list of values (like the states of the United States of America, for example).</p>
+<p>When you&#8217;re deriving this class, you <em>have to</em> provide a <code class="docutils literal"><span class="pre">choices</span></code> property. This property is usually a list of valid values.</p>
+</div>
+<div class="section" id="agnocompletemodel">
+<h2>AgnocompleteModel<a class="headerlink" href="#agnocompletemodel" title="Permalink to this headline">¶</a></h2>
+<p>Choices in this class are related to a Django model. You <strong>must</strong> provide:</p>
+<ul class="simple">
+<li>a <code class="docutils literal"><span class="pre">model</span></code> property pointing at a Django model class <strong>OR</strong> a <code class="docutils literal"><span class="pre">get_queryset()</span></code> method, returning the raw records, ready to be filtered by the searched terms.,</li>
+<li>a <code class="docutils literal"><span class="pre">fields</span></code> property listing the fields to be used when searching for a value.</li>
+</ul>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">class</span> <span class="nc">AutocompletePerson</span><span class="p">(</span><span class="n">AgnocompleteModel</span><span class="p">):</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">Person</span>
+    <span class="n">fields</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;first_name&#39;</span><span class="p">,</span> <span class="s">&#39;last_name&#39;</span><span class="p">]</span>
+
+<span class="k">class</span> <span class="nc">AutocompletePersonQueryset</span><span class="p">(</span><span class="n">AgnocompleteModel</span><span class="p">):</span>
+    <span class="n">fields</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;first_name&#39;</span><span class="p">,</span> <span class="s">&#39;last_name&#39;</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">get_queryset</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">Person</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">email__contains</span><span class="o">=</span><span class="s">&#39;example.com&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>In this class, when you&#8217;ll be searching for &#8220;alice&#8221;, the returned results will <strong>contain</strong> this word in the <code class="docutils literal"><span class="pre">first_name</span></code> OR the <code class="docutils literal"><span class="pre">last_name</span></code> field.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p>The field searches will be joined using a <code class="docutils literal"><span class="pre">OR</span></code>. In our example, the resulting query will be:</p>
+<div class="last highlight-sql"><div class="highlight"><pre><span class="k">SELECT</span> <span class="o">*</span> <span class="k">from</span> <span class="n">demo_people</span>
+<span class="k">WHERE</span> <span class="n">first_name</span> <span class="k">ILIKE</span> <span class="s1">&#39;%value%&#39;</span> <span class="k">OR</span> <span class="n">last_name</span> <span class="k">ILIKE</span> <span class="s1">&#39;%value%&#39;</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="fields-definition">
+<h3>Fields definition<a class="headerlink" href="#fields-definition" title="Permalink to this headline">¶</a></h3>
+<p>You can define fields using a few tricks to refine your search:</p>
+<ul class="simple">
+<li><code class="docutils literal"><span class="pre">^field_name</span></code> will look return values that will <strong>start with</strong> the query argument,</li>
+<li><code class="docutils literal"><span class="pre">=field_name</span></code> will look for <strong>exact matches</strong> for the query argument,</li>
+<li><code class="docutils literal"><span class="pre">&#64;field_name</span></code> will use the <code class="docutils literal"><span class="pre">__search</span></code> lookup, taking advantage of the full-text search indexes.</li>
+</ul>
+<p>Otherwise, the search will be a simple <code class="docutils literal"><span class="pre">ILIKE</span> <span class="pre">'%value%'</span></code> SQL statement.</p>
+</div>
+<div class="section" id="user-dependant-querysets">
+<h3>User-dependant querysets<a class="headerlink" href="#user-dependant-querysets" title="Permalink to this headline">¶</a></h3>
+<p>A common usecase: &#8220;Please display the items depending on the user context&#8221;.
+In a multi-site context, you <em>have</em> to define a preemptive filter to gather informations based on the current context. That&#8217;s the reason why the <code class="docutils literal"><span class="pre">django-agnocomplete</span></code> views carry the request user into the Autocomplete class. This instance variable is <code class="docutils literal"><span class="pre">self.user</span></code>. If you&#8217;re using a custom authentication profile, it&#8217;ll be an instance of your <code class="docutils literal"><span class="pre">AUTH_USER_MODE</span></code> class, hence it&#8217;ll have access to its properties and methods.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="k">class</span> <span class="nc">AutocompletePersonQueryset</span><span class="p">(</span><span class="n">AgnocompleteModel</span><span class="p">):</span>
+    <span class="n">fields</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;first_name&#39;</span><span class="p">,</span> <span class="s">&#39;last_name&#39;</span><span class="p">]</span>
+    <span class="n">requires_authentication</span> <span class="o">=</span> <span class="bp">True</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">Person</span>
+
+    <span class="k">def</span> <span class="nf">get_queryset</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">email</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">email</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">domain</span> <span class="o">=</span> <span class="n">email</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;@&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">Person</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">email__endswith</span><span class="o">=</span><span class="n">domain</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">AutocompletePersonSameSite</span><span class="p">(</span><span class="n">AgnocompleteModel</span><span class="p">):</span>
+    <span class="n">fields</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;first_name&#39;</span><span class="p">,</span> <span class="s">&#39;last_name&#39;</span><span class="p">]</span>
+    <span class="n">requires_authentication</span> <span class="o">=</span> <span class="bp">True</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">Person</span>
+
+    <span class="k">def</span> <span class="nf">get_queryset</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">Person</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">site</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">user</span><span class="o">.</span><span class="n">site</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="admonition important">
+<p class="first admonition-title">Important</p>
+<p class="last">You may have noticed that these two classes have a <code class="docutils literal"><span class="pre">model</span></code> property and a <code class="docutils literal"><span class="pre">requires_authentication</span></code> property set to <code class="docutils literal"><span class="pre">True</span></code>. Because we&#8217;re using a user-based context, the <code class="docutils literal"><span class="pre">requires_authentication</span></code> will allow the general &#8220;out-of-context code&#8221; (form class creation) to instanciate the Agnocomplete class without the context, but will disallow it to return results based on the <code class="docutils literal"><span class="pre">query</span></code>. This way, you can filter out unauthorized uses of the autocomplete, as you could do it with the <code class="docutils literal"><span class="pre">&#64;login_required</span></code> decorator in
+your views.</p>
+</div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Autocomplete definition</a><ul>
+<li><a class="reference internal" href="#where-should-they-live">Where should they live?</a></li>
+<li><a class="reference internal" href="#general-options">General options</a><ul>
+<li><a class="reference internal" href="#page-size">Page size</a></li>
+<li><a class="reference internal" href="#minimum-length-of-query-size">Minimum length of query size</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#agnocompletefield">AgnocompleteField</a></li>
+<li><a class="reference internal" href="#agnocompletemodel">AgnocompleteModel</a><ul>
+<li><a class="reference internal" href="#fields-definition">Fields definition</a></li>
+<li><a class="reference internal" href="#user-dependant-querysets">User-dependant querysets</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="overview.html" title="previous chapter">Overview</a></li>
+      <li>Next: <a href="custom-views.html" title="next chapter">Custom views and URLs</a></li>
+  </ul></li>
+</ul>
+</div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/autocomplete-definition.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, PeopleDoc.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.3.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.6</a>
+      
+      |
+      <a href="_sources/autocomplete-definition.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
