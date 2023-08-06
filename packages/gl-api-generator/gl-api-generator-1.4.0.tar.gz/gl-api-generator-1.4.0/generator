@@ -1,0 +1,111 @@
+#!/usr/bin/env python
+"""
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=#
+  This file is part of the Smart Developer Hub Project:
+    http://www.smartdeveloperhub.org
+
+  Center for Open Middleware
+        http://www.centeropenmiddleware.com/
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=#
+  Copyright (C) 2015 Center for Open Middleware.
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=#
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+            http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+#-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=#
+"""
+
+# Import Generator files
+from utils import download
+from utils import repository
+from utils import parse
+from utils import code
+
+# Import other libraries
+import settings
+
+__author__ = 'Alejandro F. Carrera'
+
+# Main
+
+if __name__ == '__main__':
+    settings.print_message(" * [%s] Started" % settings.LONGNAME)
+
+    try:
+
+        # Get and Clone Repositories
+        settings.print_message(" * [%s] Checking and clone Repositories ... " % settings.LONGNAME)
+
+        __repo_gl = download.get_repo_gitlab()
+
+        # Get Branches information [filter]
+        __gl_branches = repository.get_branches_with_filter(
+            __repo_gl, settings.GEN_GL_BRANCH
+        )
+
+        # Replace -[filter] by blank and others unnecessary branches
+        __gl_branches = repository.remove_info_from_branches(
+            __gl_branches, settings.GEN_GL_BRANCH, settings.GEN_GL_BRANCH_REMOVE
+        )
+
+        # Get diff between branches
+        __gen_branches_rt = map(lambda x: x + "-" + settings.GEN_GL_BRANCH, __gl_branches)
+
+        # Generate Pypi configuration file
+        code.generate_pypi_settings()
+
+        settings.print_message(" * [%s] Generating documentation ... " % settings.LONGNAME)
+
+        for i in __gen_branches_rt:
+
+            # Checkout to specific branch
+            repository.move_to_specific_branch(__repo_gl, i)
+
+            # Generate documentation
+            repository.generate_doc(i)
+
+            # Move only HTML API Docs
+            repository.move_docs_folder(settings.GEN_DOC_DISK_PATH + "/api", settings.GEN_DOC_DISK_PATH)
+
+            # Remove unnecessary files
+            repository.remove_file(settings.GEN_DOC_DISK_PATH + "/deploy_key_multiple_projects.html")
+            repository.remove_file(settings.GEN_DOC_DISK_PATH + "/deploy_keys.html")
+            repository.remove_file(settings.GEN_DOC_DISK_PATH + "/settings.html")
+            repository.remove_file(settings.GEN_DOC_DISK_PATH + "/services.html")
+            repository.remove_file(settings.GEN_DOC_DISK_PATH + "/README.html")
+            repository.remove_file(settings.GEN_DOC_DISK_PATH + "/oauth2.html")
+            repository.remove_file(settings.GEN_DOC_DISK_PATH + "/keys.html")
+
+            # !! TODO: This version is not compatible with these docs
+            repository.remove_file(settings.GEN_DOC_DISK_PATH + "/merge_requests.html")
+            repository.remove_file(settings.GEN_DOC_DISK_PATH + "/milestones.html")
+            repository.remove_file(settings.GEN_DOC_DISK_PATH + "/issues.html")
+
+            # Parse and generate code
+            md = parse.generate_meta_code(settings.GEN_DOC_DISK_PATH)
+
+            # Save Metadata Structure
+            code.save_json_metadata(md)
+
+            # Generate Python code
+            code.generate_pycode()
+
+            # Generate settings file
+            code.generate_settings(i.replace("-" + settings.GEN_GL_BRANCH, ""))
+
+            # Upload Pypi package
+            code.upload_package()
+
+    except Exception as e:
+        settings.print_error(" * [%s] %s" % (settings.LONGNAME, e.message))
+
+    settings.print_message(" * [%s] Finished" % settings.LONGNAME)
+
