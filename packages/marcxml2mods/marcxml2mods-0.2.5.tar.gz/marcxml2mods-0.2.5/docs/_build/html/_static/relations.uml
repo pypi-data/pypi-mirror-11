@@ -1,0 +1,99 @@
+package xslt {
+    class mods_nonp_single as "MARC21slim2MODS3-4-NDK.xsl" <<X, Green>> {
+        Converts Aleph's non-periodical
+        non-multi-monograph metadata to
+        MODS.
+    }
+    class mods_nonp_multi as "MARC21toMultiMonographTitle.xsl" <<X, Green>> {
+        Converts Aleph's non-periodical
+        multi-monograph metadata to MODS.
+    }
+    class mods_per as "MARC21toPeriodicalTitle.xsl" <<X, Green>> {
+        Converts Aleph's periodical
+        metadata to MODS.
+    }
+}
+
+package mods_postprocessor {
+    class mp_init as "_​_init__.py" <<M, Red>> {
+        Used to fix data after XSLT templates.
+
+    }
+    class shared_funcs as "shared_funcs.py" <<M, Red>> {
+        Functions shared in mods_postprocessor/ module.
+
+        insert_tag(tag, before, root)
+        transform_content(tags, content_transformer)
+        double_linked_dom(str_or_dom)
+    }
+    class monograph as "monograph.py" <<M, Red>> {
+        Functions used to postprocess Monograph
+        MODS XML.
+
+        add_xml_declaration(fn)
+        get_mods_tag(dom)
+        add_missing_xml_attributes(dom, volume_counter)
+        fix_invalid_type_parameter(dom)
+        add_uuid(dom, uuid)
+        add_marccountry_tag(dom)
+        add_genre(dom)
+        remove_hairs_from_tags(dom)
+        fix_issuance(dom)
+        fix_location_tag(dom)
+        fix_related_item_tag(dom)
+        postprocess_monograph(mods, uuid, counter)
+    }
+    class multi_mono as "multi_monograph.py" <<M, Red>> {
+        Functions used to postprocess Multimono
+        MODS XML.
+
+        postprocess_multi_mono(mods, uuid, counter)
+    }
+    class periodical as "periodical.py" <<M, Red>> {
+        Functions used to postprocess Periodical
+        MODS XML.
+
+        postprocess_periodical(mods, uuid, counter)
+    }
+}
+
+class xslt_transformer as "xslt_transformer.py" <<M, Red>> {
+    Used to convert data using XSLT
+    templates.
+
+    xslt_transformation(xml, template)
+}
+
+class transformators as "transformators.py" <<M, Red>> {
+    Used to transform Aleph's metadata to MODS.
+
+    transform_to_mods_mono(marc_xml, uuid)
+    transform_to_mods_multimono(marc_xml, uuid)
+    transform_to_mods_periodical(marc_xml, uuid)
+    marcxml2mods(marc_xml, uuid)
+}
+
+class init as "_​_init__.py" <<M, Red>> {
+    Package's _​_init__ file.
+
+    marcxml2mods()
+}
+
+
+shared_funcs -d-> monograph: uses
+shared_funcs -d-> multi_mono: uses
+shared_funcs -d-> periodical: uses
+monograph -d-> mp_init: is imported
+multi_mono -d-> mp_init: is imported
+periodical -d-> mp_init: is imported
+
+mods_nonp_single -d-> transformators: reads
+mods_nonp_multi .d.> transformators: reads
+mods_per .d.> transformators: read
+
+mp_init -r-> transformators: fixes
+transformators --> mp_init
+
+transformators <-r-> xslt_transformer: uses
+
+transformators -d-> init: is imported
