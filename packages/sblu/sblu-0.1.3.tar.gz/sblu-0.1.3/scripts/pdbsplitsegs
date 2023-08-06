@@ -1,0 +1,37 @@
+#!/usr/bin/env python
+import os
+from argparse import ArgumentParser, FileType
+
+from sblu.pdb import parse_pdb_stream, split_segments
+from sblu.util import is_pipe
+
+# Ignore SIGPIPE so we can pipe to head, etc
+from signal import signal, SIGPIPE, SIG_DFL
+signal(SIGPIPE, SIG_DFL)
+
+parser = ArgumentParser()
+parser.add_argument("pdb_file", type=FileType('r'),
+                    help="PDB file to split into segments. (default: stdin)")
+parser.add_argument("--renum", default=False,
+                    action='store_const', const=True,
+                    help="Renumber residues")
+parser.add_argument("--add-segid", default=False,
+                    action='store_const', const=True,
+                    help="Add segment ids to the output files")
+parser.add_argument("--output-file-prefix", default=None,
+                    help="Use this prefix for the output files.")
+args = parser.parse_args()
+
+if (args.output_file_prefix is None and os.path.exists(args.pdb_file.name) and not is_pipe(args.pdb_file)):
+    args.output_file_prefix = os.path.splitext(args.pdb_file.name)[0]
+
+records = parse_pdb_stream(args.pdb_file)
+
+for (segment, chain, segid) in split_segments(records,
+                                              add_segid=args.add_segid):
+    out_file = (args.output_file_prefix +
+                "-{}.{:04d}.pdb".format(chain, segid))
+
+    with open(out_file, "w") as ofp:
+        for record in segment:
+            ofp.write(str(record))

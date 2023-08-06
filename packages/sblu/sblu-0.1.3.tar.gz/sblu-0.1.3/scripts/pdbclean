@@ -1,0 +1,46 @@
+#!/usr/bin/env python
+import sys
+from argparse import ArgumentParser, FileType
+
+from sblu.pdb import (parse_pdb_stream, fix_atom_records,
+                      SKIP_RESIDUES, RESNAME_FIXES, RECORD_FIXES)
+
+# Ignore SIGPIPE so we can pipe to head, etc
+from signal import signal, SIGPIPE, SIG_DFL
+signal(SIGPIPE, SIG_DFL)
+
+parser = ArgumentParser(description="Prepares PDB files by applying some fixes")
+parser.add_argument("--no-skips", default=False,
+                    action='store_const', const=True,
+                    help=("Skip the following residues: " +
+                          " ".join(SKIP_RESIDUES)))
+parser.add_argument("--all-het-to-atom", default=False,
+                    action='store_const', const=True,
+                    help="Change all hetatm records to atom")
+parser.add_argument("--no-record-fixes", default=False,
+                    action='store_const', const=True,
+                    help=("Change the record type to ATOM for the following residues: " +
+                          " ".join(RECORD_FIXES)))
+parser.add_argument("--no-resname-fixes", default=False,
+                    action='store_const', const=True,
+                    help=("Fix the following residue names:\n" +
+                          "\n".join(['\t{} -> {}'.format(k, v)
+                                     for k, v in RESNAME_FIXES.items()])))
+
+parser.add_argument("pdb_file", type=FileType('r'),
+                    help="PDB file to apply fixes to. (default: stdin)")
+parser.add_argument("--outfile", type=FileType('w'),
+                    default=sys.stdout, help="Output filename. (default: stdout)")
+
+args = parser.parse_args()
+
+records = fix_atom_records(parse_pdb_stream(args.pdb_file),
+                           no_skips=args.no_skips,
+                           all_het_to_atom=args.all_het_to_atom,
+                           no_record_fixes=args.no_record_fixes,
+                           no_resname_fixes=args.no_resname_fixes)
+
+for record in records:
+    args.outfile.write(str(record))
+
+args.outfile.close()
