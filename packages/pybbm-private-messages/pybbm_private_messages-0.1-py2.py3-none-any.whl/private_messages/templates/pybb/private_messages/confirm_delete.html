@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title></title>
+</head>
+<body>
+
+</body>
+</html>
+{% extends 'pybb/base.html' %}
+
+{% load url from future %}
+{% load i18n pybb_tags %}
+
+{% pybb_get_profile user=request.user as user_profile %}
+
+{% block breadcrumb %}
+    {% include 'pybb/breadcrumb.html' with object=this_message %}
+{% endblock %}
+
+{% block content %}
+<h2> Are you sure you want to delete this message?</h2>
+<div class="col-xs-5 col-xs-offset-1">
+    <form method="post">
+        {% csrf_token %}
+        <input class="btn btn-danger" type="submit" value="I am sure"/>
+    </form>
+</div>
+<div class="col-xs-5">
+    <a class="btn btn-primary" href="{{ message.get_absolute_url }}">No, just kidding. Take me back</a>
+</div>
+    <table class="table table-bordered post">
+        {% pybb_get_profile user=message.sender as sender_profile %}
+        <thead class="post-header">
+        <tr>
+        <th colspan="2">
+            <a class="permalink" href="{{ message.get_absolute_url }}">#</a>
+            <span class="updated">{% pybb_time message.sent %}</span>
+        </th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr class="post-row">
+            <td class="post-info">
+                {% include "pybb/avatar.html" with user=message.sender %}
+
+                <div class="post-author">
+                    <a href="{{ sender_profile.get_absolute_url }}">
+                        <span class="post-username">{{ sender_profile.get_display_name }}</span>
+                    </a>
+                </div>
+                {% if request.user.is_superuser %}
+                    <div class="post-extra-info">{{ message.sender_ip }}</div>
+                {% endif %}
+            </td>
+            <td class="post-content">
+                {{ message.body_html|safe }}
+
+                {% if user_profile.show_signatures and sender_profile.signature %}
+                    <div class="post-signature">
+                        {{ sender_profile.signature_html|safe }}
+                    </div>
+                {% endif %}
+
+                <div class="post-related">
+                    <a class="reply-btn" href="{% url 'private_messages:send_message' %}?reply={{message.pk}}">Reply</a>
+                    <a class="reply-btn" href="{% url 'private_messages:send_message' %}?reply={{message.pk}}&all=true">Reply All</a>
+                    <a class="reply-btn" href="{% url 'private_messages:delete_message' message.pk %}">Delete</a>
+                </div>
+            </td>
+        </tr>
+        </tbody>
+    </table>
+{% endblock content %}
