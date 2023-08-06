@@ -1,0 +1,1 @@
+{"": "", "15 min": "", "Uptime": "", "Total": "", "Configure": "", "Memory usage": "Bellek kullan\u0131m\u0131", "Hostname": "", "Active cores": "", "Add widget": "", "1 min": "", "Remove": "", "5 min": "", "CPU usage": "\u0130\u015flemci kullan\u0131m\u0131", "Save": "Kaydet", "Load average": "", "Dashboard": "Pano"}
