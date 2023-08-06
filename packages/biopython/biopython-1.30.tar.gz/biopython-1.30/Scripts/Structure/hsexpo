@@ -1,0 +1,130 @@
+#!/usr/bin/python
+
+# Copyright (C) 2002, Thomas Hamelryck (thamelry@vub.ac.be)
+# This code is part of the Biopython distribution and governed by its
+# license.  Please see the LICENSE file that should have been included
+# as part of this package.
+
+from optparse import OptionParser
+
+from Bio.PDB import *
+
+__doc__="""
+This program calculates solvent exposure for all amino
+acids in a PDB file using 5 different methods:
+
+    -DSSP (DSSP needs to be installed)
+    -Residue depth (MSMS needs to be installed)
+    -Coordination number (ie. number of CA atoms within a sphere)
+    -CA3 half sphere exposure
+    -CB half sphere exposure
+
+A PDB file can be written out with the exposure in the B factor field.
+See --help for all options.
+"""
+
+# Get the user's options
+parser=OptionParser()
+
+parser.add_option("-t", "--type", dest="exp", 
+                  help="exposure type (CA3, CB, FS, DSSP, RD)",
+                  default="CA3")
+
+parser.add_option("-o", "--out", dest="outfile", 
+                  help="output to PDB file (B factor=exposure)")
+
+parser.add_option("-r", "--radius", dest="radius", type="float", 
+                  help="sphere radius (default 13.0 A)", 
+                  default=13.0)
+
+parser.add_option("-m", "--model", dest="model", type="int", 
+                  help="model number (default 0)", 
+                  default=0)
+
+parser.add_option("-d", "--down-sphere", action="store_true", dest="ds", 
+                  help="use half sphere opposite side chain") 
+
+parser.add_option("-s", "--offset", dest="offset", type="float", 
+                  help="offset of cutting plane along CB direction (default 0)",
+                  default=0.0)
+
+(options, args)=parser.parse_args()
+
+pdbfile=args[0]
+
+# Get the structure
+p=PDBParser()
+s=p.get_structure('X', pdbfile)
+
+# First model by default
+m=s[options.model]
+
+RADIUS=options.radius
+
+# d=dictionary of expsoures
+# k=position in ntuple containing the desired exposure
+
+format="%4i"
+
+if options.exp=="CA3":
+    hse=HSExposure(OFFSET=options.offset)
+    d=hse.calc_hs_exposure(m, RADIUS, option="CA3")
+    if options.ds:
+        k=1
+    else:
+        k=0
+elif options.exp=="CB":
+    hse=HSExposure(OFFSET=options.offset)
+    d=hse.calc_hs_exposure(m, RADIUS, option="CB")
+    if options.ds:
+        k=1
+    else:
+        k=0
+elif options.exp=="FS":
+    hse=HSExposure()
+    d=hse.calc_fs_exposure(m, RADIUS)
+    k=0
+elif options.exp=="ANGLE":
+    hse=HSExposure()
+    d=hse.get_angles()
+    k=0
+    format="%4.1f"
+elif options.exp=="DSSP":
+    d=DSSP(m, pdbfile)
+    k=1
+elif options.exp=="RD":
+    d=ResidueDepth(m, pdbfile)
+    k=0
+    format="%4.1f"
+elif options.exp=="RD_CA":
+    d=ResidueDepth(m, pdbfile)
+    k=1
+    format="%4.1f"
+
+residue_list=Selection.unfold_entities(m, 'R')
+
+for r in residue_list:
+
+    if d.has_key(r):
+        exposure=d[r][k] 
+
+        # Print info
+        hetflag, resseq, icode=r.get_id()
+
+        if icode==' ':
+            icode='_'
+
+        resname=r.get_resname()
+
+        print (("%s %4i %c\t"+format) % (resname, resseq, icode, exposure)) 
+    else:
+        exposure=0.0
+
+    for atom in r.get_iterator():
+        atom.set_bfactor(exposure)
+
+if options.outfile:
+    io=PDBIO()
+    io.set_structure(s)
+    io.save(options.outfile)
+
