@@ -1,0 +1,50 @@
+gpw - gnuplot wrapper
+Wrapper module for interfacing Python with gnuplot.
+by Wicher Minnaard <wicher@gavagai.eu> <http://smorgasbord.gavagai.nl>
+
+This is public domain software.
+
+The main problem this module solves is that gnuplot needs a) data, b) instructions,
+and generates c) graph output. a) comes from files, b) can be fed in stdin, and c)
+can be written to stdout and used in your Python code.
+
+For instance, you may want to feed data from Python into gnuplot according to
+some dynamically generated instructions, catch some SVG back in a Python string, 
+and push that out over HTTP without messing with temporary files.
+
+But if you want to feed _data_ from Python into gnuplot, then you must use temporary
+files because stdin is reserved for instructions.
+
+This module employs filesystem FIFOs and doesn't write data to disk.
+
+To pull this off, the magic string 'gpw_DATAFILE_gpw' in your gnuplot instructions
+(from file or as string argument) will be replaced by the filename of the fifo.
+So don't name your axes that way.
+And if you want to access the graph your plotscript generated from within
+Python, set/leave your gnuplot output to/at stdout.
+Have a look at test() for an example:
+
+def test():
+    plotscript = """
+    set terminal svg
+
+    set title "Baffling: \xe2\x98\xbc melts \xe2\x98\x83"
+    set xlabel "Hours of \xe2\x98\xbc" textcolor rgbcolor "dark-blue"
+    set ylabel "Occurrence of \xe2\x98\x83"  textcolor rgbcolor "dark-blue"
+    
+    set style line 11 linecolor rgbcolor "dark-blue" linewidth 3
+    
+    set border 4053 linestyle 11
+    set lmargin 10
+    
+    set noxtics
+    set noytics
+    
+    plot "gpw_DATAFILE_gpw" title "" with linespoints
+    """
+
+    plotdata = (''.join('%d\t%d\n' % (5-i, i) for i in range(5)))
+    plotout = plot(plotdata, plotscript=plotscript)
+    print(plotout)
+
+Redirect the SVG output into a file and open it with your SVG-capable browser.
