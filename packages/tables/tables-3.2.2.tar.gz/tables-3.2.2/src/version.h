@@ -1,0 +1,1 @@
+#define PYTABLES_VERSION "3.2.2"
