@@ -1,0 +1,90 @@
+it. You can build the context by manually setting keywords, loading data files
+or giving content as markup files.
+Home-page: https://github.com/brutus/templator
+Author: Brutus [DMC]
+Author-email: brutus.dmc@googlemail.com
+License: GNU GPLv3
+Description: # Templator
+        
+        Takes a *context* and renders one or more [Jinja] *templates* with it. You can
+        build the context by manually setting keywords, loading data files or giving
+        content as markup files.
+        
+        - Supports [Markdown] and [ReStructuredText] as input formats for content files.
+        - And [JSON] and [YAML] as formats for data files.
+        
+        
+        ## Usage
+        
+        For a full list of options see `templator --help`.
+        
+        ```shell
+        templator [options] [--extra <KEY> <VALUE>]… [--data <FILE>…] [--content <FILE>…] [--css <FILE>…] [--js <FILE>…] [<TEMPLATEFILE>]…
+        ```
+        
+        
+        ## Installation
+        
+        Use [pip][] — the package is called `templatory` on [pypi][]:
+        
+        ```shell
+        pip install --user templatory
+        ```
+        
+        
+        ## Examples
+        
+        ```shell
+        $ templator -e name 'World' -T 'Hello {{name}}!'
+        Hello World!
+        ```
+        
+        ```shell
+        $ templator -e content 'Hello World!' -e title 'Testy' --minimize
+        <!doctype html>
+        <html> <head><meta charset=utf-8><meta name=viewport content="width=device-width, initial-scale=1.0"><title>Testy</title></head> <body>Hello World!</body> </html>
+        ```
+        
+        ```shell
+        $ echo '*Hello*' > content.md
+        $ echo "js_links: ['//cdn.tld/jquery.min.js']" > data.yaml
+        $ templator -d data.yaml -c content.md
+        <!doctype html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <script src="//cdn.tld/jquery.min.js"></script>
+        </head>
+        <body><p><em>Hello</em></p></body>
+        </html>
+        ```
+        
+        
+        ## Development
+        
+        __Templator__ is at home on GitHub: <https://github.com/brutus/templator>
+        
+        For any kind of feedback, bugs… feel free to use this [tracker][].
+        
+        
+        
+        [jinja]: http://jinja.pocoo.org/
+        [markdown]: http://spec.commonmark.org/
+        [restructuredtext]: http://docutils.sourceforge.net/docs/user/rst/quickref.html
+        [json]: http://json.org/
+        [yaml]: http://yaml.org/
+        [pip]: https://pip.pypa.io/en/stable/
+        [pypi]: https://pypi.python.org/pypi
+        [tracker]: https://github.com/brutus/templator/issues
+        
+Keywords: templates,jinja,jinja2,markdown,restructuredtext,json,yaml
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development
+Classifier: Environment :: Console
+Classifier: Environment :: Web Environment
+Classifier: License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 3
