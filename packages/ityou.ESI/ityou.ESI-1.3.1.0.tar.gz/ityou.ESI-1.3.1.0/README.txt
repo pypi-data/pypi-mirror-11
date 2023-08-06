@@ -1,0 +1,163 @@
+Introduction
+============
+
+Overview
+--------
+
+ITYOU ESI is a *Social Intranet* solution based on the content management 
+software Plone.  It adds to *Plone* a set of web 2.0 technics and a fresh new 
+frontend.
+
+If you want to see some screenshots, 
+please visit http://www.ityou.de/software/ityou-esi/screenshots
+
+ITYOU ESI 1.3 runs with a recent Plone 4.3.X version.
+
+**Please read the installation instructions very carefully. 
+ITYOU ESI is not just a 'plugin'! 
+Do not install ITYOU ESI in a production environment!**
+
+
+Installation
+============
+
+Requirements
+------------
+
+**Important**: This product needs further software. Before you install ESI, 
+you have to install the following packages:
+
+1) *Plone 4.3* Content management software (http://plone.org/download)
+
+2) *PostgreSQL* database server (http://postgresql.org/) and 
+
+3) *Redis* key value store (http://redis.io/).
+
+
+Furthermore, if you'd like to generate thumnails form websites, you should 
+install *cutycapt* (http://cutycapt.sourceforge.net/).
+
+In addition you may install some optinal software package to generate thumbnails
+from documents (i.e. *ImageMagick*, *unoconv*). 
+
+We will explain the installation on *Ubuntu LTS 14.04 Server*. The installation 
+on other Linux distributions is simular. Installation on Mac OS or Windows may 
+differ, please refer to the corresponding support.
+
+
+**1) Install PostgreSQL**::
+    
+    sudo apt-get install postgresql postgresql-server-dev-all
+
+
+**2) Install Redis**::
+
+    sudo apt-get install redis-server 
+
+
+**3) Install Plone 4.3**
+
+There are several ways to install Plone. The easyest way is to download Plone
+form http://plone.org/products/plone/, untar it and install it with::
+
+    sudo ./install.sh --target=<where to put your instance> standalone
+
+This will install a standalone Plone instance. For futher information on how to
+install Plone, see http://docs.plone.org/manage/installing/index.html.
+
+
+Installing ITYOU ESI
+--------------------
+
+ESI is an Plone add on. You may install it with *buildout*. First, you have to 
+configure your **buildout.cfg** (in this example situated in /src/zope/esi/zinstance/):
+
+
+* Add ``ityou.ESI`` to the list of eggs to install, e.g. ::
+
+    [buildout]
+    ...
+    eggs =
+        ...
+        ityou.ESI
+
+       
+* Re-run buildout, e.g. with::
+
+    $ ./bin/buildout
+        
+
+Configuration of postgresql
+---------------------------
+
+You need to create a *postgres* user and to grand the nessesary rights::
+
+    sudo -u postgres psql
+    
+    create database ityou_esi;
+
+    create user <YOUR DATABASE USER> with password '<DATABASE USERS PASSWORD>';
+
+    grant all on database ityou_esi to ityou_esi_user;
+
+
+Start *postgresql* if not yet running::
+
+    sudo service postgresql start
+
+
+Then you have to add in *buildout.cfg* in the section 'zope-conf-additional' the 
+following lines so that Plone finds your postgres database::
+
+    zope-conf-additional =
+      
+      ...
+
+      <product-config ityou_esi>
+          # -- postgresql parameters 
+          psql_db         ityou_esi
+          psql_username   <DATABASE USER>
+          psql_password   <DATABASE USERS PASSWORD> 
+          psql_host       localhost
+          psql_port       5432
+      </product-config>
+
+      ...
+
+Re-run buildout and restart Plone
+
+
+Adding the zope clock server
+----------------------------
+If you want the users to receive emails when a object is added/updated, you need 
+to install the zope clock server.
+
+Add the following lines in *buildout.cfg* in the section ''zope-conf-additional ::
+
+    zope-conf-additional =
+        ...
+
+        <clock-server>
+            host <YOUR HOST>
+            method /esi/@@send-notification
+            period 60
+            user admin
+            password <ADMINISTRATION PASSWORD>
+        </clock-server>
+        ...
+    
+for further information about how to configure the clock server, please visit
+http://docs.plone.org/develop/plone/misc/asyncronoustasks.html
+
+
+Start Redis
+-----------
+
+The Redis server should be running after installation or you have to start it
+manually:: 
+
+    sudo service redis-server start
+
+
+That's it. Enjoy. 
+
