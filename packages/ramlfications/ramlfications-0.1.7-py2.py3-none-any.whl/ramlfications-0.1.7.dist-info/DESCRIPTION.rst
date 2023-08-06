@@ -1,0 +1,225 @@
+ramlfications: RAML reference implementation in Python
+======================================================
+
+.. image:: https://img.shields.io/travis/spotify/ramlfications.svg?style=flat-square
+   :target: https://travis-ci.org/spotify/ramlfications
+   :alt: CI status
+
+.. image:: https://img.shields.io/pypi/v/ramlfications.svg?style=flat-square
+   :target: https://pypi.python.org/pypi/ramlfications/
+   :alt: Latest Version
+
+.. image:: https://img.shields.io/pypi/status/ramlfications.svg?style=flat-square
+    :target: https://pypi.python.org/pypi/ramlfications/
+    :alt: Development Status
+
+.. image:: https://img.shields.io/pypi/l/ramlfications.svg?style=flat-square
+   :target: https://github.com/spotify/ramlfications/blob/master/LICENSE
+   :alt: License
+
+.. image:: https://img.shields.io/coveralls/spotify/ramlfications/master.svg?style=flat-square
+   :target: https://coveralls.io/r/spotify/ramlfications?branch=master
+   :alt: Current coverage
+
+.. image:: https://img.shields.io/pypi/pyversions/ramlfications.svg?style=flat-square
+    :target: https://pypi.python.org/pypi/ramlfications/
+    :alt: Supported Python versions
+
+
+.. begin
+
+Requirements and Installation
+=============================
+
+User Setup
+----------
+
+The latest stable version can be found on PyPI_, and you can install via pip_::
+
+   $ pip install ramlfications
+
+``ramlfications`` runs on Python 2.6, 2.7, and 3.3+, and PyPy. Both Linux and OS X are supported.
+
+Continue onto `usage`_ to get started on using ``ramlfications``.
+
+
+Developer Setup
+---------------
+
+If you'd like to contribute or develop upon ``ramlfications``, be sure to read `How to Contribute`_
+first.
+
+You can see the progress of ``ramlfications`` on our public `project management`_ page.
+
+System requirements:
+^^^^^^^^^^^^^^^^^^^^
+
+- C Compiler (gcc/clang/etc.)
+- If on Linux - you'll need to install Python headers (e.g. ``apt-get install python-dev``)
+- Python 2.6, 2.7, 3.3+, or PyPy
+- virtualenv_
+
+Here's how to set your machine up::
+
+    $ git clone git@github.com:spotify/ramlfications
+    $ cd ramlfications
+    $ virtualenv env
+    $ source env/bin/activate
+    (env) $ pip install -r dev-requirements.txt
+
+
+Run Tests
+^^^^^^^^^
+
+If you'd like to run tests for all supported Python versions, you must have all Python versions
+installed on your system.  I suggest pyenv_ to help with that.
+
+To run all tests::
+
+    (env) $ tox
+
+To run a specific test setup (options include: ``py26``, ``py27``, ``py33``, ``py34``, ``pypy``,
+``flake8``, ``verbose``, ``manifest``, ``docs``, ``setup``, ``setupcov``)::
+
+    (env) $ tox -e py26
+
+To run tests without tox::
+
+    (env) $ py.test
+    (env) $ py.test --cov ramlfications --cov-report term-missing
+
+
+Build Docs
+^^^^^^^^^^
+
+Documentation is build with Sphinx_, written in rST, uses the `Read the Docs`_ theme with
+a slightly customized CSS, and is hosted on `Read the Docs site`_.
+
+To rebuild docs locally, within the parent ``ramlfications`` directory::
+
+    (env) $ tox -e docs
+
+or::
+
+    (env) $ sphinx-build -b docs/ docs/_build
+
+Then within ``ramlfications/docs/_build`` you can open the index.html page in your browser.
+
+
+Still have issues?
+^^^^^^^^^^^^^^^^^^
+
+Feel free to drop by ``#ramlfications`` on Freenode (`webchat`_) or ping via `Twitter`_.
+"roguelynn" is the maintainer, a.k.a `econchick`_ on GitHub, and based in San Fran.
+
+
+.. _pip: https://pip.pypa.io/en/latest/installing.html#install-pip
+.. _PyPI: https://pypi.python.org/project/ramlfications/
+.. _virtualenv: https://virtualenv.pypa.io/en/latest/
+.. _pyenv: https://github.com/yyuu/pyenv
+.. _Sphinx: http://sphinx-doc.org/
+.. _`Read the Docs`: https://github.com/snide/sphinx_rtd_theme
+.. _`Read the Docs site`: https://ramlfications.readthedocs.org
+.. _`usage`: http://ramlfications.readthedocs.org/en/latest/usage.html
+.. _`How to Contribute`: http://ramlfications.readthedocs.org/en/latest/contributing.html
+.. _`webchat`: http://webchat.freenode.net?channels=%23ramlfications&uio=ND10cnVlJjk9dHJ1ZQb4
+.. _`econchick`: https://github.com/econchick
+.. _`Twitter`: https://twitter.com/roguelynn
+.. _`project management`: https://waffle.io/spotify/ramlfications
+
+Changelog
+=========
+
+0.1.7 (2015-08-20)
+------------------
+
+Added:
+
+- Support for parsing ``$ref`` s in included JSON schemas (`Issue 4`_).  Thank you `benhamill`_, `nvillalva`_, and `jhl2343`_!
+- Collect all validation errors (rather than just erroring out on the first one) (`Issue 21`_).  Thank you `nvillalva`_!
+
+
+0.1.6 (2015-08-03)
+------------------
+
+Added:
+
+- `waffle.io`_ page to documentation for project management overview
+
+Fixed:
+
+- Parse errors when RAML file would have empty mappings (`Issue 30`_)
+- Switch ``yaml.Loader`` to ``yaml.SafeLoader`` (`Issue 26`_)
+- Update documentation to reflect rearrangement of errors (`Issue 27`_)
+- Remove ``default`` parameter from being required for ``baseURIParameters`` (`Issue 29`_)
+- Pin mock library for tox tests (`Issue 22`_)
+- Experimenting with speeding up pypy tests within tox on Travis
+
+0.1.5 (2015-06-05)
+------------------
+
+Fixed:
+
+- Configuration parsing for validation/production.  Thanks `vrajmohan`_!
+- Parsing of response bodies (fixes `Issue 12`_).  Thanks `Igor`_!
+
+0.1.4 (2015-05-27)
+------------------
+
+Added:
+
+- Support for recursive ``!includes`` in RAML files (0.1.3 would handle the error, now actually supports it. Thanks `Ben`_ for your `PR`_!).
+
+0.1.3 (2015-05-14)
+------------------
+
+Added:
+
+- New ``#ramlfications`` channel on `freenode`_ (web chat link)! Come chat, I'm lonely.
+- Documentation for configuration and the ``update`` command.
+
+Fixed:
+
+- Handle recursive/cyclical ``!includes`` in RAML files for now (`PR`_)
+- Encoding issues from upgrading to tox 2.0
+- ``tests/test_utils.py`` would create ``ramlfications/data/supported_mime_types.json``; now mocked out.
+
+0.1.2 (2015-04-21)
+------------------
+
+Fixed:
+
+- pypy 2.5.x would fail a parser test because order of list was not expected
+
+0.1.1 (2015-04-21)
+------------------
+
+New:
+
+- Added ability to parse IANA-supported MIME media types
+- Added ``update`` command for user to update IANA-supported MIME types if/when needed
+
+0.1.0a1 (2015-04-18)
+--------------------
+Initial alpha release of ``ramlfications``\!
+
+
+.. _`PR`: https://github.com/spotify/ramlfications/pull/8
+.. _`freenode`: http://webchat.freenode.net?channels=%23ramlfications&uio=ND10cnVlJjk9dHJ1ZQb4
+.. _`Ben`: https://github.com/benhamill
+.. _`vrajmohan`: https://github.com/spotify/ramlfications/pull/16
+.. _`Issue 12`: https://github.com/spotify/ramlfications/issues/12
+.. _`Igor`: https://github.com/spotify/ramlfications/pull/13
+.. _`Issue 30`: https://github.com/spotify/ramlfications/issues/30
+.. _`Issue 26`: https://github.com/spotify/ramlfications/issues/26
+.. _`Issue 27`: https://github.com/spotify/ramlfications/issues/27
+.. _`Issue 29`: https://github.com/spotify/ramlfications/issues/29
+.. _`Issue 22`: https://github.com/spotify/ramlfications/issues/22
+.. _`waffle.io`: https://waffle.io/spotify/ramlfications
+.. _`Issue 4`: https://github.com/spotify/ramlfications/issues/4
+.. _`benhamill`: https://github.com/benhamill
+.. _`nvillalva`: https://github.com/nvillalva
+.. _`jhl2343`: https://github.com/jhl2343
+.. _`Issue 21`: https://github.com/spotify/ramlfications/issues/21
+
+
